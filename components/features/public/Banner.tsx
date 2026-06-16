@@ -26,9 +26,9 @@ export default function Banner({ title, breadcrumbs }: BannerProps) {
     >
       <div className="absolute inset-0 bg-gradient-to-r from-gray1/80 via-gray1/60 to-transparent" />
 
-      <div className="relative z-10 w-full px-5 md:px-0">
-        <div className="mx-auto max-w-[1420px]">
-          <h1 className="mb-3 text-4xl font-extrabold text-white md:text-[48px] md:leading-[77px]">
+      <div className="relative z-10 w-full px-4 sm:px-6 min-[1100px]:px-0">
+        <div className="mx-auto max-w-[1420px] px-4">
+          <h1 className="mb-3 text-3xl font-extrabold text-white md:text-4xl md:leading-tight">
             {title}
           </h1>
 

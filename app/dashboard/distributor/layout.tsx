@@ -17,7 +17,7 @@ export default function DistributorRouteLayout({
       background="plain"
       linkClass="light"
       contentClassName="relative w-full bg-[#F9FAFB]"
-      showLogout={false}
+      showLogout={true}
     >
       {children}
     </DashboardLayout>

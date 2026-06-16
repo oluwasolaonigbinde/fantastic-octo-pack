@@ -48,7 +48,7 @@ export default function ProductImageGallery({
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-[#DDE0E5] bg-white">
-      <div className="relative aspect-square w-full overflow-hidden bg-white md:h-[582px] md:aspect-auto">
+      <div className="relative aspect-square w-full overflow-hidden bg-white md:h-[440px] md:aspect-auto">
         <SafeProductImage
           src={activeImage}
           alt={title}
@@ -62,14 +62,14 @@ export default function ProductImageGallery({
         </div>
       </div>
 
-      <div className="mx-auto my-5 flex w-fit items-center justify-center gap-3 rounded-xl border border-[#C4C8CE] bg-[#F3F4F6] p-2 md:absolute md:bottom-[29px] md:left-1/2 md:my-0 md:-translate-x-1/2 md:p-3">
+      <div className="mx-auto my-4 flex w-fit items-center justify-center gap-3 rounded-xl border border-[#C4C8CE] bg-[#F3F4F6] p-2 md:absolute md:bottom-[18px] md:left-1/2 md:my-0 md:-translate-x-1/2">
         <button
           type="button"
           onClick={selectPrevious}
           aria-label="Previous product image"
-          className="flex size-5 items-center justify-center text-[#4B5563] md:size-6"
+          className="flex size-5 items-center justify-center text-[#4B5563]"
         >
-          <ChevronLeft size={18} />
+          <ChevronLeft size={16} />
         </button>
 
         <div className="flex items-center gap-2">
@@ -79,7 +79,7 @@ export default function ProductImageGallery({
               type="button"
               aria-label={`Show product image ${index + 1}`}
               onClick={() => setSelectedIndex(index)}
-              className={`size-[6px] rounded-full md:size-2.5 ${
+              className={`size-[6px] rounded-full md:size-2 ${
                 index === selectedIndex ? "bg-[#FE6E00]" : "bg-[#FFB27A]"
               }`}
             />
@@ -90,9 +90,9 @@ export default function ProductImageGallery({
           type="button"
           onClick={selectNext}
           aria-label="Next product image"
-          className="flex size-5 items-center justify-center text-[#4B5563] md:size-6"
+          className="flex size-5 items-center justify-center text-[#4B5563]"
         >
-          <ChevronRight size={18} />
+          <ChevronRight size={16} />
         </button>
       </div>
     </div>

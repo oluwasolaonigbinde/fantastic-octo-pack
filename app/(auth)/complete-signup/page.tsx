@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { Button, Input } from "@/components/base";
@@ -123,8 +124,8 @@ export default function CompleteSignupPage() {
   return (
     <div className="mx-auto max-w-[414px]">
       <div className="mb-8">
-        <Image src="/logo.png" alt="logo" width={112} height={46} />
-        <AuthBackButton onClick={() => router.push("/register")} />
+        <Link href="/"><Image src="/logo.png" alt="logo" width={112} height={46} /></Link>
+        <AuthBackButton onClick={() => router.back()} />
         <h1 className="type-heading-xxl mt-8 font-medium text-gray1">
           Complete your sign up
         </h1>

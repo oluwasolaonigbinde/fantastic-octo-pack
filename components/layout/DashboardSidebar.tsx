@@ -132,11 +132,10 @@ export default function DashboardSidebar({
 
   return (
     <aside
-      className={`sticky h-full flex flex-col justify-between top-0 ${surfaceClass}`}
+      className={`sticky top-0 h-screen flex flex-col ${surfaceClass}`}
     >
-      <div className="mb-4">
         <div
-          className={`h-[100px] flex flex-col items-start justify-center gap-1 pl-8 border-b ${
+          className={`h-[100px] shrink-0 flex flex-col items-start justify-center gap-1 pl-8 border-b ${
             linkClass === "dark"
               ? "border-[#0D53A3]"
               : surfaceClassName
@@ -160,7 +159,7 @@ export default function DashboardSidebar({
           ) : null}
         </div>
         <div
-          className={`pb-8 ${navClassName ?? "h-[70vh] pt-11 space-y-5"} ${surfaceClass} overflow-y-auto no-scrollbar`}
+          className={`flex-1 min-h-0 pb-8 ${navClassName ?? "pt-11 space-y-5"} ${surfaceClass} overflow-y-auto no-scrollbar`}
         >
           {links.map((link, index) => {
             const path =
@@ -224,14 +223,13 @@ export default function DashboardSidebar({
             );
           })}
         </div>
-      </div>
       {showLogout ? (
         <Button
           title="Logout"
           size="sm"
           onClick={handleLogout}
           iconLeft={<LogOut />}
-          className="mx-auto mb-4 gap-6 !max-w-[150px] !bg-danger/80 !border-danger hover:!max-w-[200px] hover:!bg-danger hover:!text-white"
+          className="mx-auto mb-4 mt-4 shrink-0 gap-6 !max-w-[150px] !bg-danger/80 !border-danger hover:!max-w-[200px] hover:!bg-danger hover:!text-white"
         />
       ) : null}
     </aside>

@@ -133,13 +133,21 @@ export default function FilterSidebar({
   const handleMinPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value, 10);
     setPriceTouched(true);
-    setMinPrice(Math.min(value, maxPrice));
+    if (value <= maxPrice) {
+      setMinPrice(value);
+    } else {
+      setMinPrice(maxPrice);
+    }
   };
 
   const handleMaxPriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value, 10);
     setPriceTouched(true);
-    setMaxPrice(Math.max(value, minPrice));
+    if (value >= minPrice) {
+      setMaxPrice(value);
+    } else {
+      setMaxPrice(minPrice);
+    }
   };
 
   const toggleFilterValue = <

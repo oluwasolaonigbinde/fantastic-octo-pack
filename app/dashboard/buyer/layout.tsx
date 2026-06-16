@@ -19,7 +19,7 @@ export default function BuyerRouteLayout({
       linkClass="darkBordered"
       sidebarSurfaceClassName="bg-[#EAF9FF] border-r border-[#BFEFFF]"
       showBackToWebsite={false}
-      showLogout={false}
+      showLogout={true}
     >
       {children}
     </DashboardLayout>

@@ -35,22 +35,22 @@ export default function ProductInfo({
   onMessageSeller,
 }: ProductInfoProps) {
   return (
-    <div className="flex min-h-full w-full min-w-0 flex-col gap-0 md:h-[582px]">
+    <div className="flex min-h-full w-full min-w-0 flex-col gap-0 md:h-[440px]">
       <div>
-        <h1 className="w-full text-[32px] font-medium leading-[38px] text-black md:text-[40px] md:leading-[48px]">
+        <h1 className="w-full text-2xl font-medium leading-8 text-black md:text-[28px] md:leading-9">
           {title}
         </h1>
 
-        <div className="mt-8 md:mt-[54px]">
+        <div className="mt-6 md:mt-8">
           <span className="sr-only">
             {availabilityLabel}
           </span>
 
-          <p className="text-[40px] font-bold leading-[58px] text-[#111827] md:text-[52px] md:leading-[62px]">
+          <p className="text-3xl font-bold leading-10 text-[#111827] md:text-[38px] md:leading-[48px]">
             {formatCurrency(price)}
           </p>
 
-          <div className="mt-8 flex flex-wrap items-center gap-3 md:gap-5">
+          <div className="mt-5 flex flex-wrap items-center gap-3">
             <VerificationPill
               label="Verified Seller"
               isVisible={isSellerVerified}
@@ -60,11 +60,11 @@ export default function ProductInfo({
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-2 gap-3 md:mt-5 md:flex md:items-center md:gap-5">
+      <div className="mt-6 grid grid-cols-2 gap-3 md:mt-4 md:flex md:items-center md:gap-3">
         <button
           type="button"
           onClick={onOrderNow}
-          className="inline-flex h-10 items-center justify-center rounded-xl bg-[#FE6E00] px-4 text-sm font-medium text-white transition hover:bg-[#E86300] md:h-14 md:w-[199px] md:text-2xl md:leading-10"
+          className="inline-flex h-10 items-center justify-center rounded-xl bg-[#FE6E00] px-4 text-sm font-medium text-white transition hover:bg-[#E86300] md:h-11 md:w-[150px] md:text-base"
         >
           Order Now
         </button>
@@ -72,36 +72,36 @@ export default function ProductInfo({
         <button
           type="button"
           onClick={onMessageSeller}
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0669D9] px-4 text-sm font-medium text-[#E2F1FF] transition hover:bg-[#0553AE] md:h-14 md:w-[241px] md:px-4 md:text-[22px] md:leading-10"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[#0669D9] px-4 text-sm font-medium text-[#E2F1FF] transition hover:bg-[#0553AE] md:h-11 md:w-[185px] md:text-base"
         >
           <span className="whitespace-nowrap">Chat with Seller</span>
-          <MessageCircle className="hidden size-8 md:block" strokeWidth={1.8} />
+          <MessageCircle className="hidden size-5 md:block" strokeWidth={1.8} />
         </button>
 
         <button
           type="button"
           onClick={onSendInquiry}
-          className="inline-flex h-10 items-center justify-center rounded-xl bg-[#EAF9FF] px-4 text-sm font-medium text-[#111827] transition hover:bg-[#DDF5FF] md:h-14 md:w-[250px] md:text-2xl md:leading-10"
+          className="inline-flex h-10 items-center justify-center rounded-xl bg-[#EAF9FF] px-4 text-sm font-medium text-[#111827] transition hover:bg-[#DDF5FF] md:h-11 md:w-[190px] md:text-base"
         >
           Send Inquiry
         </button>
       </div>
 
-      <div className="mt-6 rounded-xl border border-[#F3F4F6] bg-[#F9FAFB] p-5 md:mt-[50px] md:h-[208px]">
-        <div className="flex items-center gap-3 text-lg font-semibold text-[#4B5563] md:text-2xl md:leading-10">
-          <span className="flex size-[42px] shrink-0 items-center justify-center rounded-full bg-[#FEF3C7] text-[#F59E0B]">
-            <ShieldCheck size={24} />
+      <div className="mt-6 rounded-xl border border-[#F3F4F6] bg-[#F9FAFB] p-4 md:mt-8">
+        <div className="flex items-center gap-3 text-base font-semibold text-[#4B5563] md:text-lg">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#FEF3C7] text-[#F59E0B]">
+            <ShieldCheck size={18} />
           </span>
           Protected by Baiy Trade Assurance
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm font-semibold text-[#4B5563] md:gap-5 md:pl-2 md:text-xl md:leading-8">
+        <div className="mt-3 flex flex-wrap items-center gap-3 text-sm font-semibold text-[#4B5563] md:pl-2 md:text-sm">
           <AssuranceItem label="Escrow Protection" />
           <AssuranceItem label="Resolution" />
           <AssuranceItem label="Verified Suppliers" />
         </div>
 
-        <p className="mt-6 text-sm leading-6 text-[#4B5563] md:text-lg md:leading-7">
+        <p className="mt-4 text-sm leading-6 text-[#4B5563]">
           A short copy here to give a more confident purchase to users
         </p>
       </div>
@@ -121,7 +121,7 @@ function VerificationPill({
   }
 
   return (
-    <span className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[rgba(107,114,128,0.06)] px-3 text-sm font-semibold text-[#13A83B] md:h-12 md:min-w-[199px] md:justify-center">
+    <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[rgba(107,114,128,0.06)] px-3 text-sm font-semibold text-[#13A83B] md:h-9 md:min-w-[150px] md:justify-center">
       <CheckCircle2 size={18} />
       {label}
     </span>
