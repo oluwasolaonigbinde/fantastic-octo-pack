@@ -1,0 +1,11 @@
+FROM node:20.17-bullseye
+
+WORKDIR /app/buiy-frontend/baiy-web
+
+COPY buiy-frontend/baiy-web/package*.json ./
+
+RUN npm ci
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
