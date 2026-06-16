@@ -40,7 +40,7 @@ export function DashboardLayout({
 
   return (
     <div>
-      <div className="flex mx-auto w-full max-w-[1440px]">
+      <div className="flex w-full">
         <div className="lg:hidden">
           <DashboardMobileSidebar
             open={state === "expanded"}

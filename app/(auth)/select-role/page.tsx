@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/base";
 import { AuthBackButton } from "@/components/features/auth/AuthBackButton";
@@ -108,8 +109,8 @@ export default function SelectRolePage() {
   return (
     <div className="mx-auto max-w-[414px]">
       <div className="mb-8">
-        <Image src="/logo.png" alt="logo" width={112} height={46} />
-        <AuthBackButton onClick={() => router.push("/register")} />
+        <Link href="/"><Image src="/logo.png" alt="logo" width={112} height={46} /></Link>
+        <AuthBackButton onClick={() => router.back()} />
         <h1 className="type-heading-xxl mt-8 font-medium text-gray1">
           Register User
         </h1>

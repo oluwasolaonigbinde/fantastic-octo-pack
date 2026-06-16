@@ -41,7 +41,6 @@ export default function DashboardMobileSidebar({
   links,
   surfaceClassName,
   showBackToWebsite = true,
-  showLogout = true,
 }: DashboardMobileSidebarProps) {
   const pathname = usePathname();
   const dispatch = useAppDispatch();
@@ -109,7 +108,7 @@ export default function DashboardMobileSidebar({
         <SheetHeader className="hidden">
           <SheetTitle>n</SheetTitle>
         </SheetHeader>
-        <aside className="sticky top-0 ">
+        <aside className="flex min-h-0 flex-1 flex-col w-full">
           <div
             className={`h-[100px] flex flex-col items-start justify-center gap-1 pl-6 border-b ${
               linkClass === "dark"
@@ -137,7 +136,7 @@ export default function DashboardMobileSidebar({
               />
             ) : null}
           </div>
-          <div className="h-fit py-8 overflow-y-auto space-y-2 w-full overflow-y-auto">
+          <div className="flex-1 min-h-0 py-8 space-y-2 w-full overflow-y-auto">
             {links.map((link, index) => {
               const path =
                 index === 0
@@ -197,17 +196,15 @@ export default function DashboardMobileSidebar({
             })}
           </div>
         </aside>
-        {showLogout ? (
-          <SheetFooter>
-            <Button
-              title="Logout"
-              size="sm"
-              onClick={handleLogout}
-              iconLeft={<LogOut />}
-              className="mx-auto mb-4 gap-6 !max-w-[150px] !bg-danger/80 !border-danger hover:!max-w-[200px] hover:!bg-danger hover:!text-white"
-            />
-          </SheetFooter>
-        ) : null}
+        <SheetFooter className="shrink-0">
+          <Button
+            title="Logout"
+            size="sm"
+            onClick={handleLogout}
+            iconLeft={<LogOut />}
+            className="mx-auto mb-4 gap-6 !max-w-[150px] !bg-danger/80 !border-danger hover:!max-w-[200px] hover:!bg-danger hover:!text-white"
+          />
+        </SheetFooter>
       </SheetContent>
     </Sheet>
   );

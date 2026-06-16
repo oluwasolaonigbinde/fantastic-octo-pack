@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { REGEXP_ONLY_DIGITS } from "input-otp";
 import { useRouter } from "next/navigation";
 import { Button, PopUp } from "@/components/base";
@@ -73,12 +74,12 @@ export default function VerifyOtpPage() {
     <>
       <div className="mx-auto max-w-[414px]">
         <div className="mb-8 text-gray1">
-          <Image src="/logo.png" alt="logo" width={112} height={46} />
+          <Link href="/"><Image src="/logo.png" alt="logo" width={112} height={46} /></Link>
           <AuthBackButton
             label="Back"
             onClick={() => {
               clearPendingResetContext();
-              router.push("/forgot-password");
+              router.back();
             }}
           />
           <h1 className="type-heading-xxl mt-8 font-medium">

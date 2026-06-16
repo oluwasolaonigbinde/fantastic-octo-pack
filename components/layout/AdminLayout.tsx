@@ -98,9 +98,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       linkClass="darkBordered"
       textColor="text-gray1"
       sidebarSurfaceClassName={ADMIN_SIDEBAR_SURFACE}
-      sidebarNavClassName="pt-[72px] space-y-3"
+      sidebarNavClassName="pt-6 space-y-3"
       showBackToWebsite={false}
-      showLogout={false}
+      showLogout={true}
     >
       {children}
     </DashboardLayout>

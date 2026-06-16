@@ -2,10 +2,7 @@
 
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {
-  clearAuthFlowContext,
-  resolveAuthWebsiteBackPath,
-} from "@/utils/pendingAuth";
+import { clearAuthFlowContext } from "@/utils/pendingAuth";
 
 type AuthBackButtonProps = {
   label?: string;
@@ -24,9 +21,8 @@ export function AuthBackButton({
       return;
     }
 
-    const websiteBackPath = resolveAuthWebsiteBackPath();
     clearAuthFlowContext();
-    router.push(websiteBackPath);
+    router.back();
   };
 
   return (

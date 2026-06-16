@@ -41,7 +41,7 @@ export default function ProductCard({
 
   return (
     <Link href={`/products/${id}`} className="block h-full" prefetch={false}>
-      <div className="flex h-full cursor-pointer flex-col overflow-hidden rounded-[24px] bg-white transition-shadow duration-300 hover:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
+      <div className="flex h-full cursor-pointer flex-col overflow-hidden rounded-[24px] border border-[#DDE0E5] bg-white transition-shadow duration-300 hover:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
         {/* Image area with gradient background */}
         <div className="relative h-[239px] w-full overflow-hidden bg-gradient-to-b from-[#FDFDFE] from-[39%] to-[#E0E3E8]">
           <div className="absolute inset-0 m-auto h-full w-[95%] overflow-hidden rounded-[16px]">
@@ -69,7 +69,7 @@ export default function ProductCard({
           </h3>
 
           {/* Stock + Location (left) & Price (right) */}
-          <div className="mt-2 flex items-start justify-between gap-3 pb-4">
+          <div className="mt-2 flex flex-col gap-2 pb-4">
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-[5px]">
                 <CheckSquare
@@ -91,8 +91,8 @@ export default function ProductCard({
               ) : null}
             </div>
 
-            <div className="flex shrink-0 items-center justify-center self-stretch rounded-[8px] bg-[rgba(254,110,0,0.04)] px-2 py-1">
-              <p className="whitespace-nowrap text-[22px] font-bold leading-[40px] text-[#E89F5E]">
+            <div className="inline-flex w-fit items-center rounded-[8px] bg-[rgba(254,110,0,0.04)] px-2 py-1">
+              <p className="text-[22px] font-bold leading-[40px] text-[#E89F5E]">
                 {price}
               </p>
             </div>
@@ -100,7 +100,7 @@ export default function ProductCard({
         </div>
 
         {/* Condition bar */}
-        <div className="mt-auto w-full bg-[#F6F7F9] px-4 py-4">
+        <div className="mt-auto w-full px-4 pb-4">
           <p className="text-[18px] leading-[28px] text-[#4B5563]">
             Condition:{" "}
             <span className="font-semibold">{conditionLabel ?? "N/A"}</span>

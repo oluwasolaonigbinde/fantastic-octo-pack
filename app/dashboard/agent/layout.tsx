@@ -18,7 +18,7 @@ export default function AgentRouteLayout({
       linkClass="light"
       contentClassName="relative w-full bg-[#F9FAFB]"
       showBackToWebsite={false}
-      showLogout={false}
+      showLogout={true}
     >
       {children}
     </DashboardLayout>

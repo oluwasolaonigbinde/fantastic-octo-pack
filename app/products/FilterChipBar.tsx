@@ -11,10 +11,10 @@ type ChipKey = "categories" | "oem" | "sortBy" | "distributors" | "availability"
 
 const SORT_OPTIONS = [
   { value: "", label: "Default" },
-  { value: "name-asc", label: "Name A-Z" },
-  { value: "name-desc", label: "Name Z-A" },
-  { value: "price-asc", label: "Price: Low-High" },
-  { value: "price-desc", label: "Price: High-Low" },
+  { value: "name-asc", label: "Name A–Z" },
+  { value: "name-desc", label: "Name Z–A" },
+  { value: "price-asc", label: "Price: Low–High" },
+  { value: "price-desc", label: "Price: High–Low" },
   { value: "newest", label: "Newest" },
   { value: "oldest", label: "Oldest" },
 ];
@@ -268,17 +268,17 @@ export default function FilterChipBar({
           {openChip === "price" && (
             <div className="space-y-3 w-52">
               <p className="text-sm text-gray-700 font-medium">
-                ₦{formatPrice(priceMin)} - ₦{formatPrice(priceMax)}
+                ₦{formatPrice(priceMin)} – ₦{formatPrice(priceMax)}
               </p>
               <div className="space-y-1">
                 <label className="text-xs text-gray-500">Min price</label>
                 <input
                   type="range"
                   min={DEFAULT_MIN_PRICE}
-                  max={DEFAULT_MAX_PRICE}
+                  max={priceMax}
                   step={10000}
                   value={priceMin}
-                  onChange={(e) => setPriceMin(Math.min(Number(e.target.value), priceMax))}
+                  onChange={(e) => setPriceMin(Number(e.target.value))}
                   className="w-full accent-[#0669D9]"
                 />
               </div>
@@ -286,11 +286,11 @@ export default function FilterChipBar({
                 <label className="text-xs text-gray-500">Max price</label>
                 <input
                   type="range"
-                  min={DEFAULT_MIN_PRICE}
+                  min={priceMin}
                   max={DEFAULT_MAX_PRICE}
                   step={10000}
                   value={priceMax}
-                  onChange={(e) => setPriceMax(Math.max(Number(e.target.value), priceMin))}
+                  onChange={(e) => setPriceMax(Number(e.target.value))}
                   className="w-full accent-[#0669D9]"
                 />
               </div>

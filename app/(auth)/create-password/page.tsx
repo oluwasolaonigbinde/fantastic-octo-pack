@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -97,8 +98,8 @@ export default function CreatePasswordPage() {
     <>
       <div className="mx-auto max-w-[414px]">
         <div className="mb-8">
-          <Image src="/logo.png" alt="logo" width={112} height={46} />
-          <AuthBackButton onClick={() => router.push("/select-role")} />
+          <Link href="/"><Image src="/logo.png" alt="logo" width={112} height={46} /></Link>
+          <AuthBackButton onClick={() => router.back()} />
           <h1 className="type-heading-xxl mt-8 font-medium text-gray1">
             Create Password
           </h1>

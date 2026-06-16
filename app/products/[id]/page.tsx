@@ -18,6 +18,7 @@ import ProductInfo from "./ProductInfo";
 import RelatedProducts from "./RelatedProducts";
 import ConfirmOrderModal from "./ConfirmOrderModal";
 import EditDeliveryAddressModal from "./EditDeliveryAddressModal";
+import SendInquiryModal from "./SendInquiryModal";
 import { fetchProductById } from "@/store/slices/product-slice";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import type { Product } from "@/types/product";
@@ -52,14 +53,6 @@ const DEFAULT_LOGISTICS_ITEMS = [
   "Bulk delivery timelines depend on destination and stock readiness.",
 ];
 const ORDER_NOW_RESUME_ACTION = "order_now";
-
-function formatConditionLabel(condition?: string | null): string {
-  if (!condition) {
-    return "New";
-  }
-
-  return condition.charAt(0).toUpperCase() + condition.slice(1).toLowerCase();
-}
 
 function splitDetailText(value: string | undefined, fallback: string[]): string[] {
   const normalized = value?.trim();
@@ -177,9 +170,9 @@ export default function ProductDetailsPage() {
   const [showWarrantyDetails, setShowWarrantyDetails] = useState(false);
   const [isConfirmOrderOpen, setIsConfirmOrderOpen] = useState(false);
   const [isAddressEditorOpen, setIsAddressEditorOpen] = useState(false);
+  const [isInquiryOpen, setIsInquiryOpen] = useState(false);
   const [orderQuantity, setOrderQuantity] = useState(1);
   const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [savedDeliveryAddresses, setSavedDeliveryAddresses] = useState<string[]>([]);
   const processedResumeKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -243,9 +236,7 @@ export default function ProductDetailsPage() {
   );
 
   const sellerName =
-    createdBy?.distributorStoreProfile?.businessName?.trim() ||
-    `${createdBy?.firstName ?? ""} ${createdBy?.lastName ?? ""}`.trim() ||
-    "Seller";
+    `${createdBy?.firstName ?? ""} ${createdBy?.lastName ?? ""}`.trim() || "Seller";
   const sellerId =
     createdBy?._id ??
     (typeof product?.createdBy === "string" ? product.createdBy : undefined);
@@ -262,26 +253,6 @@ export default function ProductDetailsPage() {
     () => resolveDeliveryAddress(authData, sellerLocation),
     [authData, sellerLocation],
   );
-  const checkoutSavedAddresses = useMemo(() => {
-    const seen = new Set<string>();
-
-    return [deliveryAddress, defaultDeliveryAddress, ...savedDeliveryAddresses]
-      .map((address) => address.trim())
-      .filter((address) => {
-        if (!address || seen.has(address)) {
-          return false;
-        }
-
-        seen.add(address);
-        return true;
-      })
-      .map((address, index) => ({
-        id: `address-${index + 1}`,
-        label: `Address ${index === 0 ? "One" : index === 1 ? "Two" : index + 1}`,
-        address,
-        isDefault: address === defaultDeliveryAddress,
-      }));
-  }, [defaultDeliveryAddress, deliveryAddress, savedDeliveryAddresses]);
 
   const specificationItems = useMemo(
     () => getProductSpecificationItems(product).slice(0, 9),
@@ -311,24 +282,6 @@ export default function ProductDetailsPage() {
     product?.description?.trim() ||
     "Product overview will appear here once the seller provides a detailed description for buyers.";
 
-  const buildBuyerRfqHref = useCallback(() => {
-    const params = new URLSearchParams({
-      action: "create",
-      product: id,
-      productName: product?.name || "",
-    });
-
-    if (sellerId) {
-      params.set("seller", sellerId);
-    }
-
-    if (sellerName && sellerName !== "Seller") {
-      params.set("sellerName", sellerName);
-    }
-
-    return `/dashboard/buyer/rfqs?${params.toString()}`;
-  }, [id, product?.name, sellerId, sellerName]);
-
   const persistPendingAuthIntent = useCallback(
     (action: "send_inquiry" | "order_now") => {
       writePendingAuthIntent({
@@ -343,14 +296,8 @@ export default function ProductDetailsPage() {
   );
 
   const handleSendInquiry = useCallback(() => {
-    if (!authData) {
-      persistPendingAuthIntent("send_inquiry");
-      router.push("/register");
-      return;
-    }
-
-    router.push(buildBuyerRfqHref());
-  }, [authData, buildBuyerRfqHref, persistPendingAuthIntent, router]);
+    setIsInquiryOpen(true);
+  }, []);
 
   const handleOrderNow = useCallback(async () => {
     if (!authData) {
@@ -548,9 +495,9 @@ export default function ProductDetailsPage() {
       }
       contentClassName="min-h-screen flex flex-col bg-white"
     >
-      <div className="flex-1 bg-white px-5 py-[30px] lg:px-0 lg:py-20">
-        <div className="mx-auto max-w-[1420px] space-y-10 lg:space-y-16">
-          <div className="grid gap-10 lg:grid-cols-[665px_minmax(0,1fr)] lg:items-stretch">
+      <div className="flex-1 bg-white px-4 py-6 sm:px-6 lg:px-8 lg:py-14 min-[1500px]:px-0">
+        <div className="mx-auto max-w-[1420px] space-y-8 lg:space-y-12">
+          <div className="grid gap-8 lg:grid-cols-[500px_minmax(0,1fr)] lg:items-stretch">
             <ProductImageGallery
               mainImage={getProductDefaultImageUrl(product)}
               thumbnails={getProductImageUrls(product)}
@@ -569,23 +516,23 @@ export default function ProductDetailsPage() {
             />
           </div>
 
-          <div className="h-auto rounded-xl border border-[#F3F4F6] bg-[rgba(249,250,251,0.5)] px-5 py-5 lg:h-[120px]">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="h-auto rounded-xl border border-[#F3F4F6] bg-[rgba(249,250,251,0.5)] px-5 py-4 lg:h-[90px]">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-3">
                 <Image
                   src={sellerAvatar}
                   alt={sellerName}
-                  width={80}
-                  height={80}
-                  className="size-14 rounded-full object-cover md:size-20"
+                  width={56}
+                  height={56}
+                  className="size-11 rounded-full object-cover md:size-14"
                 />
                 <div>
-                  <p className="text-lg font-semibold leading-7 text-[#4B5563] md:text-2xl md:leading-10">{sellerName}</p>
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-[#4B5563] md:text-xl">
-                    <RatingStars rating={sellerRating} size={18} />
+                  <p className="text-base font-semibold leading-6 text-[#4B5563] md:text-xl">{sellerName}</p>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-[#4B5563] md:text-base">
+                    <RatingStars rating={sellerRating} size={14} />
                     <span>{sellerRating.toFixed(1)}</span>
                     <span className="flex items-center gap-1">
-                      <MapPin size={20} className="text-[#4B5563]" />
+                      <MapPin size={14} className="text-[#4B5563]" />
                       {sellerLocation}
                     </span>
                   </div>
@@ -594,230 +541,163 @@ export default function ProductDetailsPage() {
 
               <Link
                 href={sellerProfileHref}
-                className="inline-flex h-10 items-center gap-2 self-start rounded-xl border border-[#F3F4F6] bg-white px-4 text-sm font-semibold text-[#4B5563] transition hover:text-[#0669D9] sm:self-auto md:h-[52px] md:text-xl"
+                className="inline-flex h-9 items-center gap-1.5 self-start rounded-xl border border-[#F3F4F6] bg-white px-3 text-sm font-semibold text-[#4B5563] transition hover:text-[#0669D9] sm:self-auto md:h-10 md:text-base"
               >
                 View Profile
-                <ChevronRight size={20} />
+                <ChevronRight size={16} />
               </Link>
             </div>
           </div>
 
           <section className="space-y-3">
-            <h2 className="text-[28px] font-semibold leading-10 text-[#111827] md:text-[32px] md:leading-[48px]">
+            <h2 className="text-xl font-semibold leading-8 text-[#111827] md:text-2xl md:leading-9">
               Product Overview
             </h2>
-            <p className="max-w-[1199px] text-lg leading-8 text-[#4B5563] md:text-2xl md:leading-10">
+            <p className="max-w-[1199px] text-sm leading-7 text-[#4B5563] md:text-base md:leading-8">
               {productOverviewText}
             </p>
           </section>
 
-          <div className="grid gap-7 lg:grid-cols-[minmax(0,1.46fr)_minmax(320px,1fr)] lg:items-end lg:gap-10 xl:grid-cols-[820px_560px]">
-            <div className="space-y-6">
-              <section className="space-y-5">
-                <h2 className="text-[28px] font-semibold leading-10 text-[#111827] md:text-[32px] md:leading-[48px]">
-                  Key Specifications
-                </h2>
+          <section className="space-y-4">
+            <h2 className="text-xl font-semibold leading-8 text-[#111827] md:text-2xl md:leading-9">
+              Key Specifications
+            </h2>
 
-                <div className="overflow-hidden rounded-xl border border-[#DDE0E5] bg-white">
-                  <div className="grid grid-cols-[1fr_1fr] bg-[#EEF0F4] text-base font-semibold text-[#4B5563] md:text-2xl">
-                    <div className="border-r border-[#DDE0E5] px-4 py-3">
-                      Specifications
-                    </div>
-                    <div className="px-4 py-3">Details</div>
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.46fr)_minmax(280px,1fr)] lg:items-start lg:gap-8 xl:grid-cols-[minmax(0,1.46fr)_minmax(420px,1fr)]">
+              <div className="overflow-hidden rounded-xl border border-[#DDE0E5] bg-white">
+                <div className="grid grid-cols-[1fr_1fr] bg-[#EEF0F4] text-sm font-semibold text-[#4B5563] md:text-base">
+                  <div className="border-r border-[#DDE0E5] px-4 py-2.5">
+                    Specifications
                   </div>
-
-                  {specificationItems.length > 0 ? (
-                    specificationItems.map((item, index) => (
-                      <div
-                        key={`${item.label}-${index}`}
-                        className="grid grid-cols-[1fr_1fr] text-base font-medium text-[#4B5563] md:text-2xl"
-                      >
-                        <div className="border-r border-t border-[#DDE0E5] bg-[#F8F8FA] px-4 py-3">
-                          {item.label}
-                        </div>
-                        <div className="border-t border-[#DDE0E5] bg-[#FEFDFE] px-4 py-3">
-                          {item.value || "--"}
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-4 py-5 text-base text-[#4B5563] md:text-xl">
-                      Key specifications have not been added for this product yet.
-                    </div>
-                  )}
+                  <div className="px-4 py-2.5">Details</div>
                 </div>
-              </section>
 
-              <div className="grid gap-6 lg:hidden">
-                <section className="rounded-2xl border border-[#E7ECF3] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
-                  <h3 className="text-sm font-semibold text-[#1B2432]">
-                    Warranty & service sales
-                  </h3>
-
-                  <ul className="mt-4 space-y-2 text-sm leading-6 text-[#667085]">
-                    {warrantyItems
-                      .slice(0, showWarrantyDetails ? warrantyItems.length : 4)
-                      .map((item, index) => (
-                        <li key={`${item}-${index}`} className="flex gap-2">
-                          <span className="mt-2 h-1.5 w-1.5 rounded-full bg-[#98A2B3]" />
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                  </ul>
-
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowWarrantyDetails((value) => !value)}
-                      className="rounded-md border border-[#D7E8FF] bg-[#EFF6FF] px-3 py-2 text-xs font-medium text-[#0669D9] transition hover:bg-[#E1EEFF]"
+                {specificationItems.length > 0 ? (
+                  specificationItems.map((item, index) => (
+                    <div
+                      key={`${item.label}-${index}`}
+                      className="grid grid-cols-[1fr_1fr] text-sm font-medium text-[#4B5563] md:text-base"
                     >
-                      {showWarrantyDetails
-                        ? "Hide warranty policy"
-                        : "View warranty policy"}
-                    </button>
-                    <Link
-                      href="/service-engineers"
-                      className="rounded-md border border-[#E4E7EC] bg-white px-3 py-2 text-xs font-medium text-[#475467] transition hover:border-[#D0D5DD] hover:text-[#1D2939]"
-                    >
-                      Request Engineer
-                    </Link>
+                      <div className="border-r border-t border-[#DDE0E5] bg-[#F8F8FA] px-4 py-2.5">
+                        {item.label}
+                      </div>
+                      <div className="border-t border-[#DDE0E5] bg-[#FEFDFE] px-4 py-2.5">
+                        {item.value || "--"}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="px-4 py-4 text-sm text-[#4B5563] md:text-base">
+                    Key specifications have not been added for this product yet.
                   </div>
-                </section>
+                )}
+              </div>
 
-                <section className="rounded-2xl border border-[#E7ECF3] bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
-                  <h3 className="text-sm font-semibold text-[#1B2432]">
-                    Logistics & Delivery
-                  </h3>
-
-                  <ul className="mt-4 space-y-3 text-sm leading-6 text-[#667085]">
-                    {logisticsItems.map((item, index) => (
-                      <li key={`${item}-${index}`}>{item}</li>
-                    ))}
-                  </ul>
-
-                  <div className="mt-5">
+              <div className="space-y-4 lg:pt-0">
+                <section className="rounded-xl border border-[#DDE0E5] bg-[rgba(249,250,251,0.5)] p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <Image
+                        src={sellerAvatar}
+                        alt={sellerName}
+                        width={44}
+                        height={44}
+                        className="size-11 rounded-full object-cover"
+                      />
+                      <p className="truncate text-sm font-semibold text-[#4B5563]">
+                        No review yet {sellerRating.toFixed(1)}/5
+                      </p>
+                    </div>
                     <Link
-                      href="/logistics"
-                      className="inline-flex items-center gap-1 rounded-md border border-[#E4E7EC] bg-white px-3 py-2 text-xs font-medium text-[#475467] transition hover:border-[#D0D5DD] hover:text-[#1D2939]"
+                      href={sellerProfileHref}
+                      className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md bg-[rgba(220,234,248,0.4)] px-3 text-xs font-medium text-[#017BED]"
                     >
-                      Ask about logistics
+                      View Profile
                       <ChevronRight size={14} />
                     </Link>
                   </div>
                 </section>
+
+                <section className="rounded-xl border border-[#DDE0E5] bg-[#FEFDFE] p-4">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-lg font-bold text-[#4B5563]">
+                        {sellerRating.toFixed(1)}/5
+                      </p>
+                      <RatingStars rating={sellerRating} size={14} />
+                    </div>
+                    <p className="text-sm font-medium text-[#4B5563]">
+                      No review yet
+                    </p>
+                    <p className="text-sm text-[#6B7280]">
+                      Only verified buyers can leave a review
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleMessageSeller}
+                    className="mt-3 h-9 rounded-xl bg-[#FAA12F] px-4 text-sm font-medium text-white"
+                  >
+                    Contact Seller
+                  </button>
+                </section>
               </div>
             </div>
+          </section>
 
-            <div className="space-y-5">
-              <section className="relative hidden h-[245px] overflow-hidden rounded-xl border border-[#DDE0E5] bg-gradient-to-r from-[#FDFCFE] to-[#F8F9FB] p-5 lg:block">
-                <div className="relative z-10 w-[260px] space-y-4">
-                  <p className="text-2xl font-semibold leading-8 text-[#4B5563]">
-                    Seller <br />
-                    {sellerName}
-                  </p>
-                  <div className="space-y-2 text-base font-medium text-[#4B5563]">
-                    <div className="flex items-center gap-2">
-                      <RatingStars rating={sellerRating} size={19} />
-                      <span>{sellerRating.toFixed(1)}/5</span>
-                    </div>
-                    <p className="flex items-center gap-2">
-                      <MapPin size={19} />
-                      {sellerLocation}
-                    </p>
-                  </div>
-                </div>
-                <div className="absolute bottom-0 right-0 h-[220px] w-[360px]">
-                  <Image
-                    src={getProductDefaultImageUrl(product)}
-                    alt={product.name}
-                    fill
-                    className="object-contain"
-                    sizes="360px"
-                  />
-                </div>
-              </section>
-
-              <section className="rounded-xl border border-[#DDE0E5] bg-[rgba(249,250,251,0.5)] p-5">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Image
-                      src={sellerAvatar}
-                      alt={sellerName}
-                      width={58}
-                      height={58}
-                      className="size-[58px] rounded-full object-cover"
-                    />
-                    <p className="truncate text-lg font-semibold leading-8 text-[#4B5563]">
-                      No review yet {sellerRating.toFixed(1)}/5
-                    </p>
-                  </div>
-                  <Link
-                    href={sellerProfileHref}
-                    className="inline-flex h-9 shrink-0 items-center gap-1 rounded-md bg-[rgba(220,234,248,0.4)] px-3 text-sm font-medium text-[#017BED]"
+          <div className="grid items-stretch gap-6 lg:grid-cols-[minmax(0,1.46fr)_minmax(280px,1fr)] lg:gap-8 xl:grid-cols-[minmax(0,1.46fr)_minmax(420px,1fr)]">
+            <section className="flex flex-col space-y-3">
+              <h2 className="text-xl font-semibold leading-8 text-[#111827] md:text-2xl md:leading-9">
+                Warranty &amp; service sales
+              </h2>
+              <div className="flex flex-1 flex-col rounded-xl border border-[#DDE0E5] bg-[#FEFDFE] p-4">
+                <ul className="space-y-2 text-sm leading-6 text-[#667085]">
+                  {warrantyItems
+                    .slice(0, showWarrantyDetails ? warrantyItems.length : 4)
+                    .map((item, index) => (
+                      <li key={`${item}-${index}`} className="flex gap-2">
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#98A2B3]" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                </ul>
+                <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowWarrantyDetails((value) => !value)}
+                    className="rounded-md border border-[#D7E8FF] bg-[#EFF6FF] px-3 py-1.5 text-xs font-medium text-[#0669D9] transition hover:bg-[#E1EEFF]"
                   >
-                    View Profile
-                    <ChevronRight size={16} />
+                    {showWarrantyDetails ? "Hide warranty policy" : "View warranty policy"}
+                  </button>
+                  <Link
+                    href="/service-engineers"
+                    className="rounded-md border border-[#E4E7EC] bg-white px-3 py-1.5 text-xs font-medium text-[#475467] transition hover:border-[#D0D5DD] hover:text-[#1D2939]"
+                  >
+                    Request Engineer
                   </Link>
                 </div>
-              </section>
+              </div>
+            </section>
 
-              <section className="rounded-xl border border-[#DDE0E5] bg-[#FEFDFE] p-5">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <p className="text-2xl font-bold text-[#4B5563]">
-                      {sellerRating.toFixed(1)}/5
-                    </p>
-                    <RatingStars rating={sellerRating} size={19} />
-                  </div>
-                  <p className="text-base font-medium leading-7 text-[#4B5563]">
-                    No review yet
-                  </p>
-                  <p className="text-base font-medium leading-7 text-[#6B7280]">
-                    Only verified buyers can leave a review
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleMessageSeller}
-                  className="mt-3 h-10 rounded-xl bg-[#FAA12F] px-5 text-sm font-medium text-white"
+            <section className="flex flex-col space-y-3">
+              <h2 className="text-xl font-semibold leading-8 text-[#111827] md:text-2xl md:leading-9">
+                Logistics &amp; Delivery
+              </h2>
+              <div className="flex flex-1 flex-col rounded-xl border border-[#DDE0E5] bg-[#FEFDFE] p-4">
+                <ul className="space-y-2 text-sm leading-6 text-[#667085]">
+                  {logisticsItems.map((item, index) => (
+                    <li key={`${item}-${index}`}>{item}</li>
+                  ))}
+                </ul>
+                <Link
+                  href="/logistics"
+                  className="mt-auto inline-flex w-fit items-center gap-1 rounded-md border border-[#E4E7EC] bg-white px-3 py-1.5 text-xs font-medium text-[#475467] transition hover:border-[#D0D5DD] hover:text-[#1D2939]"
                 >
-                  Contact Seller
-                </button>
-              </section>
-
-              <section className="hidden rounded-2xl border border-[#E7ECF3] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
-                <h3 className="text-sm font-semibold text-[#1B2432]">
-                  Product Snapshot
-                </h3>
-
-                <div className="mt-4 space-y-3 text-sm text-[#475467]">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-[#667085]">Availability</span>
-                    <span className="text-right font-medium text-[#1D2939]">
-                      {getProductAvailabilityLabel(product)}
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-[#667085]">Condition</span>
-                    <span className="text-right font-medium text-[#1D2939]">
-                      {formatConditionLabel(product.condition)}
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-[#667085]">Delivery</span>
-                    <span className="text-right font-medium text-[#1D2939]">
-                      {product.delivery_time || "Lead time on request"}
-                    </span>
-                  </div>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-[#667085]">Location</span>
-                    <span className="text-right font-medium text-[#1D2939]">
-                      {sellerLocation}
-                    </span>
-                  </div>
-                </div>
-              </section>
-            </div>
+                  Ask about logistics
+                  <ChevronRight size={14} />
+                </Link>
+              </div>
+            </section>
           </div>
 
           <RelatedProducts
@@ -826,6 +706,11 @@ export default function ProductDetailsPage() {
           />
         </div>
       </div>
+
+      <SendInquiryModal
+        isOpen={isInquiryOpen}
+        onClose={() => setIsInquiryOpen(false)}
+      />
 
       <ConfirmOrderModal
         isOpen={isConfirmOrderOpen}
@@ -848,14 +733,9 @@ export default function ProductDetailsPage() {
       <EditDeliveryAddressModal
         isOpen={isAddressEditorOpen}
         initialAddress={deliveryAddress || defaultDeliveryAddress}
-        savedAddresses={checkoutSavedAddresses}
         onClose={() => setIsAddressEditorOpen(false)}
         onSave={(address) => {
-          const nextAddress = address.trim();
-          setDeliveryAddress(nextAddress);
-          setSavedDeliveryAddresses((addresses) =>
-            addresses.includes(nextAddress) ? addresses : [...addresses, nextAddress],
-          );
+          setDeliveryAddress(address);
           setIsAddressEditorOpen(false);
         }}
       />

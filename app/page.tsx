@@ -4,11 +4,15 @@ import Image from "next/image";
 import {
   CheckCircle2,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
-  Mail,
+  ClipboardCheck,
+  HandCoins,
   MapPin,
   MoveRightIcon,
-  ShieldCheck,
+  TextSearch,
+  Truck,
+  UserCheck,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Product, ProductImage } from "@/types/product";
@@ -42,18 +46,33 @@ const partnerLogoRows = [partnerLogos.slice(0, 5), partnerLogos.slice(5)];
 const howItWorksSteps = [
   {
     id: 1,
-    title: "Post Source & Item or request availability",
-    text: "1. Verified distributor",
+    title: "Find Items",
+    text: "Browse products directly or request what you need",
+    Icon: TextSearch,
   },
   {
     id: 2,
-    title: "Compare verified distributor quotes",
-    text: "2. Verified distributor",
+    title: "Connect with Verified Suppliers",
+    text: "Chat, request quotes, or engage suppliers instantly.",
+    Icon: UserCheck,
   },
   {
     id: 3,
-    title: "Source Item or request availability",
-    text: "1. Verified distributor",
+    title: "Create & Confirm Order",
+    text: "Agree on details and generate a structured order.",
+    Icon: ClipboardCheck,
+  },
+  {
+    id: 4,
+    title: "Pay Securely",
+    text: "Use Baiy Trade assurance for protection, suppliers are only paid after delivery.",
+    Icon: HandCoins,
+  },
+  {
+    id: 5,
+    title: "Delivery, Installation & Completion",
+    text: "Track delivery, request a service engineer if needed and confirm completion.",
+    Icon: Truck,
   },
 ];
 
@@ -185,96 +204,112 @@ export default function Home() {
         <div className="mx-auto max-w-[1420px] px-4 pb-10 pt-6 sm:px-6 lg:px-16 lg:pb-12 lg:pt-8">
           <div className="grid gap-5 lg:grid-cols-[minmax(0,2.03fr)_minmax(300px,1fr)] lg:items-stretch">
             <div
-              className="relative overflow-hidden rounded-[32px] bg-[#e8eeee] px-6 py-7 sm:px-8 lg:px-10 lg:pb-10 lg:pt-20"
+              className="flex flex-col overflow-hidden rounded-[24px] bg-[#e8eeee] px-6 py-6 sm:px-8 lg:px-9 lg:py-8"
               data-testid="public-home-hero"
             >
-              <div className="max-w-[492px] lg:max-w-[calc(58%-28px)]">
-                <h1 className="font-['Urbanist',sans-serif] text-[1.6rem] font-medium leading-[1.18] tracking-[-0.03em] text-[#111827] sm:text-[1.95rem] lg:text-[2.35rem]">
-                  The Trusted B2B Platform for Sourcing &amp; Procurement in
-                  Africa
-                </h1>
+              {/* Image on top on mobile, side by side on larger screens */}
+              <div className="flex flex-col items-center gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                {/* Image: on top + centered on mobile, bleeds to card edges on larger screens */}
+                <div className="relative w-[60%] max-w-[260px] -mt-2 sm:order-2 sm:w-[40%] sm:max-w-[320px] sm:shrink-0 sm:-mr-8 sm:-mt-8 lg:max-w-[380px] lg:-mr-10 lg:-mt-10">
+                  <Image
+                    src="/images/Hero.png"
+                    alt="Medical equipment hero visual"
+                    width={420}
+                    height={360}
+                    priority
+                    className="h-auto w-full object-contain"
+                  />
+                </div>
 
-                <p className="mt-4 max-w-[470px] font-['Urbanist',sans-serif] text-[0.95rem] leading-6 text-[#4b5563] sm:text-[1.02rem] sm:leading-7">
-                  Source Item, compare verified suppliers, and pay safely with
-                  Baiy Trade ASSURANCE
-                </p>
+                {/* Text + buttons + badges */}
+                <div className="flex w-full flex-1 min-w-0 flex-col text-center sm:order-1 sm:text-left">
+                  <h1 className="font-['Urbanist',sans-serif] text-[1.35rem] font-medium leading-[1.2] tracking-[-0.02em] text-[#111827] sm:text-[1.55rem] lg:text-[1.9rem]">
+                    The Trusted B2B Platform for{" "}
+                    <strong className="font-bold">
+                      Medical Equipment Procurement
+                    </strong>{" "}
+                    in Africa
+                  </h1>
 
-                <div className="mt-8 flex flex-col gap-5">
-                  <div className="flex flex-wrap items-center gap-3.5 sm:gap-4">
-                    <button
-                      type="button"
-                      onClick={() => router.push("/products")}
-                      className="inline-flex h-11 min-w-[122px] items-center justify-center rounded-[11px] bg-[#fe6e00] px-5 font-['Urbanist',sans-serif] text-sm font-semibold text-white transition hover:bg-[#e76200] sm:min-w-0 sm:text-base"
-                    >
-                      Source Item
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => router.push("/register")}
-                      className="inline-flex h-11 min-w-[122px] items-center justify-center rounded-[11px] border border-[rgba(107,114,128,0.12)] bg-white/40 px-5 font-['Urbanist',sans-serif] text-sm font-medium text-[#053782] backdrop-blur-sm transition hover:bg-white/60 sm:min-w-0 sm:text-base"
-                    >
-                      List Your Product
-                    </button>
-                  </div>
-                  <div className="flex flex-nowrap items-center gap-5 lg:gap-11">
-                    <span className="inline-flex items-center gap-2 whitespace-nowrap font-['Urbanist',sans-serif] text-[0.75rem] font-normal text-[#4b5563] sm:text-sm">
-                      <CheckCircle2
-                        size={16}
-                        className="shrink-0 text-[#0669d9]"
-                        strokeWidth={2}
-                      />
-                      Verified Suppliers
-                    </span>
-                    <span className="inline-flex items-center gap-2 whitespace-nowrap font-['Urbanist',sans-serif] text-[0.75rem] font-normal text-[#4b5563] sm:text-sm">
-                      <ShieldCheck
-                        size={16}
-                        className="shrink-0 text-[#0669d9]"
-                        strokeWidth={2}
-                      />
-                      Escrow Protection
-                    </span>
+                  <p className="mt-3 font-['Urbanist',sans-serif] text-[0.85rem] leading-6 text-[#4b5563] sm:text-[0.9rem] sm:leading-6 lg:text-[0.95rem]">
+                    Request quotes, compare verified suppliers, and pay safely
+                    with Baiy Trade ASSURANCE
+                  </p>
+
+                  <div className="mt-6 flex flex-col items-center gap-3 sm:items-start lg:mt-8">
+                    <div className="flex flex-nowrap items-center justify-center gap-2 sm:justify-start sm:gap-4">
+                      <button
+                        type="button"
+                        onClick={() => router.push("/products")}
+                        className="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-[11px] bg-[#fe6e00] px-4 font-['Urbanist',sans-serif] text-sm font-semibold text-white transition hover:bg-[#e76200] sm:px-5 sm:text-base"
+                      >
+                        Request a Quote
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push("/products")}
+                        className="inline-flex h-11 items-center justify-center whitespace-nowrap rounded-[11px] border border-[rgba(107,114,128,0.12)] bg-white/40 px-4 font-['Urbanist',sans-serif] text-sm font-medium text-[#053782] backdrop-blur-sm transition hover:bg-white/60 sm:px-5 sm:text-base"
+                      >
+                        Browse Equipment
+                      </button>
+                    </div>
+                    <div className="flex flex-nowrap items-center gap-5 lg:gap-10">
+                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-['Urbanist',sans-serif] text-[0.75rem] font-normal text-[#4b5563] sm:text-sm">
+                        <Image
+                          src="/icons/verified-fill.svg"
+                          alt=""
+                          width={18}
+                          height={18}
+                          className="shrink-0"
+                        />
+                        Verified Suppliers
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-['Urbanist',sans-serif] text-[0.75rem] font-normal text-[#4b5563] sm:text-sm">
+                        <Image
+                          src="/icons/escrow-protect.svg"
+                          alt=""
+                          width={18}
+                          height={18}
+                          className="shrink-0"
+                        />
+                        Escrow Protection
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-center lg:absolute lg:bottom-0 lg:right-0 lg:top-0 lg:mt-0 lg:w-[40%] lg:items-center lg:justify-center">
-                <Image
-                  src="/images/Hero.png"
-                  alt="Medical equipment hero visual"
-                  width={420}
-                  height={320}
-                  priority
-                  className="h-auto w-full max-w-[320px] object-contain sm:max-w-[360px] lg:max-w-full"
-                />
+              {/* Divider + tagline */}
+              <div className="mt-6 border-t border-[#c8d4d4] pt-4 lg:mt-7">
+                <p className="font-['Urbanist',sans-serif] text-[0.95rem] font-medium tracking-[0.03em] text-[#111827] sm:text-[1.05rem] lg:text-[1.35rem] lg:leading-[1.4]">
+                  BAIY AFRICA, THE NEW WAY TO BUY,
+                </p>
               </div>
             </div>
 
-            <div className="flex flex-col justify-between rounded-[32px] bg-[#faf2e9] px-5 py-6 sm:px-6 sm:py-7">
-              <h2 className="font-['Urbanist',sans-serif] text-xl font-medium text-[#111827] sm:text-[2rem] sm:leading-[48px]">
+            <div className="flex flex-col justify-between rounded-[24px] bg-[#faf2e9] px-5 py-5">
+              <h2 className="font-['Urbanist',sans-serif] text-[1.3rem] font-medium leading-tight text-[#111827] sm:text-[1.6rem]">
                 How Baiy Works
               </h2>
 
-              <div className="mt-4 flex flex-1 flex-col justify-evenly gap-2.5">
+              <div className="mt-3 flex flex-1 flex-col gap-2">
                 {howItWorksSteps.map((step) => (
                   <div
                     key={step.id}
-                    className="flex gap-2.5 rounded-[10px] bg-[#fffaf5] px-3 py-2.5 sm:gap-3 sm:px-3.5 sm:py-3"
+                    className="flex gap-2.5 rounded-[12px] bg-[#fef9f6] px-3 py-2.5"
                   >
-                    <div className="relative mt-0.5 h-7 w-7 shrink-0">
-                      <Mail
+                    <div className="shrink-0">
+                      <step.Icon
+                        size={20}
                         className="text-[#0669d9]"
-                        size={27}
                         strokeWidth={1.75}
                       />
-                      <span className="absolute -right-0.5 -top-0.5 flex h-[12px] min-w-[12px] items-center justify-center rounded-full bg-[#0669d9] px-0.5 text-[6px] font-medium leading-none text-white">
-                        {step.id}
-                      </span>
                     </div>
                     <div className="min-w-0">
-                      <p className="font-['Urbanist',sans-serif] text-[0.82rem] font-semibold leading-snug text-[#4b5563] sm:text-[1.02rem] sm:leading-7">
+                      <p className="font-['Urbanist',sans-serif] text-[0.9rem] font-semibold leading-snug text-[#111827]">
                         {step.title}
                       </p>
-                      <p className="mt-1 font-['Urbanist',sans-serif] text-[0.66rem] font-medium leading-5 text-[#4b5563] sm:text-[0.82rem] sm:leading-6">
+                      <p className="mt-0.5 font-['Urbanist',sans-serif] text-[0.75rem] font-normal leading-[1.35] text-[#4b5563]">
                         {step.text}
                       </p>
                     </div>
@@ -285,10 +320,10 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => router.push("/products")}
-                className="mx-auto mt-4 flex flex-col items-center gap-0.5 font-['Urbanist',sans-serif] text-sm font-medium text-[#0669d9] transition hover:text-[#0558b8]"
+                className="mx-auto mt-3 flex flex-col items-center gap-0.5 font-['Urbanist',sans-serif] text-[0.8rem] font-medium text-[#0669d9] transition hover:text-[#0558b8]"
               >
-                <span>See more</span>
-                <ChevronDown size={18} strokeWidth={2} />
+                <span>See Less</span>
+                <ChevronUp size={16} strokeWidth={2} />
               </button>
             </div>
           </div>
@@ -332,7 +367,7 @@ export default function Home() {
                     <p className="font-['Urbanist',sans-serif] text-[14px] font-semibold leading-[20px] text-[#111827] lg:whitespace-nowrap lg:text-[20px] lg:font-medium lg:leading-[32px] lg:text-black">
                       {category.title}
                     </p>
-                    <div className="flex gap-1 font-['Urbanist',sans-serif] text-[12px] font-normal leading-[18px] text-[#4b5563] lg:whitespace-nowrap lg:gap-[14px] lg:text-[16px] lg:leading-[24px]">
+                    <div className="flex gap-0.5 font-['Urbanist',sans-serif] text-[12px] font-normal leading-[18px] text-[#4b5563] lg:whitespace-nowrap lg:gap-[6px] lg:text-[16px] lg:leading-[24px]">
                       <p>{category.products}</p>
                       <p>{category.distributors}</p>
                     </div>
@@ -414,7 +449,7 @@ export default function Home() {
                         {item.name}
                       </h3>
 
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-col gap-2">
                         <div className="flex min-w-0 flex-col gap-1.5 text-xs text-[#4b5563] sm:gap-2 sm:text-sm">
                           <div className="flex items-center gap-1.5">
                             <CheckCircle2
@@ -437,7 +472,7 @@ export default function Home() {
                             </span>
                           </div>
                         </div>
-                        <div className="shrink-0 self-start rounded-lg bg-[rgba(254,110,0,0.06)] px-2 py-1 sm:px-2.5">
+                        <div className="inline-flex w-fit rounded-lg bg-[rgba(254,110,0,0.06)] px-2 py-1 sm:px-2.5">
                           <p className="font-['Urbanist',sans-serif] text-base font-bold text-[#fe6e00] sm:text-[20px] sm:leading-[28px]">
                             {formatProductPrice(item)}
                           </p>
@@ -445,7 +480,7 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="bg-[#f6f7f9] px-3 py-3 text-sm text-[#4b5563] sm:px-4 sm:py-4 sm:text-[18px]">
+                    <div className="px-3 pb-3 pt-0 text-sm text-[#4b5563] sm:px-4 sm:pb-4 sm:text-[18px]">
                       <span>Condition: </span>
                       <span className="font-semibold capitalize text-[#111827]">
                         {item.condition || "New"}
