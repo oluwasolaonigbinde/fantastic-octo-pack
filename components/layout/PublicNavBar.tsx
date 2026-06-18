@@ -24,6 +24,7 @@ const NAV_LINKS_STANDARD = [
   { href: "/service-engineers", label: "Service Engineers" },
   { href: "/finances", label: "Finance" },
   { href: "/logistics", label: "Logistics" },
+  { href: "/policies", label: "Policies" },
 ];
 
 const NAV_LINKS_PRODUCTS = [
@@ -32,6 +33,7 @@ const NAV_LINKS_PRODUCTS = [
   { href: "/service-engineers", label: "Service Engineers" },
   { href: "/finances", label: "Finance" },
   { href: "/logistics", label: "Logistics" },
+  { href: "/policies", label: "Policies" },
 ];
 
 const PUBLIC_SIGN_UP_PATH = "/register";

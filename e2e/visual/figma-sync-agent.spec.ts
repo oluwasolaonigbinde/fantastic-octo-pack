@@ -217,7 +217,7 @@ const mapped = loadMappedEntries();
 test.describe("Agent Portal — Figma diff screenshots", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(
-      ([sessionKey, roleUserKey, roleEnabledKey, val]: [string, string, string, string]) => {
+      ([sessionKey, roleUserKey, roleEnabledKey, val]: string[]) => {
         window.localStorage.setItem(sessionKey, val);
         window.localStorage.setItem(roleUserKey, val);
         window.localStorage.setItem(roleEnabledKey, "1");

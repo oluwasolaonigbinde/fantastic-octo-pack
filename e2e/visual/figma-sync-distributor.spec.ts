@@ -430,7 +430,7 @@ test.describe("Distributor Portal — Figma diff screenshots", () => {
       const outDir = path.join(OUT_BASE, String(viewport));
       await fs.promises.mkdir(outDir, { recursive: true });
 
-      await page.setViewportSize({ width: viewport, height: 900 });
+      await page.setViewportSize({ width: viewport ?? 1280, height: 900 });
       await page.goto(url, { waitUntil: "domcontentloaded" });
 
       await page.waitForLoadState("networkidle").catch(() => {});
