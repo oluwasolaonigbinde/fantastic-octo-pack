@@ -20,11 +20,17 @@ const menuLinks = [
   { label: "FAQs", href: "/products" },
 ];
 
+const policyLinks = [
+  { label: "Returns & Refunds", href: "/policies" },
+  { label: "Shipping Policy", href: "/policies" },
+  { label: "Acceptable Use", href: "/policies" },
+];
+
 export default function PublicFooter() {
   return (
     <footer className="bg-[#06285f] text-white">
       <div className="mx-auto max-w-[1220px] px-4 pb-8 pt-12 sm:px-6 lg:px-8 lg:pt-14">
-        <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.25fr_0.8fr_0.8fr_1fr]">
+        <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.25fr_0.8fr_0.8fr_0.8fr_1fr]">
           <div className="max-w-[310px]">
             <Image
               src="/images/logo-light.png"
@@ -88,6 +94,17 @@ export default function PublicFooter() {
             <h3 className="text-base font-semibold text-white">Menu Links</h3>
             <div className="mt-4 space-y-3 text-sm text-[#c1d0ea]">
               {menuLinks.map((link) => (
+                <Link key={link.label} href={link.href} className="block transition hover:text-white">
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="text-base font-semibold text-white">Policies</h3>
+            <div className="mt-4 space-y-3 text-sm text-[#c1d0ea]">
+              {policyLinks.map((link) => (
                 <Link key={link.label} href={link.href} className="block transition hover:text-white">
                   {link.label}
                 </Link>
