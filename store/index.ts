@@ -6,6 +6,9 @@ import rfqReducer from "@/store/slices/rfq-slice";
 import orderReducer from "@/store/slices/order-slice";
 import userReducer from "@/store/slices/user-slice";
 import serviceRequestReducer from "@/store/slices/service-request-slice";
+import walletReducer from "@/store/slices/wallet-slice";
+import paymentReducer from "@/store/slices/payment-slice";
+import orderDisputeReducer from "@/store/slices/order-dispute-slice";
 
 const reducer = {
   auth: authReducer,
@@ -15,6 +18,9 @@ const reducer = {
   order: orderReducer,
   user: userReducer,
   serviceRequest: serviceRequestReducer,
+  wallet: walletReducer,
+  payment: paymentReducer,
+  orderDispute: orderDisputeReducer,
 };
 
 export type RootState = {
@@ -25,6 +31,9 @@ export type RootState = {
   order: ReturnType<typeof orderReducer>;
   user: ReturnType<typeof userReducer>;
   serviceRequest: ReturnType<typeof serviceRequestReducer>;
+  wallet: ReturnType<typeof walletReducer>;
+  payment: ReturnType<typeof paymentReducer>;
+  orderDispute: ReturnType<typeof orderDisputeReducer>;
 };
 
 export const makeStore = (preloadedState?: Partial<RootState>) => {
