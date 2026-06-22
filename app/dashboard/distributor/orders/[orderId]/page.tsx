@@ -38,7 +38,7 @@ const getPersonName = (person: string | UserRef | undefined, fallback: string) =
 };
 
 const getProductImage = (order: Order | null) => {
-  const product = order?.items[0]?.product;
+  const product = order?.product ?? order?.items?.[0]?.product;
   if (product && typeof product === "object") {
     return (product as ProductRef).images?.[0]?.url;
   }
@@ -133,8 +133,13 @@ export default function DistributorOrderDetailPage() {
   const status = demoOrder?.status || order?.status;
   const statusTone = getOrderStatusTone(status);
   const displayId = demoOrder?.id || (order ? getOrderDisplayId(order) : orderId);
-  const quantity = demoOrder?.quantity || order?.items[0]?.quantity || 1;
-  const productName = demoOrder?.productName || order?.items[0]?.productName || "Product name";
+  const quantity =
+    demoOrder?.quantity || order?.quantity || order?.items?.[0]?.quantity || 1;
+  const productName =
+    demoOrder?.productName ||
+    order?.productName ||
+    order?.items?.[0]?.productName ||
+    "Product name";
   const totalPrice = demoOrder?.totalPrice || order?.totalPrice || 0;
   const unitPrice = demoOrder?.unitPrice || totalPrice / quantity;
   const createdAt = demoOrder?.createdAt || order?.createdAt || new Date().toISOString();

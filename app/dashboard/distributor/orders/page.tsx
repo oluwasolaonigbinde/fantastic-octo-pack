@@ -53,10 +53,11 @@ const formatDate = (value: string) => {
 };
 
 const toOrderRow = (order: Order): OrderRow => {
-  const quantity = order.items[0]?.quantity || 1;
+  const quantity = order.quantity ?? order.items?.[0]?.quantity ?? 1;
   return {
     id: order._id,
-    productName: order.items[0]?.productName || "Name of the product",
+    productName:
+      order.productName || order.items?.[0]?.productName || "Name of the product",
     quantity,
     unitPrice: order.totalPrice / quantity,
     totalPrice: order.totalPrice,

@@ -7,6 +7,9 @@ import { BadgeDollarSign, Layers3, Percent, Users, ArrowDownLeft, ArrowUpRight, 
 import Header from "../../component/header";
 import { ProtectedRoute } from "@/components/dashboard/protected-routes";
 import { UserRole } from "@/types/user";
+import { useWallet } from "@/hooks/useWallet";
+import { useEscrowSummary } from "@/hooks/useEscrowSummary";
+import { formatKobo } from "@/lib/wallet-format";
 import { agentWalletTransactions } from "../mockdata";
 
 function WithdrawModal({ onClose }: { onClose: () => void }) {
@@ -68,6 +71,21 @@ export default function AgentWalletPage() {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const queryShowsWithdraw = searchParams.get("modal") === "withdraw";
 
+  const { wallet, isLoading: walletLoading } = useWallet();
+  const { summary: escrowSummary, isLoading: escrowLoading } =
+    useEscrowSummary();
+
+  const availableLabel = wallet
+    ? formatKobo(wallet.availableBalance)
+    : walletLoading
+      ? "…"
+      : "—";
+  const escrowLabel = escrowSummary
+    ? formatKobo(escrowSummary.expectedNetKobo)
+    : escrowLoading
+      ? "…"
+      : "—";
+
   const closeWithdraw = () => {
     setShowWithdraw(false);
     if (queryShowsWithdraw) {
@@ -94,8 +112,8 @@ export default function AgentWalletPage() {
         {/* KPI row */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
-            { label: "Available balance", value: "₦150,000", meta: "Ready to withdraw", icon: <BadgeDollarSign size={18} className="text-[#F97316]" />, bg: "#FFE6D6" },
-            { label: "Pending balance", value: "₦150,000", meta: "Commissions not yet released", icon: <Layers3 size={18} className="text-[#10B981]" />, bg: "#D7FBE1" },
+            { label: "Available balance", value: availableLabel, meta: "Ready to withdraw", icon: <BadgeDollarSign size={18} className="text-[#F97316]" />, bg: "#FFE6D6" },
+            { label: "Pending balance", value: escrowLabel, meta: "Commissions not yet released", icon: <Layers3 size={18} className="text-[#10B981]" />, bg: "#D7FBE1" },
             { label: "Total earnings", value: "₦150,000", meta: "Your earnings", icon: <Percent size={20} className="text-[#F59E0B]" />, bg: "#FFF1C2" },
             { label: "Number of withdrawals", value: "05", meta: "Withdrawal count", icon: <Layers3 size={18} className="text-[#0D8BFF]" />, bg: "#E4F5FF" },
           ].map((card) => (

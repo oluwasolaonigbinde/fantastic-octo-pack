@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
-  ArrowRight,
   CalendarDays,
   Check,
   ChevronDown,
@@ -12,17 +11,15 @@ import {
   RotateCcw,
   ShieldCheck,
   Wallet,
-  X,
 } from "lucide-react";
 
 import Header from "../../component/header";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import {
-  fetchMyWallet,
-  topUpWallet,
-  clearWalletTopup,
-} from "@/store/slices/wallet-slice";
+import { fetchMyWallet } from "@/store/slices/wallet-slice";
 import { fetchMyPayments } from "@/store/slices/payment-slice";
+import { useWalletTopup } from "@/hooks/useWalletTopup";
+import { useEscrowSummary } from "@/hooks/useEscrowSummary";
+import { TopUpDrawer, TopUpReturnBanner } from "@/components/wallet/wallet-topup";
 import type { PaymentIntent, PaymentStatus } from "@/types/payment";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -102,105 +99,6 @@ function WalletMetricCard({ metric }: { metric: WalletMetric }) {
   );
 }
 
-function TopUpPanel({
-  amount,
-  amountError,
-  isSubmitting,
-  topupError,
-  onAmountChange,
-  onClose,
-  onSubmit,
-}: {
-  amount: string;
-  amountError: string;
-  isSubmitting: boolean;
-  topupError: string;
-  onAmountChange: (value: string) => void;
-  onClose: () => void;
-  onSubmit: () => void;
-}) {
-  const numericAmount = Number(amount.replace(/[^\d]/g, ""));
-  const formattedTotal = numericAmount ? formatNaira(numericAmount) : "₦0";
-
-  return (
-    <div>
-      <div className="flex h-[90px] items-center justify-between border-b border-[#E6ECF2] px-5 md:px-8">
-        <h2 className="text-base font-medium text-[#111827] md:text-xl">
-          Top up your wallet
-        </h2>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close top up"
-          className="text-[#111827]"
-        >
-          <X size={24} />
-        </button>
-      </div>
-
-      <div className="px-5 pt-6 md:px-8">
-        <p className="text-xs leading-[18px] text-[#111827] md:text-base md:leading-6">
-          Easily top up your wallet balance. You will be redirected to Paystack
-          to complete the payment.
-        </p>
-
-        <div className="mt-10 space-y-5 md:mt-9">
-          <label className="block">
-            <span className="mb-2 block text-base text-[#111827]">
-              Amount to top up (₦)
-            </span>
-            <input
-              inputMode="numeric"
-              value={amount}
-              onChange={(event) => onAmountChange(event.target.value)}
-              placeholder="Enter amount (min. ₦100)"
-              className={`h-[60px] w-full rounded-xl border px-4 text-base text-[#6B7280] outline-none ${
-                amountError ? "border-[#E33C13]" : "border-[#DDE0E5]"
-              }`}
-            />
-            {amountError && (
-              <p className="mt-1.5 text-sm text-[#E33C13]">{amountError}</p>
-            )}
-          </label>
-
-          <label className="block">
-            <span className="mb-2 block text-base text-[#111827]">
-              Total (₦)
-            </span>
-            <input
-              readOnly
-              value={formattedTotal}
-              className="h-[60px] w-full rounded-xl border border-[#DDE0E5] bg-[#F3F4F6] px-4 text-base text-[#6B7280] outline-none"
-            />
-          </label>
-        </div>
-
-        {topupError && (
-          <p className="mt-4 rounded-lg border border-[#E33C13] bg-[#FFF5F3] px-4 py-3 text-sm text-[#E33C13]">
-            {topupError}
-          </p>
-        )}
-
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={isSubmitting}
-          className="mt-9 flex h-[60px] w-full items-center justify-center gap-3 rounded-lg bg-[#0669D9] text-lg text-white disabled:opacity-60 md:mt-9"
-        >
-          {isSubmitting ? (
-            "Redirecting to Paystack…"
-          ) : (
-            <>
-              Top up now
-              <ArrowRight size={24} />
-            </>
-          )}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function BuyerPayments() {
@@ -209,7 +107,6 @@ export default function BuyerPayments() {
 
   const {
     wallet,
-    topup,
     isLoading: walletLoading,
     isError: walletError,
     message: walletMessage,
@@ -219,16 +116,21 @@ export default function BuyerPayments() {
     (state) => state.payment,
   );
 
-  const [topUpOpen, setTopUpOpen] = useState(false);
-  const [amount, setAmount] = useState("");
-  const [amountError, setAmountError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [topupError, setTopupError] = useState("");
   const [copied, setCopied] = useState(false);
 
   const [referenceId, setReferenceId] = useState("");
   const [transactionType, setTransactionType] = useState("");
   const [dateCreated, setDateCreated] = useState("");
+
+  const { summary: escrowSummary } = useEscrowSummary();
+
+  const {
+    open: topUpOpen,
+    openTopUp,
+    returnStatus: topupReturnStatus,
+    dismissReturnStatus,
+    panelProps,
+  } = useWalletTopup({ callbackPath: "/dashboard/buyer/payments" });
 
   useEffect(() => {
     if (token) {
@@ -237,18 +139,12 @@ export default function BuyerPayments() {
     }
   }, [dispatch, token]);
 
-  // Redirect to Paystack once the checkout URL arrives
-  useEffect(() => {
-    if (topup?.authorizationUrl) {
-      window.location.href = topup.authorizationUrl;
-      dispatch(clearWalletTopup());
-    }
-  }, [topup, dispatch]);
-
   const walletBalanceNaira = wallet
     ? koboToNaira(wallet.availableBalance)
     : null;
-  const escrowBalanceNaira = wallet ? koboToNaira(wallet.heldBalance) : null;
+  const escrowBalanceNaira = escrowSummary
+    ? koboToNaira(escrowSummary.expectedNetKobo)
+    : null;
   const isLowBalance = walletBalanceNaira === 0;
   const accountNumber = wallet?.dedicatedAccount?.accountNumber ?? null;
   const bankName = wallet?.dedicatedAccount?.bankName ?? "Paystack-Titan";
@@ -301,6 +197,7 @@ export default function BuyerPayments() {
   const filteredTransactions = useMemo(() => {
     if (!myPayments) return [];
     return myPayments.filter((t) => {
+      if (t.status === "pending") return false;
       const label = intentLabel[t.intent] ?? t.intent;
       const refMatches =
         !referenceId ||
@@ -314,50 +211,6 @@ export default function BuyerPayments() {
       return refMatches && typeMatches && dateMatches;
     });
   }, [myPayments, referenceId, transactionType, dateCreated]);
-
-  const openTopUp = () => {
-    setAmount("");
-    setAmountError("");
-    setTopupError("");
-    setTopUpOpen(true);
-  };
-
-  const closeTopUp = () => setTopUpOpen(false);
-
-  const handleAmountChange = (value: string) => {
-    setAmount(value);
-    if (amountError) setAmountError("");
-    if (topupError) setTopupError("");
-  };
-
-  const submitTopUp = async () => {
-    setAmountError("");
-    setTopupError("");
-
-    const numericAmount = Number(amount.replace(/[^\d]/g, ""));
-    if (!numericAmount || numericAmount < 100) {
-      setAmountError("Minimum top-up amount is ₦100");
-      return;
-    }
-    if (!token) return;
-
-    setIsSubmitting(true);
-    try {
-      await dispatch(
-        topUpWallet({ token, payload: { amount: numericAmount * 100 } }),
-      ).unwrap();
-    } catch (err) {
-      setTopupError(
-        err instanceof Error
-          ? err.message
-          : typeof err === "string"
-            ? err
-            : "Failed to initiate top-up. Please try again.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const copyAccountNumber = async () => {
     if (!accountNumber) return;
@@ -383,6 +236,11 @@ export default function BuyerPayments() {
             {walletMessage || "Failed to load wallet data."}
           </div>
         )}
+
+        <TopUpReturnBanner
+          status={topupReturnStatus}
+          onDismiss={dismissReturnStatus}
+        />
 
         <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {walletMetrics.map((metric) => (
@@ -589,27 +447,7 @@ export default function BuyerPayments() {
         </section>
       </main>
 
-      {topUpOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/30">
-          <button
-            type="button"
-            aria-label="Close top up overlay"
-            onClick={closeTopUp}
-            className="hidden flex-1 md:block"
-          />
-          <aside className="h-full w-full overflow-y-auto bg-white md:w-[500px]">
-            <TopUpPanel
-              amount={amount}
-              amountError={amountError}
-              isSubmitting={isSubmitting}
-              topupError={topupError}
-              onAmountChange={handleAmountChange}
-              onClose={closeTopUp}
-              onSubmit={submitTopUp}
-            />
-          </aside>
-        </div>
-      )}
+      <TopUpDrawer open={topUpOpen} panelProps={panelProps} />
     </div>
   );
 }

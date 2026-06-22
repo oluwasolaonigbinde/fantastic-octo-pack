@@ -726,7 +726,7 @@ export default function ProductDetailsPage() {
         onDecrement={() =>
           setOrderQuantity((quantity) => Math.max(1, quantity - 1))
         }
-        onEditAddress={() => setIsAddressEditorOpen(true)}
+        onEditAddress={(address) => setDeliveryAddress(address)}
         onMakePayment={handleMakePayment}
       />
 

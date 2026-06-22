@@ -52,6 +52,8 @@ export interface WalletListResponse {
 export interface WalletTopupPayload {
   /** Amount to top up, in kobo. */
   amount: number;
+  /** Optional URL Paystack redirects to after checkout. Overrides the server-configured default. */
+  callbackUrl?: string;
 }
 
 export interface WalletWithdrawPayload {

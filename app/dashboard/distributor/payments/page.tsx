@@ -4,6 +4,9 @@ import { useState, useMemo } from "react";
 import { ArrowDownLeft, ArrowUpRight, Wallet, TrendingUp, Clock, Info, SlidersHorizontal } from "lucide-react";
 import Header from "../../component/header";
 import { Button, RightSlider, Input } from "@/components/base";
+import { useWallet } from "@/hooks/useWallet";
+import { useEscrowSummary } from "@/hooks/useEscrowSummary";
+import { formatKobo } from "@/lib/wallet-format";
 
 type TxType = "credit" | "debit";
 
@@ -35,6 +38,21 @@ export default function DistributorPayments() {
   const [filterType, setFilterType] = useState("");
   const [filterDate, setFilterDate] = useState("");
   const [filterApplied, setFilterApplied] = useState(false);
+
+  const { wallet, isLoading: walletLoading } = useWallet();
+  const { summary: escrowSummary, isLoading: escrowLoading } =
+    useEscrowSummary();
+
+  const availableLabel = wallet
+    ? formatKobo(wallet.availableBalance)
+    : walletLoading
+      ? "…"
+      : "—";
+  const escrowLabel = escrowSummary
+    ? formatKobo(escrowSummary.expectedNetKobo)
+    : escrowLoading
+      ? "…"
+      : "—";
 
   const displayedTransactions = useMemo(() => {
     if (!filterApplied) return MOCK_TRANSACTIONS;
@@ -77,7 +95,7 @@ export default function DistributorPayments() {
                 <Wallet size={16} className="text-info" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-gray1">NGN 446,954</p>
+            <p className="text-2xl font-bold text-gray1">{availableLabel}</p>
             <p className="text-xs text-gray3 mt-1">Ready to withdraw</p>
           </div>
 
@@ -88,7 +106,7 @@ export default function DistributorPayments() {
                 <Clock size={16} className="text-gray2" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-gray1">NGN 125,000</p>
+            <p className="text-2xl font-bold text-gray1">{escrowLabel}</p>
             <p className="text-xs text-gray3 mt-1">Held until order completion</p>
           </div>
 

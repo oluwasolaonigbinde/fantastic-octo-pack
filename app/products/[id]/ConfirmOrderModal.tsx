@@ -24,12 +24,7 @@ interface ConfirmOrderModalProps {
   onClose: () => void;
   onIncrement: () => void;
   onDecrement: () => void;
-  onEditAddress?: (addressId: string) => void;
-  onAddNewAddress?: (data: {
-    state: string;
-    city: string;
-    address: string;
-  }) => void;
+  onEditAddress?: (address: string) => void;
   onMakePayment: () => void;
 }
 
@@ -64,29 +59,23 @@ export default function ConfirmOrderModal({
   quantity,
   deliveryAddress,
   isSubmitting = false,
-  addresses = [
-    {
-      id: "1",
-      label: "Address One",
-      detail: deliveryAddress,
-      isDefault: true,
-    },
-    {
-      id: "2",
-      label: "Address Two",
-      detail: deliveryAddress,
-    },
-  ],
+  addresses = [],
   onClose,
   onIncrement,
   onDecrement,
   onEditAddress,
-  onAddNewAddress,
   onMakePayment,
 }: ConfirmOrderModalProps) {
+  const defaultAddressList: Address[] = addresses.length > 0
+    ? addresses
+    : deliveryAddress
+    ? [{ id: "default", label: "Current Address", detail: deliveryAddress, isDefault: true }]
+    : [];
+
   const [editView, setEditView] = useState<EditView | null>(null);
+  const [localAddresses, setLocalAddresses] = useState<Address[]>(defaultAddressList);
   const [selectedAddressId, setSelectedAddressId] = useState(
-    addresses.find((a) => a.isDefault)?.id ?? addresses[0]?.id ?? ""
+    defaultAddressList.find((a) => a.isDefault)?.id ?? defaultAddressList[0]?.id ?? ""
   );
   const [newState, setNewState] = useState("");
   const [newCity, setNewCity] = useState("");
@@ -97,9 +86,17 @@ export default function ConfirmOrderModal({
   const total = unitPrice * quantity;
 
   function handleSaveAddress() {
-    if (newState && newCity && newAddress) {
-      onAddNewAddress?.({ state: newState, city: newCity, address: newAddress });
-    }
+    if (!newState || !newCity || !newAddress) return;
+    const fullAddress = `${newAddress}, ${newCity}, ${newState}`;
+    const newEntry: Address = {
+      id: `addr-${Date.now()}`,
+      label: `${newCity}, ${newState}`,
+      detail: fullAddress,
+    };
+    const updated = [...localAddresses, newEntry];
+    setLocalAddresses(updated);
+    setSelectedAddressId(newEntry.id);
+    onEditAddress?.(fullAddress);
     setEditView(null);
     setNewState("");
     setNewCity("");
@@ -107,7 +104,10 @@ export default function ConfirmOrderModal({
   }
 
   function handleConfirmAddress() {
-    onEditAddress?.(selectedAddressId);
+    const selected = localAddresses.find((a) => a.id === selectedAddressId);
+    if (selected) {
+      onEditAddress?.(selected.detail);
+    }
     setEditView(null);
   }
 
@@ -183,23 +183,23 @@ export default function ConfirmOrderModal({
                     <div className="inline-flex items-center gap-3 rounded-xl border border-[#F3F4F6] bg-[rgba(221,224,229,0.2)] p-2.5">
                       <button
                         type="button"
-                        onClick={onIncrement}
-                        aria-label="Increase quantity"
-                        className="flex size-10 items-center justify-center rounded-md bg-[#4B5563] text-white"
-                      >
-                        <Plus size={20} />
-                      </button>
-                      <span className="min-w-7 text-center text-2xl font-bold text-[#4B5563]">
-                        {quantity}
-                      </span>
-                      <button
-                        type="button"
                         onClick={onDecrement}
                         aria-label="Decrease quantity"
                         disabled={quantity <= 1}
                         className="flex size-10 items-center justify-center rounded-md bg-[#4B5563] text-white disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Minus size={20} />
+                      </button>
+                      <span className="min-w-7 text-center text-2xl font-bold text-[#4B5563]">
+                        {quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={onIncrement}
+                        aria-label="Increase quantity"
+                        className="flex size-10 items-center justify-center rounded-md bg-[#4B5563] text-white"
+                      >
+                        <Plus size={20} />
                       </button>
                     </div>
                   </div>
@@ -290,7 +290,7 @@ export default function ConfirmOrderModal({
                   </div>
 
                   <div className="space-y-3">
-                    {addresses.map((addr) => (
+                    {localAddresses.map((addr) => (
                       <label
                         key={addr.id}
                         className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${

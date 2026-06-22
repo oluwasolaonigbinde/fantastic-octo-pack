@@ -199,7 +199,8 @@ export const getPersonName = (
 };
 
 export const getOrderProductImage = (order: Order | null | undefined) => {
-  const product = order?.items[0]?.product;
+  // Live API returns a flat `product`; legacy/demo data nests it under items[0].
+  const product = order?.product ?? order?.items?.[0]?.product;
   if (product && typeof product === "object") {
     return (product as ProductRef).images?.[0]?.url;
   }
@@ -207,14 +208,18 @@ export const getOrderProductImage = (order: Order | null | undefined) => {
 };
 
 export const toBuyerOrderRow = (order: Order): BuyerOrderRow => {
-  const quantity = order.items[0]?.quantity || 1;
+  // Prefer the flat live-API fields, falling back to legacy items[0].
+  const item = order.items?.[0];
+  const quantity = order.quantity ?? item?.quantity ?? 1;
+  const productName =
+    order.productName || item?.productName || "Name of the product";
   const productImage = getOrderProductImage(order);
   return {
     id: getOrderDisplayId(order._id),
     sourceId: order._id,
-    productName: order.items[0]?.productName || "Name of the product",
+    productName,
     quantity,
-    unitPrice: order.totalPrice / quantity,
+    unitPrice: quantity ? order.totalPrice / quantity : order.totalPrice,
     totalPrice: order.totalPrice,
     createdAt: order.createdAt,
     status: order.status,
