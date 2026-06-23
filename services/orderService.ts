@@ -106,6 +106,23 @@ export const markOrderReceived = async (
   return handleResponse(res);
 };
 
+/**
+ * POST /orders/:id/fulfill — Distributor marks the order fulfilled (sent out for
+ * delivery). Advances the order to `fulfilled` and notifies the buyer so they can
+ * confirm receipt. The backend does not yet accept delivery evidence, so any
+ * uploaded images are display-only on the client.
+ */
+export const fulfillOrder = async (
+  token: string,
+  orderId: string
+): Promise<{ success: boolean; message: string; data: Order }> => {
+  const res = await fetch(apiUrl(`/orders/${orderId}/fulfill`), {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+  return handleResponse(res);
+};
+
 export const fetchEscrowSummary = async (
   token: string
 ): Promise<{ success: boolean; message: string; data: EscrowSummary }> => {
@@ -123,6 +140,7 @@ const orderService = {
   cancelOrder,
   payOrder,
   markOrderReceived,
+  fulfillOrder,
   fetchEscrowSummary,
 };
 

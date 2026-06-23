@@ -1,289 +1,389 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ArrowDownLeft, ArrowUpRight, Wallet, TrendingUp, Clock, Info, SlidersHorizontal } from "lucide-react";
-import Header from "../../component/header";
-import { Button, RightSlider, Input } from "@/components/base";
+import { Clock, Info, Wallet } from "lucide-react";
+import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { withdrawFromWallet } from "@/store/slices/wallet-slice";
+import { fetchMyPayments } from "@/store/slices/payment-slice";
 import { useWallet } from "@/hooks/useWallet";
 import { useEscrowSummary } from "@/hooks/useEscrowSummary";
-import { formatKobo } from "@/lib/wallet-format";
+import { useMyPayments } from "@/hooks/usePayments";
+import { formatKobo, koboToNaira, formatNaira } from "@/lib/wallet-format";
+import Header from "../../component/header";
+import { Button, Input } from "@/components/base";
+import { Modal } from "@/components/base/Modal";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import type { PaymentIntent, PaymentStatus } from "@/types/payment";
 
-type TxType = "credit" | "debit";
+const formatDateTime = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getDate().toString().padStart(2, "0")}/${(d.getMonth() + 1)
+    .toString()
+    .padStart(2, "0")}/${d.getFullYear()} - ${d
+    .getHours()
+    .toString()
+    .padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}pm`;
+};
 
-interface Transaction {
-  id: string;
-  description: string;
-  amount: string;
-  type: TxType;
-  date: string;
-  status: "completed" | "pending";
-}
+const intentLabel: Record<PaymentIntent, string> = {
+  order_payment: "ESCROW",
+  wallet_topup: "Top-up",
+  service_payment: "Service",
+  withdrawal: "Withdrawal",
+  escrow_release: "Reversal",
+  refund: "Refund",
+};
 
-const MOCK_TRANSACTIONS: Transaction[] = [
-  { id: "1", description: "Sale — Industrial Pump A3 × 2", amount: "NGN 720,056.00", type: "credit", date: "17/09/2025 03:56pm", status: "completed" },
-  { id: "2", description: "Withdrawal to bank account", amount: "NGN 300,000.00", type: "debit", date: "15/09/2025 11:22am", status: "completed" },
-  { id: "3", description: "Sale — Welding Rod Box × 5", amount: "NGN 123,500.00", type: "credit", date: "14/09/2025 09:45am", status: "completed" },
-  { id: "4", description: "Platform commission fee", amount: "NGN 21,601.68", type: "debit", date: "14/09/2025 09:46am", status: "completed" },
-  { id: "5", description: "Sale — Safety Gloves Pack × 10", amount: "NGN 125,000.00", type: "credit", date: "12/09/2025 02:10pm", status: "pending" },
-  { id: "6", description: "Withdrawal to bank account", amount: "NGN 200,000.00", type: "debit", date: "10/09/2025 10:30am", status: "completed" },
-];
+const statusColor: Record<PaymentStatus, string> = {
+  success: "text-[#13A83B]",
+  failed: "text-[#E33C13]",
+  abandoned: "text-[#E33C13]",
+  pending: "text-[#F5A400]",
+  refunded: "text-[#F5A400]",
+};
 
 export default function DistributorPayments() {
-  const [payoutOpen, setPayoutOpen] = useState(false);
-  const [payoutAmount, setPayoutAmount] = useState("");
-  const [payoutStep, setPayoutStep] = useState<"form" | "success" | null>(null);
+  const dispatch = useAppDispatch();
+  const token = useAppSelector((s) => s.auth.data?.tokens?.accessToken);
 
-  // Mobile-only transaction filter state (no API calls — filters local list)
+  const { wallet, isLoading: walletLoading } = useWallet();
+  const { summary: escrowSummary, isLoading: escrowLoading } = useEscrowSummary();
+  const { payments, isLoading: paymentsLoading } = useMyPayments();
+
   const [filterRef, setFilterRef] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterDate, setFilterDate] = useState("");
   const [filterApplied, setFilterApplied] = useState(false);
 
-  const { wallet, isLoading: walletLoading } = useWallet();
-  const { summary: escrowSummary, isLoading: escrowLoading } =
-    useEscrowSummary();
+  const [payoutOpen, setPayoutOpen] = useState(false);
+  const [payoutAmount, setPayoutAmount] = useState("");
+  const [payoutAccount, setPayoutAccount] = useState("");
+  const [payoutBankCode, setPayoutBankCode] = useState("");
+  const [payoutBusy, setPayoutBusy] = useState(false);
+
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [errorOpen, setErrorOpen] = useState(false);
 
   const availableLabel = wallet
     ? formatKobo(wallet.availableBalance)
     : walletLoading
       ? "…"
       : "—";
+
   const escrowLabel = escrowSummary
     ? formatKobo(escrowSummary.expectedNetKobo)
     : escrowLoading
       ? "…"
       : "—";
 
-  const displayedTransactions = useMemo(() => {
-    if (!filterApplied) return MOCK_TRANSACTIONS;
-    return MOCK_TRANSACTIONS.filter((tx) => {
-      const matchRef = !filterRef || tx.id.toLowerCase().includes(filterRef.toLowerCase()) || tx.description.toLowerCase().includes(filterRef.toLowerCase());
-      const matchType = !filterType || tx.type.toLowerCase().includes(filterType.toLowerCase()) || tx.description.toLowerCase().includes(filterType.toLowerCase());
-      const matchDate = !filterDate || tx.date.startsWith(filterDate);
+  const filteredTransactions = useMemo(() => {
+    if (!payments) return [];
+    if (!filterApplied) return payments;
+    return payments.filter((tx) => {
+      const matchRef =
+        !filterRef ||
+        tx.reference.toLowerCase().includes(filterRef.toLowerCase());
+      const matchType =
+        !filterType ||
+        (intentLabel[tx.intent] ?? tx.intent)
+          .toLowerCase()
+          .includes(filterType.toLowerCase());
+      const matchDate = !filterDate || tx.createdAt.startsWith(filterDate);
       return matchRef && matchType && matchDate;
     });
-  }, [filterApplied, filterRef, filterType, filterDate]);
+  }, [payments, filterApplied, filterRef, filterType, filterDate]);
 
-  const openPayoutDrawer = () => {
+  const openPayout = () => {
+    setPayoutAmount("");
+    setPayoutAccount("");
+    setPayoutBankCode("");
     setPayoutOpen(true);
-    setPayoutStep("form");
-    setPayoutAmount("");
   };
 
-  const closePayoutDrawer = () => {
-    setPayoutOpen(false);
-    setPayoutStep(null);
-    setPayoutAmount("");
+  const submitPayout = async () => {
+    if (!token || !payoutAmount || !payoutAccount || !payoutBankCode) return;
+    const amountKobo = Math.round(parseFloat(payoutAmount) * 100);
+    if (isNaN(amountKobo) || amountKobo <= 0) return;
+
+    setPayoutBusy(true);
+    try {
+      await dispatch(
+        withdrawFromWallet({
+          token,
+          payload: {
+            amount: amountKobo,
+            accountNumber: payoutAccount,
+            bankCode: payoutBankCode,
+          },
+        })
+      ).unwrap();
+
+      setPayoutOpen(false);
+      setSuccessOpen(true);
+      if (token) void dispatch(fetchMyPayments({ token }));
+    } catch {
+      setPayoutOpen(false);
+      setErrorOpen(true);
+    } finally {
+      setPayoutBusy(false);
+    }
   };
 
-  const submitPayoutLocalOnly = () => {
-    if (!payoutAmount.trim()) return;
-    setPayoutStep("success");
-  };
+  const canSubmitPayout =
+    !!payoutAmount && !!payoutAccount && !!payoutBankCode && !payoutBusy;
 
   return (
     <div>
-      <Header title="Wallet & Payment" description="Track your sales revenue and manage withdrawals" />
+      <Header title="Wallet & Payment" description="Track all payments" />
 
       <div className="p-4 md:p-6 space-y-4">
-        {/* KPI cards — 2 columns on mobile (Available + ESCROW), 4 on desktop */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div className="card-shadow p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-gray3">Available earnings</p>
-              <div className="size-9 bg-info-light rounded-lg flex items-center justify-center">
-                <Wallet size={16} className="text-info" />
+        {/* Top balance cards */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="card-shadow p-4 w-full sm:w-[362px] sm:shrink-0">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray3">Available earnings</p>
+                <p className="text-xl font-bold text-gray1 mt-1">{availableLabel}</p>
+                <p className="text-xs text-gray3 mt-1">Earnings from processed orders</p>
+              </div>
+              <div className="size-8 bg-info-light rounded-lg flex items-center justify-center shrink-0">
+                <Wallet size={14} className="text-info" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-gray1">{availableLabel}</p>
-            <p className="text-xs text-gray3 mt-1">Ready to withdraw</p>
           </div>
 
-          <div className="card-shadow p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-gray3">ESCROW balance</p>
-              <div className="size-9 bg-gray7 rounded-lg flex items-center justify-center">
-                <Clock size={16} className="text-gray2" />
+          <div className="card-shadow p-4 w-full sm:w-[362px] sm:shrink-0">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-sm text-gray3">ESCROW balance</p>
+                <p className="text-xl font-bold text-gray1 mt-1">{escrowLabel}</p>
+                <p className="text-xs text-gray3 mt-1">Funds pending release</p>
+              </div>
+              <div className="size-8 bg-orange-100 rounded-lg flex items-center justify-center shrink-0">
+                <Clock size={14} className="text-orange-500" />
               </div>
             </div>
-            <p className="text-2xl font-bold text-gray1">{escrowLabel}</p>
-            <p className="text-xs text-gray3 mt-1">Held until order completion</p>
-          </div>
-
-          {/* Hidden on mobile — not shown in Figma mobile frame */}
-          <div className="card-shadow p-5 hidden sm:block">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-gray3">Total Revenue</p>
-              <div className="size-9 bg-success-light rounded-lg flex items-center justify-center">
-                <TrendingUp size={16} className="text-success" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-gray1">NGN 968,556</p>
-            <p className="text-xs text-gray3 mt-1">All time sales</p>
-          </div>
-
-          <div className="card-shadow p-5 hidden sm:block">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm text-gray3">Pending Payout</p>
-              <div className="size-9 bg-warning-light rounded-lg flex items-center justify-center">
-                <Clock size={16} className="text-warning" />
-              </div>
-            </div>
-            <p className="text-2xl font-bold text-gray1">NGN 125,000</p>
-            <p className="text-xs text-gray3 mt-1">1 pending sale</p>
           </div>
         </div>
 
-        {/* Payout CTA */}
-        <div className="card flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-          {/* Mobile: Figma-style payout info banner */}
-          <div className="sm:hidden rounded-lg border border-info-light bg-info-light/20 p-3 flex items-start gap-2">
-            <Info size={16} className="text-info mt-0.5 shrink-0" />
-            <p className="text-sm text-gray2">
-              You can only request payments on your available earnings
-            </p>
-          </div>
-          {/* Desktop: plain description */}
-          <p className="hidden sm:block text-sm text-gray3">
-            Withdraw earnings to your registered bank account
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button title="Request payout" size="sm" onClick={openPayoutDrawer} className="w-full sm:w-auto" />
-            {/* Hidden on mobile — not shown in Figma mobile frame */}
-            <Button
-              title="Withdraw Funds"
-              variant="secondaryLight"
-              size="sm"
-              disabled
-              className="hidden sm:inline-flex opacity-60 cursor-not-allowed"
-            />
-            <Button
-              title="Add Bank Account"
-              variant="secondaryLight"
-              size="sm"
-              disabled
-              className="hidden sm:inline-flex opacity-60 cursor-not-allowed"
-            />
-          </div>
-        </div>
-
-        {/* Mobile-only transaction filter form (no API — filters local list) */}
-        <div className="sm:hidden card space-y-3">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal size={16} className="text-gray3" />
-            <p className="text-sm font-medium text-gray2">Filter table list by:</p>
-          </div>
-          <Input
-            id="filterRef"
-            label="Reference ID"
-            placeholder="Enter reference ID"
-            value={filterRef}
-            onValueChange={setFilterRef}
-          />
-          <Input
-            id="filterType"
-            label="Transaction type"
-            placeholder="Enter transaction type"
-            value={filterType}
-            onValueChange={setFilterType}
-          />
-          <div className="space-y-1">
-            <label htmlFor="filterDate" className="text-sm text-gray3">Date</label>
-            <div className="relative">
-              <input
-                id="filterDate"
-                type="date"
-                className="w-full border border-gray5 rounded-lg px-3 py-2 text-sm text-gray1 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                placeholder="DD/MM/YY"
-              />
+        {/* Payout CTA banner */}
+        <div className="rounded-xl bg-[#EFF6FF] border border-[#BFDBFE] p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+              <Info size={16} className="text-primary" />
+            </div>
+            <div>
+              <p className="font-medium text-gray1 text-sm">Payout</p>
+              <p className="text-sm text-gray3">
+                You can only request payments on your available earnings
+              </p>
             </div>
           </div>
           <Button
-            title="Filter"
-            variant="primary"
-            className="w-full"
-            onClick={() => setFilterApplied(true)}
+            title="Request payout →"
+            size="sm"
+            onClick={openPayout}
+            className="w-full sm:w-auto shrink-0"
           />
         </div>
 
-        <div className="card overflow-x-auto">
-          <h3 className="medium3 mb-4">Transaction History</h3>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray5">
-                <th className="text-left py-2 px-3 text-gray3 font-medium">Description</th>
-                <th className="text-left py-2 px-3 text-gray3 font-medium whitespace-nowrap">Date</th>
-                <th className="text-left py-2 px-3 text-gray3 font-medium">Status</th>
-                <th className="text-right py-2 px-3 text-gray3 font-medium">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displayedTransactions.map((tx) => (
-                <tr key={tx.id} className="border-b border-gray5 last:border-0">
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`size-7 rounded-full flex items-center justify-center shrink-0 ${tx.type === "credit" ? "bg-green-100" : "bg-red-100"}`}>
-                        {tx.type === "credit" ? (
-                          <ArrowDownLeft size={13} className="text-green-700" />
-                        ) : (
-                          <ArrowUpRight size={13} className="text-red-700" />
-                        )}
-                      </div>
-                      <span className="text-gray1">{tx.description}</span>
-                    </div>
-                  </td>
-                  <td className="py-3 px-3 text-gray3 whitespace-nowrap">{tx.date}</td>
-                  <td className="py-3 px-3">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${tx.status === "completed" ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>
-                      {tx.status === "completed" ? "Completed" : "Pending"}
-                    </span>
-                  </td>
-                  <td className={`py-3 px-3 text-right font-medium whitespace-nowrap ${tx.type === "credit" ? "text-success" : "text-danger"}`}>
-                    {tx.type === "credit" ? "+" : "-"}{tx.amount}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* Transaction history */}
+        <div className="card">
+          <h3 className="medium3 mb-4">Transaction history</h3>
+
+          {/* Filter row */}
+          <p className="text-sm text-gray3 mb-2">Filter table list by:</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 items-end gap-3 mb-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray3">Reference ID</label>
+              <input
+                placeholder="Enter reference ID"
+                value={filterRef}
+                onChange={(e) => setFilterRef(e.target.value)}
+                className="h-10 rounded-lg border border-gray5 px-3 text-sm text-gray1 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray3">Transaction type</label>
+              <input
+                placeholder="Enter transaction type"
+                value={filterType}
+                onChange={(e) => setFilterType(e.target.value)}
+                className="h-10 rounded-lg border border-gray5 px-3 text-sm text-gray1 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray3">Date</label>
+              <input
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="h-10 rounded-lg border border-gray5 px-3 text-sm text-gray1 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+              />
+            </div>
+            <Button
+              title="→ Filter"
+              size="sm"
+              className="w-full h-10"
+              onClick={() => setFilterApplied(true)}
+            />
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            {paymentsLoading ? (
+              <div className="flex h-40 items-center justify-center text-sm text-gray3">
+                Loading transactions…
+              </div>
+            ) : filteredTransactions.length === 0 ? (
+              <div className="flex h-40 items-center justify-center text-sm text-gray3">
+                No transactions found.
+              </div>
+            ) : (
+              <table className="min-w-[900px] w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-gray5 text-gray3">
+                    <th className="py-3 pr-5 font-medium">Transaction ID</th>
+                    <th className="py-3 pr-5 font-medium">Description</th>
+                    <th className="py-3 pr-5 font-medium">Transaction type</th>
+                    <th className="py-3 pr-5 font-medium">Amount</th>
+                    <th className="py-3 pr-5 font-medium">Balance</th>
+                    <th className="py-3 pr-5 font-medium whitespace-nowrap">Date &amp; Time</th>
+                    <th className="py-3 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTransactions.map((tx) => (
+                    <tr key={tx._id} className="border-b border-gray5 last:border-0">
+                      <td className="py-4 pr-5 text-gray1">{tx.reference}</td>
+                      <td className="py-4 pr-5 text-gray1">
+                        {intentLabel[tx.intent] ?? tx.intent} transaction
+                      </td>
+                      <td className="py-4 pr-5 text-gray1">
+                        {intentLabel[tx.intent] ?? tx.intent}
+                      </td>
+                      <td className="py-4 pr-5 font-medium text-gray1">
+                        {formatNaira(koboToNaira(tx.amount))}
+                      </td>
+                      <td className="py-4 pr-5 text-gray3">—</td>
+                      <td className="py-4 pr-5 text-gray3 whitespace-nowrap">
+                        {formatDateTime(tx.createdAt)}
+                      </td>
+                      <td
+                        className={`py-4 font-medium capitalize ${
+                          statusColor[tx.status] ?? "text-gray1"
+                        }`}
+                      >
+                        {tx.status}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
 
-      <RightSlider open={payoutOpen} onClose={closePayoutDrawer} title="Request For Payout">
-        {payoutStep === "form" && (
-          <div className="space-y-4 pt-2">
-            <p className="text-sm text-gray3">
-              Payout processing is not connected yet. You can preview the form; submitting only updates this screen locally—no payment API is called.
-            </p>
+      {/* Payout dialog */}
+      <Dialog open={payoutOpen} onOpenChange={setPayoutOpen}>
+        <DialogContent className="w-full max-w-[400px] space-y-4 p-6 rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold text-gray1">
+              Request for payout
+            </DialogTitle>
+            <p className="text-sm text-gray3">Transfer money to your bank account</p>
+          </DialogHeader>
+
+          {/* Available balance box */}
+          <div className="rounded-lg border border-success/40 bg-success/5 p-4">
+            <p className="text-xs text-gray3 mb-1">Available</p>
+            <p className="text-xl font-bold text-success">{availableLabel}</p>
+          </div>
+
+          <div className="space-y-3">
             <Input
               id="payoutAmount"
-              label="Amount (NGN)"
+              label="Amount to request"
               type="number"
-              placeholder="Enter amount"
+              placeholder="Enter amount to request"
               value={payoutAmount}
               onValueChange={setPayoutAmount}
             />
-            <div className="flex gap-2 pt-2">
-              <Button title="Cancel" variant="secondaryLight" onClick={closePayoutDrawer} className="flex-1" />
-              <Button
-                title="Submit request"
-                variant="primary"
-                onClick={submitPayoutLocalOnly}
-                disabled={!payoutAmount.trim()}
-                className="flex-1"
+
+            <div className="space-y-1">
+              <label htmlFor="payoutAccount" className="text-sm text-gray3">
+                Withdraw to
+              </label>
+              <input
+                id="payoutAccount"
+                placeholder="Account number (10 digits)"
+                value={payoutAccount}
+                onChange={(e) => setPayoutAccount(e.target.value)}
+                maxLength={10}
+                className="w-full h-12 rounded-lg border border-gray5 px-3 text-sm text-gray1 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
               />
             </div>
+
+            <Input
+              id="payoutBankCode"
+              label="Bank code"
+              placeholder="e.g. 058 for Guaranty Trust"
+              value={payoutBankCode}
+              onValueChange={setPayoutBankCode}
+            />
           </div>
-        )}
-        {payoutStep === "success" && (
-          <div className="space-y-4 pt-2 text-center">
-            <p className="text-success font-medium">Request recorded (preview only)</p>
-            <p className="text-sm text-gray3">No funds were moved. Connect payout services in a future release.</p>
-            <Button title="Close" variant="primary" onClick={closePayoutDrawer} className="w-full" />
+
+          <div className="flex gap-3 pt-1">
+            <Button
+              title="Cancel"
+              variant="secondaryLight"
+              size="sm"
+              onClick={() => setPayoutOpen(false)}
+              className="flex-1"
+            />
+            <Button
+              title="Request payout"
+              size="sm"
+              isBusy={payoutBusy}
+              disabled={!canSubmitPayout}
+              onClick={submitPayout}
+              className="flex-1"
+            />
           </div>
-        )}
-      </RightSlider>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success modal */}
+      <Modal
+        open={successOpen}
+        type="success"
+        title="Congratulations"
+        description="Payout request successful"
+        primaryButtonText="Okay"
+        onClose={() => setSuccessOpen(false)}
+      />
+
+      {/* Error modal */}
+      <Modal
+        open={errorOpen}
+        type="warning"
+        title="Payout request failed."
+        description="Click here to try again"
+        variant="two-buttons"
+        primaryButtonText="Try again"
+        secondaryButtonText="Cancel"
+        onPrimaryAction={() => {
+          setErrorOpen(false);
+          setPayoutOpen(true);
+        }}
+        onClose={() => setErrorOpen(false)}
+      />
     </div>
   );
 }

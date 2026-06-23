@@ -1,75 +1,367 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, FileText, Info, MessageSquare, Plus, Eye } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Clock,
+  FileText,
+  MessageCircle,
+  Upload,
+} from "lucide-react";
 
 import Header from "../../../../../component/header";
+import { Skeleton } from "@/components/base";
+import { AddDisputeResponse } from "@/components/disputes/AddDisputeResponse";
+import { DisputeActivityTimeline } from "@/components/disputes/DisputeActivityTimeline";
+import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useOrderDispute } from "@/hooks/useOrderDisputes";
+import { addOrderDisputeEvidence } from "@/store/slices/order-dispute-slice";
+import { formatNaira } from "@/lib/wallet-format";
+import { getOrderDisplayId } from "@/constants/demoBuyerOrders";
 import {
-  distributorDemoDisputes,
+  buildDisputeActivity,
+  getDisputeAmount,
+  getDisputeBuyerAvatar,
+  getDisputeBuyerName,
+  getDisputeDisplayId,
+  getDisputeOrder,
+  getDisputeOutcomeLabel,
+  getDisputeProductImage,
+  getDisputeProductName,
   getDisputeStatusTone,
-} from "@/constants/demoDistributorOrders";
+} from "@/lib/order-dispute-presenter";
+import type { OrderDispute } from "@/types/order-dispute";
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    minimumFractionDigits: 0,
-  }).format(value);
-
-const formatDate = (value: string) => {
+const formatDateTime = (value: string | undefined) => {
+  if (!value) return "--";
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value || "--";
-  return new Intl.DateTimeFormat("en-GB").format(parsed);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(parsed);
 };
 
-const accentClass = {
-  blue: "border-l-primary",
-  yellow: "border-l-[#FACC15]",
-  green: "border-l-[#22C55E]",
-};
+function SummaryDivider() {
+  return <div className="hidden h-[72px] w-px bg-[#DDE0E5] lg:block" />;
+}
+
+function SummaryCard({ dispute }: { dispute: OrderDispute }) {
+  const order = getDisputeOrder(dispute);
+  const productImage = getDisputeProductImage(dispute);
+  const buyerAvatar = getDisputeBuyerAvatar(dispute);
+  const resolved = dispute.status === "resolved";
+
+  return (
+    <section className="grid gap-5 rounded-2xl border border-[#DDE0E5] bg-white p-4 lg:grid-cols-[1fr_auto_1.4fr_auto_1fr_auto_1.1fr_auto_1.1fr] lg:items-center">
+      <div>
+        <p className="text-sm text-[#6B7280]">Order ID</p>
+        <p className="mt-2 text-base font-semibold text-[#111827]">
+          {getOrderDisplayId(
+            order?._id ??
+              (typeof dispute.order === "string" ? dispute.order : undefined),
+          )}
+        </p>
+      </div>
+      <SummaryDivider />
+
+      <div>
+        <p className="text-sm text-[#6B7280]">Product</p>
+        <div className="mt-2 flex items-center gap-3">
+          <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[#F3F4F6]">
+            {productImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={productImage}
+                alt={getDisputeProductName(dispute)}
+                className="size-full object-cover"
+              />
+            ) : (
+              <FileText size={18} className="text-[#9CA3AF]" />
+            )}
+          </span>
+          <p className="text-base font-semibold text-[#111827]">
+            {getDisputeProductName(dispute)}
+          </p>
+        </div>
+      </div>
+      <SummaryDivider />
+
+      <div>
+        <p className="text-sm text-[#6B7280]">Amount</p>
+        <p className="mt-2 text-base font-semibold text-[#111827]">
+          {formatNaira(getDisputeAmount(dispute))}
+        </p>
+        <p className="text-sm text-[#6B7280]">Escrow Payment</p>
+      </div>
+      <SummaryDivider />
+
+      <div>
+        <p className="text-sm text-[#6B7280]">Buyer</p>
+        <div className="mt-2 flex items-center gap-3">
+          <span className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#DDE0E5]">
+            {buyerAvatar ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={buyerAvatar}
+                alt={getDisputeBuyerName(dispute)}
+                className="size-full object-cover"
+              />
+            ) : null}
+          </span>
+          <div>
+            <p className="text-base font-semibold text-[#111827]">
+              {getDisputeBuyerName(dispute)}
+            </p>
+            <p className="text-sm text-[#6B7280]">Buyer</p>
+          </div>
+        </div>
+      </div>
+      <SummaryDivider />
+
+      <div>
+        <p className="text-sm text-[#6B7280]">SLA</p>
+        <div className="mt-2 flex items-center gap-3">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#DDE0E5] text-[#6B7280]">
+            <Clock size={20} />
+          </span>
+          <div>
+            <p className="text-base font-semibold text-[#111827]">24-48 hours</p>
+            <p className="text-sm text-[#6B7280]">
+              {resolved ? "completed" : "in progress"}
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CaseDetailsCard({ dispute }: { dispute: OrderDispute }) {
+  return (
+    <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
+      <h2 className="flex items-center gap-2 text-lg font-semibold text-[#111827]">
+        <FileText size={20} className="text-[#6B7280]" />
+        Case Details
+      </h2>
+      <div className="mt-5 rounded-xl border border-[#F3F4F6] p-3">
+        <p className="text-sm text-[#6B7280]">Reason</p>
+        <span className="mt-2 inline-flex rounded-lg bg-[#FFE3DD] px-3 py-1 text-xs font-medium text-[#E33C13]">
+          {dispute.reason}
+        </span>
+        <p className="mt-3 text-sm text-[#6B7280]">Buyer&apos;s message</p>
+        <p className="mt-2 whitespace-pre-line text-sm leading-6 text-[#6B7280]">
+          {dispute.description}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function CaseActionCard({
+  dispute,
+  onUpload,
+  uploading,
+  onRespond,
+  onContactBuyer,
+}: {
+  dispute: OrderDispute;
+  onUpload: () => void;
+  uploading: boolean;
+  onRespond: () => void;
+  onContactBuyer: () => void;
+}) {
+  const resolved = dispute.status === "resolved";
+  return (
+    <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
+      <h2 className="text-lg font-semibold text-[#111827]">Case Action</h2>
+      <p className="mt-5 text-base leading-7 text-[#4B5563]">
+        {resolved
+          ? "This dispute case has been resolved."
+          : "This dispute case is being resolved"}
+      </p>
+      <div className="mt-5 flex flex-col gap-4">
+        {resolved ? (
+          <button
+            type="button"
+            onClick={onContactBuyer}
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#017BED] text-sm font-medium text-[#017BED]"
+          >
+            Contact Buyer
+            <MessageCircle size={17} />
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onRespond}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#017BED] text-sm font-medium text-[#017BED]"
+            >
+              Respond to Dispute
+              <MessageCircle size={17} />
+            </button>
+            <button
+              type="button"
+              onClick={onUpload}
+              disabled={uploading}
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60"
+            >
+              {uploading ? "Uploading…" : "Upload Evidence"}
+              <Upload size={17} />
+            </button>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function FinalDecisionsCard({ dispute }: { dispute: OrderDispute }) {
+  const refundsBuyer = dispute.resolutionOutcome === "refund_buyer";
+  const tone = getDisputeStatusTone(
+    dispute.status,
+    dispute.resolutionOutcome,
+    "seller",
+  );
+  return (
+    <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
+      <div className="flex items-center gap-3">
+        <span className="flex size-7 items-center justify-center rounded-full bg-[#16A34A] text-white">
+          <CheckCircle2 size={16} />
+        </span>
+        <div>
+          <h2 className="text-base font-semibold text-[#111827]">Final Decision</h2>
+          <p className={`text-sm font-medium ${tone.textClassName}`}>
+            {tone.detailLabel}
+          </p>
+        </div>
+      </div>
+
+      <dl className="mt-6 space-y-5 text-sm">
+        <div>
+          <dt className="text-[#8A94A6]">Outcome</dt>
+          <dd className="mt-1 font-medium text-[#111827]">
+            {getDisputeOutcomeLabel(dispute.resolutionOutcome, "seller")}
+          </dd>
+        </div>
+        {refundsBuyer ? (
+          <div className="border-t border-[#F3F4F6] pt-4">
+            <dt className="text-[#8A94A6]">Refund Amount</dt>
+            <dd className="mt-1 font-medium text-[#111827]">
+              {formatNaira(getDisputeAmount(dispute))}
+            </dd>
+          </div>
+        ) : null}
+        <div className="border-t border-[#F3F4F6] pt-4">
+          <dt className="text-[#8A94A6]">Resolved by</dt>
+          <dd className="mt-1 font-medium text-[#111827]">Support Team</dd>
+        </div>
+        {dispute.resolutionNote ? (
+          <div className="border-t border-[#F3F4F6] pt-4">
+            <dt className="text-[#8A94A6]">Resolved Note</dt>
+            <dd className="mt-1 leading-6 text-[#111827]">{dispute.resolutionNote}</dd>
+          </div>
+        ) : null}
+      </dl>
+    </section>
+  );
+}
+
+function ResolvedBanner({ dispute }: { dispute: OrderDispute }) {
+  const refundsBuyer = dispute.resolutionOutcome === "refund_buyer";
+  return (
+    <section className="flex items-start gap-3 rounded-2xl border border-[#86EFAC] bg-[#F0FDF4] p-5">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#16A34A] text-white">
+        <CheckCircle2 size={17} />
+      </span>
+      <div>
+        <p className="text-sm font-semibold text-[#111827]">
+          Admin resolved the dispute
+        </p>
+        <p className="mt-1 text-sm text-[#4B5563]">
+          {refundsBuyer
+            ? `Refund approved in favour of the buyer. ${formatNaira(
+                getDisputeAmount(dispute),
+              )} has been refunded to the buyer.`
+            : dispute.resolutionNote ||
+              getDisputeOutcomeLabel(dispute.resolutionOutcome, "seller")}
+        </p>
+      </div>
+    </section>
+  );
+}
 
 export default function DistributorDisputeDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const [notice, setNotice] = useState("");
-
-  const orderId = params.orderId as string;
+  const dispatch = useAppDispatch();
+  const token = useAppSelector((s) => s.auth.data?.tokens?.accessToken);
+  const currentUserId = useAppSelector((s) => s.auth.data?._id);
   const disputeId = params.disputeId as string;
+  const { dispute: loadedDispute, isLoading, isError, message } =
+    useOrderDispute(disputeId);
 
-  const dispute = useMemo(() => {
-    return (
-      distributorDemoDisputes.find((item) => item.id === disputeId) || {
-        id: disputeId,
-        orderId,
-        status: "unknown",
-        reason: "Dispute detail",
-        createdAt: new Date().toISOString(),
-        amount: 0,
-        itemName: "Item name",
-        against: "Distributor",
-        description:
-          "This is a frontend-only dispute placeholder. Backend order dispute persistence is not available in this slice.",
-        resolutionTime: "24-48 hours",
-        evidence: {
-          label: "Attached document",
-          fileName: "Attachment.pdf",
-        },
-        notes: [],
-      }
+  const dispute = loadedDispute?._id === disputeId ? loadedDispute : null;
+
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const tone = useMemo(
+    () =>
+      dispute
+        ? getDisputeStatusTone(dispute.status, dispute.resolutionOutcome, "seller")
+        : null,
+    [dispute],
+  );
+  const activity = useMemo(
+    () =>
+      dispute
+        ? buildDisputeActivity(dispute, { currentUserId, viewerRole: "seller" })
+        : [],
+    [dispute, currentUserId],
+  );
+
+  const handleUploadEvidence = async (file: File | undefined) => {
+    if (!file || !token || !dispute) return;
+    setUploading(true);
+    try {
+      await dispatch(
+        addOrderDisputeEvidence({ token, disputeId: dispute._id, file }),
+      ).unwrap();
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const contactBuyer = () => {
+    const buyerId =
+      dispute && typeof dispute.buyer === "object" ? dispute.buyer._id : undefined;
+    router.push(
+      buyerId
+        ? `/dashboard/distributor/message?to=${buyerId}`
+        : "/dashboard/distributor/message",
     );
-  }, [disputeId, orderId]);
+  };
 
-  const statusTone = getDisputeStatusTone(dispute.status);
+  const scrollToResponse = () => {
+    document
+      .getElementById("dispute-response")
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
   return (
     <div>
       <Header
         title="Orders & Disputes"
-        description="View all quote request from customers"
+        description="View and respond to order disputes"
       />
 
-      <main className="space-y-5 p-4 md:p-6">
+      <main className="space-y-5 bg-[#F9FAFB] p-4 md:p-6">
         <button
           type="button"
           onClick={() => router.push("/dashboard/distributor/orders")}
@@ -79,168 +371,100 @@ export default function DistributorDisputeDetailPage() {
           Go Back
         </button>
 
-        <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h2 className="text-lg font-medium text-[#111827]">
-                Reason for dispute
-              </h2>
-              <p className="mt-5 text-sm text-[#111827]">{dispute.reason}</p>
-
-              <h3 className="mt-8 text-lg font-medium text-[#111827]">Description</h3>
-              <p className="mt-3 max-w-5xl text-sm leading-6 text-[#111827]">
-                {dispute.description}
-              </p>
-            </div>
-
-            <div className="inline-flex h-16 items-center gap-5 rounded-xl border border-[#FF6B00] bg-[#FFF8F2] px-4">
-              <span className="text-sm text-[#111827]">Request Status</span>
-              <button
-                type="button"
-                onClick={() =>
-                  setNotice(
-                    "Requesting more information is demo-only here. No dispute status changed.",
-                  )
-                }
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#FF6B00] px-3 text-sm text-white"
-              >
-                <Plus size={14} />
-                More information needed
-              </button>
-            </div>
+        {isLoading && !dispute ? (
+          <div className="space-y-4">
+            <Skeleton className="h-24" />
+            <Skeleton className="h-32" />
+            <Skeleton className="h-64" />
           </div>
-
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-            <div>
-              <p className="text-xs text-[#8A94A6]">Dispute ID</p>
-              <p className="mt-1 text-sm font-medium text-[#111827]">{dispute.id}</p>
-            </div>
-            <div>
-              <p className="text-xs text-[#8A94A6]">Order ID</p>
-              <p className="mt-1 text-sm font-medium text-[#111827]">
-                {dispute.orderId}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-[#8A94A6]">Amount</p>
-              <p className="mt-1 text-sm font-medium text-[#111827]">
-                {formatCurrency(dispute.amount)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-[#8A94A6]">Item name</p>
-              <p className="mt-1 text-sm font-medium text-[#111827]">
-                {dispute.itemName}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-[#8A94A6]">Payment type</p>
-              <p className="mt-1 text-sm font-medium text-[#111827]">ESCROW</p>
-            </div>
-            <div>
-              <p className="text-xs text-[#8A94A6]">Against</p>
-              <p className="mt-1 text-sm font-medium text-[#111827]">
-                {dispute.against}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-[#8A94A6]">Date created</p>
-              <p className="mt-1 text-sm font-medium text-[#111827]">
-                {formatDate(dispute.createdAt)}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-[#8A94A6]">Resolution time</p>
-              <p className="mt-1 text-sm font-medium text-[#111827]">
-                {dispute.resolutionTime}
-              </p>
-            </div>
+        ) : isError || !dispute ? (
+          <div className="rounded-2xl border border-[#DDE0E5] bg-white p-10 text-center">
+            <p className="text-sm text-[#6B7280]">
+              {message || "We couldn't load this dispute. Please try again."}
+            </p>
           </div>
+        ) : (
+          <>
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h1 className="text-xl font-semibold text-[#111827]">
+                  My Dispute: {getDisputeDisplayId(dispute._id)}
+                </h1>
+                <p className="mt-1 text-base font-medium text-[#6B7280]">
+                  Opened on {formatDateTime(dispute.createdAt)}
+                </p>
+                {tone ? (
+                  <span
+                    className={`mt-4 inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium ${tone.badgeClassName}`}
+                  >
+                    {tone.detailLabel}
+                    {tone.isResolved ? (
+                      <CheckCircle2 size={16} />
+                    ) : (
+                      <Clock size={16} />
+                    )}
+                  </span>
+                ) : null}
+              </div>
 
-          <div className="mt-8">
-            <h3 className="text-lg font-medium text-[#111827]">Evidence added</h3>
-            <div className="mt-4 inline-flex items-center gap-4 rounded-xl bg-white">
-              <span className="inline-flex size-11 items-center justify-center rounded-lg bg-[#D9FBE7] text-[#16A34A]">
-                <FileText size={19} />
-              </span>
-              <span className="text-sm text-[#111827]">{dispute.evidence.label}</span>
-              <button
-                type="button"
-                onClick={() =>
-                  setNotice(
-                    "Evidence preview is frontend-only until order dispute evidence exists.",
-                  )
-                }
-                className="inline-flex items-center gap-2 text-sm text-[#FF6B00]"
-              >
-                <Eye size={14} />
-                View
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {notice ? (
-          <p className="rounded-xl border border-[#DDEBFF] bg-[#F4F9FF] px-4 py-3 text-sm text-primary">
-            {notice}
-          </p>
-        ) : null}
-
-        <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
-          <h2 className="flex items-center gap-2 text-lg font-medium text-[#111827]">
-            <MessageSquare size={18} className="text-primary" />
-            Previous notes on dispute ({dispute.notes.length})
-          </h2>
-
-          {dispute.notes.length === 0 ? (
-            <div className="mt-5 rounded-xl bg-[#F8FAFC] p-5 text-sm text-[#6B7280]">
-              No previous notes have been added to this demo dispute yet.
-            </div>
-          ) : (
-            <div className="mt-5 space-y-4">
-              {dispute.notes.map((note) => (
-                <article
-                  key={note.id}
-                  className={`rounded-xl border-l-4 ${accentClass[note.accent]} bg-[#F8FAFC] px-4 py-4`}
+              <div className="flex flex-wrap gap-4">
+                <button
+                  type="button"
+                  onClick={contactBuyer}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#017BED] px-5 text-sm font-medium text-[#017BED]"
                 >
-                  <p className="text-sm leading-6 text-[#111827]">{note.text}</p>
-                  <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-4">
-                      {note.attachment ? (
-                        <span className="inline-flex items-center gap-2 text-xs text-[#16A34A]">
-                          <FileText size={13} />
-                          {note.attachment}
-                        </span>
-                      ) : null}
-                      {note.attachment ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setNotice(
-                              "Attachment preview is demo-only until backend evidence exists.",
-                            )
-                          }
-                          className="inline-flex items-center gap-2 text-xs text-[#FF6B00]"
-                        >
-                          <Eye size={13} />
-                          View
-                        </button>
-                      ) : null}
-                    </div>
-                    <p className="text-xs text-[#111827]">
-                      Sent by {note.sentBy} <span className="ml-4">{note.time}</span>
-                    </p>
-                  </div>
-                </article>
-              ))}
+                  Contact Buyer
+                  <MessageCircle size={17} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => uploadRef.current?.click()}
+                  disabled={uploading}
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-medium text-white disabled:opacity-60"
+                >
+                  <Upload size={17} />
+                  {uploading ? "Uploading…" : "Upload Evidence"}
+                </button>
+                <input
+                  ref={uploadRef}
+                  type="file"
+                  className="sr-only"
+                  accept="image/*,application/pdf,.doc,.docx"
+                  onChange={(event) =>
+                    handleUploadEvidence(event.target.files?.[0] ?? undefined)
+                  }
+                />
+              </div>
             </div>
-          )}
 
-          <p className={`mt-5 inline-flex items-center gap-2 text-sm ${statusTone.className}`}>
-            <Info size={14} />
-            Current visual status: {statusTone.label}
-          </p>
-        </section>
+            <SummaryCard dispute={dispute} />
+
+            <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+              <div className="space-y-4">
+                {tone?.isResolved ? <FinalDecisionsCard dispute={dispute} /> : null}
+                <CaseDetailsCard dispute={dispute} />
+                <CaseActionCard
+                  dispute={dispute}
+                  uploading={uploading}
+                  onUpload={() => uploadRef.current?.click()}
+                  onRespond={scrollToResponse}
+                  onContactBuyer={contactBuyer}
+                />
+              </div>
+
+              <div className="space-y-4">
+                <DisputeActivityTimeline events={activity} showHeader={false} />
+                {tone?.isResolved ? <ResolvedBanner dispute={dispute} /> : null}
+              </div>
+            </div>
+
+            {tone?.isResolved ? null : (
+              <div id="dispute-response">
+                <AddDisputeResponse disputeId={dispute._id} />
+              </div>
+            )}
+          </>
+        )}
       </main>
     </div>
   );

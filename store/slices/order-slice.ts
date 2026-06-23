@@ -17,6 +17,8 @@ interface OrderSliceState {
   isPaying: boolean;
   isConfirming: boolean;
   confirmError: string;
+  isFulfilling: boolean;
+  fulfillError: string;
   isLoading: boolean;
   isError: boolean;
   isSuccess: boolean;
@@ -33,6 +35,8 @@ const initialState: OrderSliceState = {
   isPaying: false,
   isConfirming: false,
   confirmError: "",
+  isFulfilling: false,
+  fulfillError: "",
   isLoading: false,
   isError: false,
   isSuccess: false,
@@ -120,6 +124,20 @@ export const confirmOrderReceipt = createAsyncThunk(
   }
 );
 
+export const fulfillOrder = createAsyncThunk(
+  "order/fulfill",
+  async ({ token, orderId }: { token: string; orderId: string }, thunkAPI) => {
+    try {
+      const res = await orderService.fulfillOrder(token, orderId);
+      return res.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error instanceof Error ? error.message : "Failed to mark order fulfilled"
+      );
+    }
+  }
+);
+
 export const fetchEscrowSummary = createAsyncThunk(
   "order/fetchEscrowSummary",
   async (token: string, thunkAPI) => {
@@ -156,6 +174,10 @@ const orderSlice = createSlice({
     clearConfirmReceipt: (state) => {
       state.isConfirming = false;
       state.confirmError = "";
+    },
+    clearFulfill: (state) => {
+      state.isFulfilling = false;
+      state.fulfillError = "";
     },
   },
   extraReducers: (builder) => {
@@ -225,6 +247,18 @@ const orderSlice = createSlice({
         state.isConfirming = false;
         state.confirmError = action.payload as string;
       })
+      .addCase(fulfillOrder.pending, (state) => {
+        state.isFulfilling = true;
+        state.fulfillError = "";
+      })
+      .addCase(fulfillOrder.fulfilled, (state, action) => {
+        state.isFulfilling = false;
+        state.currentOrder = action.payload;
+      })
+      .addCase(fulfillOrder.rejected, (state, action) => {
+        state.isFulfilling = false;
+        state.fulfillError = action.payload as string;
+      })
       .addCase(fetchEscrowSummary.pending, (state) => {
         state.escrowLoading = true;
       })
@@ -243,5 +277,6 @@ export const {
   clearCurrentOrder,
   clearOrderPayment,
   clearConfirmReceipt,
+  clearFulfill,
 } = orderSlice.actions;
 export default orderSlice.reducer;

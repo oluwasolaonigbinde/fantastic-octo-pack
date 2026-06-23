@@ -307,6 +307,19 @@ function OrderSummaryCard({ order }: { order: BuyerOrderRow }) {
   );
 }
 
+/** Shown under the delivery stepper while the order is frozen by an open dispute. */
+function DisputeBanner() {
+  return (
+    <div className="mt-6 flex items-start gap-2 rounded-xl border border-[#FACC15] bg-[#FFFBEB] px-4 py-3">
+      <Info size={16} className="mt-0.5 shrink-0 text-[#B45309]" />
+      <p className="text-sm text-[#B45309]">
+        This order is under active dispute. Tracking is paused until the dispute is
+        resolved.
+      </p>
+    </div>
+  );
+}
+
 function ActionNotice({ children }: { children: React.ReactNode }) {
   return (
     <p className="rounded-xl border border-[#DDEBFF] bg-[#F4F9FF] px-4 py-3 text-sm text-primary">
@@ -432,6 +445,7 @@ export default function BuyerOrderDetailPage() {
   // order is still awaiting the supplier's delivery, so it shows neither — only
   // the option to raise a dispute.
   const deliveryUnderway = stage === "installation";
+  const hasActiveDispute = Boolean(liveOrder?.activeDisputeId);
   // Only the live order can carry a real deadline; the API doesn't return one
   // today, so this is usually undefined and CountdownTimer falls back to a
   // mount-anchored 24h window.
@@ -772,6 +786,7 @@ export default function BuyerOrderDetailPage() {
                 <div className="mt-5 md:hidden">
                   <DeliveryStepper activeCount={activeMilestoneCount} compact />
                 </div>
+                {hasActiveDispute ? <DisputeBanner /> : null}
               </section>
             ) : null}
 

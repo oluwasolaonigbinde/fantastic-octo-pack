@@ -17,10 +17,15 @@ import { EmptyState, Skeleton } from "@/components/base";
 import {
   distributorDemoDisputes,
   distributorDemoOrders,
-  getDisputeStatusTone,
   getOrderStatusTone,
 } from "@/constants/demoDistributorOrders";
+import {
+  getDisputeStatusTone,
+  toDistributorDisputeRow,
+  type BuyerDisputeRow,
+} from "@/lib/order-dispute-presenter";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useOrderDisputes } from "@/hooks/useOrderDisputes";
 import { fetchOrders } from "@/store/slices/order-slice";
 import type { Order } from "@/types/order";
 
@@ -119,6 +124,7 @@ export default function DistributorOrdersPage() {
   const router = useRouter();
   const { orders, isLoading } = useAppSelector((state) => state.order);
   const { data: authData } = useAppSelector((state) => state.auth);
+  const { disputes } = useOrderDisputes();
   const [activeTab, setActiveTab] = useState<ActiveTab>("orders");
 
   useEffect(() => {
@@ -129,7 +135,27 @@ export default function DistributorOrdersPage() {
 
   const orderList = useMemo(() => (Array.isArray(orders) ? orders : []), [orders]);
   const displayOrders = orderList.length > 0 ? orderList.map(toOrderRow) : distributorDemoOrders;
-  const demoDisputes = distributorDemoDisputes;
+
+  const displayDisputes = useMemo<BuyerDisputeRow[]>(() => {
+    if (Array.isArray(disputes) && disputes.length > 0) {
+      return disputes.map(toDistributorDisputeRow);
+    }
+    // Visual fallback while no live disputes exist for the account.
+    return distributorDemoDisputes.map((dispute) => ({
+      id: dispute.id,
+      sourceId: dispute.id,
+      orderId: dispute.orderId,
+      orderSourceId: dispute.orderId,
+      amount: dispute.amount,
+      itemName: dispute.itemName,
+      reason: dispute.reason,
+      against: dispute.against,
+      status: dispute.status,
+      resolutionOutcome:
+        dispute.status === "resolved" ? "refund_buyer" : undefined,
+      createdAt: dispute.createdAt,
+    }));
+  }, [disputes]);
 
   const orderMetrics = {
     total: String(displayOrders.length).padStart(2, "0"),
@@ -145,15 +171,25 @@ export default function DistributorOrdersPage() {
   };
 
   const disputeMetrics = {
-    flagged: String(demoDisputes.length + 11).padStart(2, "0"),
+    flagged: String(displayDisputes.length).padStart(2, "0"),
     resolved: String(
-      demoDisputes.filter((dispute) => dispute.status === "resolved").length || 10,
+      displayDisputes.filter((dispute) => dispute.status === "resolved").length,
     ).padStart(2, "0"),
     ongoing: String(
-      demoDisputes.filter((dispute) => dispute.status === "ongoing").length,
+      displayDisputes.filter(
+        (dispute) =>
+          dispute.status === "under_review" ||
+          dispute.status === "awaiting_evidence" ||
+          dispute.status === "ongoing",
+      ).length,
     ).padStart(2, "0"),
     rejected: String(
-      demoDisputes.filter((dispute) => dispute.status === "rejected").length,
+      displayDisputes.filter(
+        (dispute) =>
+          dispute.status === "rejected" ||
+          (dispute.status === "resolved" &&
+            dispute.resolutionOutcome === "release_to_seller"),
+      ).length,
     ).padStart(2, "0"),
   };
 
@@ -375,10 +411,17 @@ export default function DistributorOrdersPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {demoDisputes.map((dispute) => {
-                      const statusTone = getDisputeStatusTone(dispute.status);
+                    {displayDisputes.map((dispute) => {
+                      const statusTone = getDisputeStatusTone(
+                        dispute.status,
+                        dispute.resolutionOutcome,
+                        "seller",
+                      );
                       return (
-                        <tr key={dispute.id} className="border-b border-[#F3F4F6]">
+                        <tr
+                          key={dispute.sourceId}
+                          className="border-b border-[#F3F4F6]"
+                        >
                           <td className="py-4 pr-4 text-[#111827]">{dispute.id}</td>
                           <td className="py-4 pr-4 text-[#111827]">
                             {dispute.orderId}
@@ -395,7 +438,7 @@ export default function DistributorOrdersPage() {
                           <td className="py-4 pr-4 text-[#111827]">
                             {dispute.against}
                           </td>
-                          <td className={`py-4 pr-4 ${statusTone.className}`}>
+                          <td className={`py-4 pr-4 ${statusTone.textClassName}`}>
                             {statusTone.label}
                           </td>
                           <td className="py-4">
@@ -403,7 +446,9 @@ export default function DistributorOrdersPage() {
                               type="button"
                               onClick={() =>
                                 router.push(
-                                  `/dashboard/distributor/orders/${dispute.orderId}/disputes/${dispute.id}`,
+                                  `/dashboard/distributor/orders/${
+                                    dispute.orderSourceId || dispute.sourceId
+                                  }/disputes/${dispute.sourceId}`,
                                 )
                               }
                               className="inline-flex items-center gap-2 text-sm font-medium text-primary"
