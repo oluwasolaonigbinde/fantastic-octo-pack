@@ -17,9 +17,6 @@ import Header from "../../component/header";
 import { EmptyState, Skeleton } from "@/components/base";
 import {
   buyerDemoOrderDisputes,
-  buyerOrderDisputeMetrics,
-  getBuyerOrderDisputeStatusTone,
-  type BuyerOrderDispute,
 } from "@/constants/demoBuyerOrderDisputes";
 import {
   buyerDemoOrders,
@@ -27,7 +24,13 @@ import {
   toBuyerOrderRow,
   type BuyerOrderRow,
 } from "@/constants/demoBuyerOrders";
+import {
+  getDisputeStatusTone,
+  toBuyerDisputeRow,
+  type BuyerDisputeRow,
+} from "@/lib/order-dispute-presenter";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useOrderDisputes } from "@/hooks/useOrderDisputes";
 import { fetchOrders } from "@/store/slices/order-slice";
 
 type ActiveTab = "orders" | "disputes";
@@ -237,8 +240,8 @@ function DisputeTable({
   disputes,
   onView,
 }: {
-  disputes: BuyerOrderDispute[];
-  onView: (dispute: BuyerOrderDispute) => void;
+  disputes: BuyerDisputeRow[];
+  onView: (dispute: BuyerDisputeRow) => void;
 }) {
   return (
     <div className="mt-8 overflow-x-auto">
@@ -257,9 +260,12 @@ function DisputeTable({
         </thead>
         <tbody>
           {disputes.map((dispute) => {
-            const statusTone = getBuyerOrderDisputeStatusTone(dispute.status);
+            const statusTone = getDisputeStatusTone(
+              dispute.status,
+              dispute.resolutionOutcome,
+            );
             return (
-              <tr key={dispute.id} className="border-b border-[#F3F4F6]">
+              <tr key={dispute.sourceId} className="border-b border-[#F3F4F6]">
                 <td className="py-4 pr-4 text-[#111827]">{dispute.id}</td>
                 <td className="py-4 pr-4 text-[#111827]">{dispute.orderId}</td>
                 <td className="py-4 pr-4 text-[#111827]">
@@ -294,16 +300,19 @@ function MobileDisputeList({
   disputes,
   onView,
 }: {
-  disputes: BuyerOrderDispute[];
-  onView: (dispute: BuyerOrderDispute) => void;
+  disputes: BuyerDisputeRow[];
+  onView: (dispute: BuyerDisputeRow) => void;
 }) {
   return (
     <div className="mt-6 space-y-3 md:hidden">
       {disputes.map((dispute) => {
-        const statusTone = getBuyerOrderDisputeStatusTone(dispute.status);
+        const statusTone = getDisputeStatusTone(
+          dispute.status,
+          dispute.resolutionOutcome,
+        );
         return (
           <article
-            key={dispute.id}
+            key={dispute.sourceId}
             className="rounded-2xl border border-[#DDE0E5] bg-white p-4"
           >
             <div className="flex items-start justify-between gap-3">
@@ -363,6 +372,7 @@ export default function BuyerOrders() {
   const router = useRouter();
   const { orders, isLoading } = useAppSelector((state) => state.order);
   const { data: authData } = useAppSelector((state) => state.auth);
+  const { disputes, isLoading: disputesLoading } = useOrderDisputes();
   const [activeTab, setActiveTab] = useState<ActiveTab>("orders");
   const [orderIdQuery, setOrderIdQuery] = useState("");
   const [statusQuery, setStatusQuery] = useState("");
@@ -389,9 +399,32 @@ export default function BuyerOrders() {
     });
   }, [dateQuery, displayOrders, orderIdQuery, statusQuery]);
 
+  const displayDisputes = useMemo<BuyerDisputeRow[]>(() => {
+    if (Array.isArray(disputes) && disputes.length > 0) {
+      return disputes.map(toBuyerDisputeRow);
+    }
+    // Visual fallback while no live disputes exist for the account.
+    return buyerDemoOrderDisputes.map((dispute) => ({
+      id: dispute.id,
+      sourceId: dispute.id,
+      orderId: dispute.orderId,
+      amount: dispute.amount,
+      itemName: dispute.itemName,
+      reason: dispute.reason,
+      against: dispute.against,
+      status: dispute.status,
+      resolutionOutcome:
+        dispute.status === "resolved" ? "refund_buyer" : undefined,
+      createdAt: dispute.createdAt,
+    }));
+  }, [disputes]);
+
   const filteredDisputes = useMemo(() => {
-    return buyerDemoOrderDisputes.filter((dispute) => {
-      const statusTone = getBuyerOrderDisputeStatusTone(dispute.status);
+    return displayDisputes.filter((dispute) => {
+      const statusTone = getDisputeStatusTone(
+        dispute.status,
+        dispute.resolutionOutcome,
+      );
       const matchesId = dispute.id.toLowerCase().includes(orderIdQuery.toLowerCase().trim());
       const matchesStatus = statusTone.label
         .toLowerCase()
@@ -400,7 +433,26 @@ export default function BuyerOrders() {
         !dateQuery || new Date(dispute.createdAt).toISOString().startsWith(dateQuery);
       return matchesId && matchesStatus && matchesDate;
     });
-  }, [dateQuery, orderIdQuery, statusQuery]);
+  }, [dateQuery, displayDisputes, orderIdQuery, statusQuery]);
+
+  const disputeMetrics = useMemo(() => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const resolved = displayDisputes.filter((d) => d.status === "resolved");
+    const ongoing = displayDisputes.filter(
+      (d) => d.status === "under_review" || d.status === "awaiting_evidence" || d.status === "ongoing",
+    );
+    const rejected = displayDisputes.filter(
+      (d) =>
+        d.status === "rejected" ||
+        (d.status === "resolved" && d.resolutionOutcome === "release_to_seller"),
+    );
+    return {
+      flagged: pad(displayDisputes.length),
+      resolved: pad(resolved.length),
+      ongoing: pad(ongoing.length),
+      rejected: pad(rejected.length),
+    };
+  }, [displayDisputes]);
 
   const metrics = {
     total: String(displayOrders.length).padStart(2, "0"),
@@ -421,8 +473,8 @@ export default function BuyerOrders() {
     router.push(`/dashboard/buyer/orders/${order.sourceId}`);
   };
 
-  const viewDispute = (dispute: BuyerOrderDispute) => {
-    router.push(`/dashboard/buyer/orders/disputes/${dispute.id}`);
+  const viewDispute = (dispute: BuyerDisputeRow) => {
+    router.push(`/dashboard/buyer/orders/disputes/${dispute.sourceId}`);
   };
 
   return (
@@ -458,25 +510,25 @@ export default function BuyerOrders() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard
             title={activeTab === "orders" ? "Total orders" : "Total flagged disputes"}
-            value={activeTab === "orders" ? metrics.total : buyerOrderDisputeMetrics.flagged}
+            value={activeTab === "orders" ? metrics.total : disputeMetrics.flagged}
             icon={<Users size={19} className="text-primary" />}
             iconClassName="bg-[#D7EDFF]"
           />
           <MetricCard
             title={activeTab === "orders" ? "Total orders delivered" : "Total resolved disputes"}
-            value={activeTab === "orders" ? metrics.delivered : buyerOrderDisputeMetrics.resolved}
+            value={activeTab === "orders" ? metrics.delivered : disputeMetrics.resolved}
             icon={<PackageCheck size={19} className="text-[#D946EF]" />}
             iconClassName="bg-[#F9D7FF]"
           />
           <MetricCard
             title={activeTab === "orders" ? "Total pending orders" : "Ongoing disputes"}
-            value={activeTab === "orders" ? metrics.pending : buyerOrderDisputeMetrics.ongoing}
+            value={activeTab === "orders" ? metrics.pending : disputeMetrics.ongoing}
             icon={<WalletCards size={19} className="text-[#16A34A]" />}
             iconClassName="bg-[#DCFCE7]"
           />
           <MetricCard
             title={activeTab === "orders" ? "Total cancelled orders" : "Total rejected"}
-            value={activeTab === "orders" ? metrics.cancelled : buyerOrderDisputeMetrics.rejected}
+            value={activeTab === "orders" ? metrics.cancelled : disputeMetrics.rejected}
             icon={<ReceiptText size={19} className="text-[#F59E0B]" />}
             iconClassName="bg-[#FEF3C7]"
           />
@@ -543,7 +595,7 @@ export default function BuyerOrders() {
             </button>
           </div>
 
-          {isLoading ? (
+          {(activeTab === "orders" ? isLoading : disputesLoading) ? (
             <div className="mt-8 space-y-3">
               <Skeleton className="h-12" />
               <Skeleton className="h-12" />

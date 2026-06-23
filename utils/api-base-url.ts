@@ -1,4 +1,4 @@
-const DEFAULT_LOCAL_API_BASE_URL = "http://localhost:4000/api/v1";
+const DEFAULT_LOCAL_API_BASE_URL = "/api/v1";
 const REQUIRED_API_SUFFIX = "/api/v1";
 
 let cachedApiBaseUrl: string | null = null;

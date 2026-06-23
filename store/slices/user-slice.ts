@@ -27,27 +27,32 @@ export const fetchPublicProfiles = createAsyncThunk<
     filters?: PublicProfileFilters;
     includeFacets?: boolean;
   }
->("users/fetchPublicProfiles", async ({
-  page = 1,
-  limit = 50,
-  roles = [UserRole.DISTRIBUTOR, UserRole.OEM],
-  search,
-  filters,
-  includeFacets,
-}) => {
-  return userService.getPublicProfiles(
-    page,
-    limit,
-    roles,
+>(
+  "users/fetchPublicProfiles",
+  async ({
+    page = 1,
+    limit = 50,
+    roles = [UserRole.DISTRIBUTOR, UserRole.OEM],
     search,
     filters,
     includeFacets,
-  );
-});
+  }) => {
+    return userService.getPublicProfiles(
+      page,
+      limit,
+      roles,
+      search,
+      filters,
+      includeFacets,
+    );
+  },
+);
 
-export const fetchPublicProfileById = createAsyncThunk<PublicProfileData, string>(
-  "users/fetchPublicProfileById",
-  async (id) => userService.getPublicProfileById(id)
+export const fetchPublicProfileById = createAsyncThunk<
+  PublicProfileData,
+  string
+>("users/fetchPublicProfileById", async (id) =>
+  userService.getPublicProfileById(id),
 );
 
 export const getUsersThunk = fetchPublicProfiles;

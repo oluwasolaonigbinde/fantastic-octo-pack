@@ -1,6 +1,18 @@
 import type { NextConfig } from "next";
 
+const BACKEND_URL =
+  process.env.BACKEND_URL ?? "https://baiy-server-7455a0f5a0cd.herokuapp.com";
+
 const nextConfig: NextConfig = {
+  allowedDevOrigins: ["127.0.0.1"],
+  async rewrites() {
+    return [
+      {
+        source: "/api/v1/:path*",
+        destination: `${BACKEND_URL}/api/v1/:path*`,
+      },
+    ];
+  },
   ...(process.env.NEXT_DEV_POLLING === "1"
     ? {
         watchOptions: {
@@ -29,10 +41,6 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "example.com",
-      },
-      {
-        protocol: "http",
-        hostname: "localhost",
       },
       {
         protocol: "http",
