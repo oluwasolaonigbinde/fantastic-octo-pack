@@ -430,7 +430,7 @@ const BuyerDashboard: React.FC = () => {
                     tickFormatter={formatCompactNaira}
                   />
                   <Tooltip
-                    formatter={(value: number) => formatCurrency(Number(value))}
+                    formatter={(value) => formatCurrency(Number(value))}
                     labelFormatter={() => "Spend"}
                     contentStyle={{
                       borderRadius: 12,
