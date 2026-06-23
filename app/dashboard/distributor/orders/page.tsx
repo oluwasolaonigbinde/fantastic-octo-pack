@@ -119,6 +119,149 @@ function FilterInput({
   );
 }
 
+function MobileOrderList({
+  orders,
+  onView,
+}: {
+  orders: OrderRow[];
+  onView: (order: OrderRow) => void;
+}) {
+  return (
+    <div className="mt-6 space-y-3 md:hidden">
+      {orders.map((order) => {
+        const statusTone = getOrderStatusTone(order.status);
+        const orderId = order.id.startsWith("ORD-")
+          ? order.id
+          : `ORD-${order.id.slice(-6).toUpperCase()}`;
+        return (
+          <article
+            key={order.id}
+            className="rounded-2xl border border-[#DDE0E5] bg-white p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-[#6B7280]">{orderId}</p>
+                <h3 className="mt-1 text-sm font-medium text-[#111827]">
+                  {order.productName}
+                </h3>
+              </div>
+              <span className={`text-xs ${statusTone.textClassName}`}>
+                {statusTone.label}
+              </span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-[#6B7280]">
+              <p>
+                Quantity
+                <span className="mt-1 block text-sm text-[#111827]">
+                  {order.quantity}
+                </span>
+              </p>
+              <p>
+                Total price
+                <span className="mt-1 block text-sm text-[#111827]">
+                  {formatCurrency(order.totalPrice)}
+                </span>
+              </p>
+              <p>
+                Unit price
+                <span className="mt-1 block text-sm text-[#111827]">
+                  {formatCurrency(order.unitPrice)}
+                </span>
+              </p>
+              <p>
+                Date
+                <span className="mt-1 block text-sm text-[#111827]">
+                  {formatDate(order.createdAt)}
+                </span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onView(order)}
+              className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-primary text-sm font-medium text-primary"
+            >
+              <Eye size={16} />
+              View
+            </button>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function MobileDisputeList({
+  disputes,
+  onView,
+}: {
+  disputes: BuyerDisputeRow[];
+  onView: (dispute: BuyerDisputeRow) => void;
+}) {
+  return (
+    <div className="mt-6 space-y-3 md:hidden">
+      {disputes.map((dispute) => {
+        const statusTone = getDisputeStatusTone(
+          dispute.status,
+          dispute.resolutionOutcome,
+          "seller",
+        );
+        return (
+          <article
+            key={dispute.sourceId}
+            className="rounded-2xl border border-[#DDE0E5] bg-white p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-[#6B7280]">{dispute.id}</p>
+                <h3 className="mt-1 text-sm font-medium text-[#111827]">
+                  {dispute.reason}
+                </h3>
+              </div>
+              <span className={`text-xs ${statusTone.textClassName}`}>
+                {statusTone.label}
+              </span>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-[#6B7280]">
+              <p>
+                Order ID
+                <span className="mt-1 block text-sm text-[#111827]">
+                  {dispute.orderId}
+                </span>
+              </p>
+              <p>
+                Amount
+                <span className="mt-1 block text-sm text-[#111827]">
+                  {formatCurrency(dispute.amount)}
+                </span>
+              </p>
+              <p>
+                Item name
+                <span className="mt-1 block text-sm text-[#111827]">
+                  {dispute.itemName}
+                </span>
+              </p>
+              <p>
+                Against
+                <span className="mt-1 block text-sm text-[#111827]">
+                  {dispute.against}
+                </span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => onView(dispute)}
+              className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-primary text-sm font-medium text-primary"
+            >
+              <Eye size={16} />
+              View
+            </button>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function DistributorOrdersPage() {
   const dispatch = useAppDispatch();
   const router = useRouter();
@@ -192,6 +335,16 @@ export default function DistributorOrdersPage() {
       ).length,
     ).padStart(2, "0"),
   };
+
+  const viewOrder = (order: OrderRow) =>
+    router.push(`/dashboard/distributor/orders/${order.id}`);
+
+  const viewDispute = (dispute: BuyerDisputeRow) =>
+    router.push(
+      `/dashboard/distributor/orders/${
+        dispute.orderSourceId || dispute.sourceId
+      }/disputes/${dispute.sourceId}`,
+    );
 
   return (
     <div>
@@ -273,21 +426,24 @@ export default function DistributorOrdersPage() {
                 </button>
               </div>
 
-              <div className="mt-8 overflow-x-auto">
-                {isLoading ? (
-                  <div className="space-y-3">
-                    <Skeleton className="h-12" />
-                    <Skeleton className="h-12" />
-                    <Skeleton className="h-12" />
-                  </div>
-                ) : displayOrders.length === 0 ? (
+              {isLoading ? (
+                <div className="mt-8 space-y-3">
+                  <Skeleton className="h-12" />
+                  <Skeleton className="h-12" />
+                  <Skeleton className="h-12" />
+                </div>
+              ) : displayOrders.length === 0 ? (
+                <div className="mt-8">
                   <EmptyState
                     icon={<ShoppingBag />}
                     title="No orders yet"
                     description="When a buyer places an order from your quote, it will appear here."
                   />
-                ) : (
-                  <table className="w-full min-w-[940px] text-left text-sm">
+                </div>
+              ) : (
+                <>
+                  <div className="mt-8 hidden overflow-x-auto md:block">
+                    <table className="w-full min-w-[940px] text-left text-sm">
                     <thead>
                       <tr className="border-b border-[#EEF2F7] text-xs text-[#6B7280]">
                         <th className="py-3 pr-4 font-medium">Order ID</th>
@@ -344,9 +500,11 @@ export default function DistributorOrdersPage() {
                         );
                       })}
                     </tbody>
-                  </table>
-                )}
-              </div>
+                    </table>
+                  </div>
+                  <MobileOrderList orders={displayOrders} onView={viewOrder} />
+                </>
+              )}
             </section>
           </>
         ) : (
@@ -396,7 +554,7 @@ export default function DistributorOrdersPage() {
                 </button>
               </div>
 
-              <div className="mt-8 overflow-x-auto">
+              <div className="mt-8 hidden overflow-x-auto md:block">
                 <table className="w-full min-w-[940px] text-left text-sm">
                   <thead>
                     <tr className="border-b border-[#EEF2F7] text-xs text-[#6B7280]">
@@ -463,6 +621,7 @@ export default function DistributorOrdersPage() {
                   </tbody>
                 </table>
               </div>
+              <MobileDisputeList disputes={displayDisputes} onView={viewDispute} />
             </section>
           </>
         )}
