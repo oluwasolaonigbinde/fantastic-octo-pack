@@ -21,9 +21,9 @@ const menuLinks = [
 ];
 
 const policyLinks = [
-  { label: "Returns & Refunds", href: "/policies" },
-  { label: "Shipping Policy", href: "/policies" },
-  { label: "Acceptable Use", href: "/policies" },
+  { label: "Returns & Refunds", href: "/policies#returns" },
+  { label: "Shipping Policy", href: "/policies#shipping" },
+  { label: "Acceptable Use", href: "/policies#acceptable-use" },
 ];
 
 export default function PublicFooter() {
