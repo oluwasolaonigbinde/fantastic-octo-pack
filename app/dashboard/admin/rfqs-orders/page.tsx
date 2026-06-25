@@ -37,7 +37,7 @@ import { fetchOrderDetail } from "@/services/orderService";
 import { fetchQuoteDetail, fetchRfqDetail } from "@/services/rfqService";
 import type { Order } from "@/types/order";
 import { ORDER_STATUS_LABELS } from "@/types/order";
-import type { Quote, Rfq, RfqDetailResponse, UserRef } from "@/types/rfq";
+import type { Quote, QuoteStatus, Rfq, RfqDetailResponse, UserRef } from "@/types/rfq";
 import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS } from "@/types/rfq";
 
 const POLL_INTERVAL_MS = 30_000;
@@ -120,6 +120,12 @@ const RFQ_VIEW_TABS: Array<{ key: RfqSubTab; label: string }> = [
   { key: "quoteApproved", label: "Quotes Approved" },
   { key: "quoteDeclined", label: "Quotes Declined" },
 ];
+
+const RFQ_QUOTE_STATUS_FILTERS: Partial<Record<RfqSubTab, QuoteStatus>> = {
+  quoteReceived: "quoted",
+  quoteApproved: "selected_for_order",
+  quoteDeclined: "rejected_by_buyer",
+};
 
 function formatMoney(value?: number | null): string {
   if (typeof value !== "number") return "Not available";
@@ -429,12 +435,16 @@ export default function AdminRfqsOrdersPage() {
     };
 
     try {
+      const quoteStatus = RFQ_QUOTE_STATUS_FILTERS[rfqSub];
       const [nextSummary, nextPage] = await Promise.all([
         adminService.getRfqsOrdersSummary(token),
         topTab === "orders"
           ? adminService.getOrders(token, params)
           : rfqSub !== "all"
-            ? adminService.getQuotes(token, params)
+            ? adminService.getQuotes(
+                token,
+                quoteStatus ? { ...params, status: quoteStatus } : params,
+              )
             : adminService.getRfqs(token, params),
       ]);
 
@@ -505,17 +515,17 @@ export default function AdminRfqsOrdersPage() {
   const activeRfqMetricValue = useMemo(() => {
     switch (rfqSub) {
       case "quoteSent":
-        return String(summary.rfqs.totalQuotesSent || ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteSent);
+        return formatWholeNumber(summary.rfqs.totalQuotesSent);
       case "quoteReceived":
-        return String(ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteReceived);
+        return formatWholeNumber(quotesPage.totalDocs);
       case "quoteApproved":
-        return String(ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteApproved);
+        return formatWholeNumber(quotesPage.totalDocs);
       case "quoteDeclined":
-        return String(ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteDeclined);
+        return formatWholeNumber(quotesPage.totalDocs);
       default:
-        return String(summary.rfqs.totalRequests || ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.totalRequested);
+        return formatWholeNumber(summary.rfqs.totalRequests);
     }
-  }, [rfqSub, summary.rfqs.totalQuotesSent, summary.rfqs.totalRequests]);
+  }, [quotesPage.totalDocs, rfqSub, summary.rfqs.totalQuotesSent, summary.rfqs.totalRequests]);
 
   const openDetail = async (target: DetailTarget) => {
     setDetailTarget(target);
@@ -599,19 +609,13 @@ export default function AdminRfqsOrdersPage() {
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <MetricCard
                   title="Total quotes requested"
-                  value={String(
-                    summary.rfqs.totalRequests ||
-                      ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.totalRequested
-                  )}
+                  value={formatWholeNumber(summary.rfqs.totalRequests)}
                   icon={<UsersRound size={18} className="text-primary" />}
                   iconBg="bg-[#E7F1FF]"
                 />
                 <MetricCard
                   title="Total quote sent"
-                  value={String(
-                    summary.rfqs.totalQuotesSent ||
-                      ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteSent
-                  )}
+                  value={formatWholeNumber(summary.rfqs.totalQuotesSent)}
                 />
                 <MetricCard
                   title="Total Quotes Received"

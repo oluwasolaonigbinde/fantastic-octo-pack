@@ -30,10 +30,7 @@ import adminService, {
   type AdminPlatformUserRow,
   type AdminPlatformUsersSummary,
 } from "@/services/adminService";
-import kycService from "@/services/kycService";
-import type { AdminKycListRow, AdminKycSubmissionDetail } from "@/types/kyc";
 import { UserRole } from "@/types/user";
-import { ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 
 const POLL_INTERVAL_MS = 60_000;
 const PAGE_SIZE = 20;
@@ -281,11 +278,11 @@ function ActionCard({
 function PlatformUserDrawer({
   user,
   onClose,
-  onOpenKycOverview,
+  onOpenKycManagement,
 }: {
   user: AdminPlatformUserRow | null;
   onClose: () => void;
-  onOpenKycOverview: (user: AdminPlatformUserRow) => void;
+  onOpenKycManagement: () => void;
 }) {
   const actionCards = [
     {
@@ -358,157 +355,13 @@ function PlatformUserDrawer({
                   disabled={card.title === "KYC" ? !isBuyer : false}
                   onClick={
                     card.title === "KYC" && user && isBuyer
-                      ? () => onOpenKycOverview(user)
+                      ? onOpenKycManagement
                       : undefined
                   }
                 />
               ))}
             </div>
           </section>
-        </div>
-      ) : null}
-    </RightSlider>
-  );
-}
-
-function normalizeAdminKycRows(
-  payload:
-    | AdminKycListRow[]
-    | {
-        docs: AdminKycListRow[];
-      },
-): AdminKycListRow[] {
-  return Array.isArray(payload) ? payload : payload.docs;
-}
-
-function PlatformUserKycDrawer({
-  user,
-  detail,
-  loading,
-  error,
-  onClose,
-}: {
-  user: AdminPlatformUserRow | null;
-  detail: AdminKycSubmissionDetail | null;
-  loading: boolean;
-  error: string;
-  onClose: () => void;
-}) {
-  const displayName =
-    user?.name ||
-    (detail?.user
-      ? `${detail.user.firstName ?? ""} ${detail.user.lastName ?? ""}`.trim()
-      : "") ||
-    ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.fullName;
-
-  const statusLabel =
-    detail?.requestStatusLabel ||
-    detail?.status ||
-    ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.status;
-
-  const tierLabel =
-    detail?.tierLabel || ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.tierLabel;
-
-  const registrationDate = detail?.createdAt
-    ? formatDateTime(detail.createdAt)
-    : ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.registrationDate;
-
-  const detailFields = Object.entries(detail?.textFields ?? {}).filter(([, value]) => Boolean(value));
-  const fallbackFields = ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.textFields;
-  const documentNames =
-    detail?.documents.length
-      ? detail.documents.map((document) => document.fileName)
-      : [...ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.documents];
-
-  return (
-    <RightSlider
-      title="Compliance / KYC"
-      open={Boolean(user)}
-      onClose={onClose}
-      bodyClassName="px-10 pb-10"
-    >
-      {user ? (
-        <div className="space-y-8 pt-6">
-          <section className="space-y-5">
-            <div className="rounded-[16px] border border-[#FFE079] bg-[#FFF6D9] px-8 py-5">
-              <div className="flex items-center justify-between gap-4">
-                <p className="text-lg font-medium leading-6 text-[#272B36]">
-                  Verification Status
-                </p>
-                <span className="rounded-[8px] bg-warning px-4 py-2 text-base leading-7 text-white">
-                  {statusLabel}
-                </span>
-              </div>
-            </div>
-
-            {error ? (
-              <div className="rounded-[12px] border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-                {error}
-              </div>
-            ) : null}
-
-            <DetailItem label="Name of user" value={displayName} />
-            <DetailItem
-              label="Email address"
-              value={user.email || detail?.user?.email || ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.email}
-            />
-            <DetailItem
-              label="Role"
-              value={detail?.user?.role || user.roleLabel || ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.role}
-            />
-            <DetailItem label="KYC level" value={tierLabel} />
-            <DetailItem label="Registration date" value={registrationDate} />
-            <DetailItem
-              label="Documents submitted"
-              value={
-                detail?.documents.length
-                  ? `${detail.documents.length}/${detail.documents.length}`
-                  : ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.documentSubmitted
-              }
-            />
-          </section>
-
-          <section className="space-y-4 border-t border-gray6 pt-8">
-            <div>
-              <h4 className="text-lg font-medium leading-8 text-gray1">Submitted details</h4>
-              <p className="text-sm leading-5 text-gray2">
-                Admin-facing compliance snapshot for this buyer.
-              </p>
-            </div>
-            <div className="space-y-5">
-              {(detailFields.length ? detailFields : fallbackFields).map(([label, value]) => (
-                <DetailItem key={label} label={label} value={value} />
-              ))}
-            </div>
-          </section>
-
-          <section className="space-y-4 border-t border-gray6 pt-8">
-            <div>
-              <h4 className="text-lg font-medium leading-8 text-gray1">Uploaded documents</h4>
-              <p className="text-sm leading-5 text-gray2">
-                Use live files where available, otherwise keep the Figma-backed shell intact.
-              </p>
-            </div>
-            <div className="space-y-3">
-              {documentNames.map((documentName) => (
-                <div
-                  key={documentName}
-                  className="rounded-[12px] border border-gray6 px-4 py-3 text-sm text-gray1"
-                >
-                  {documentName}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <Button
-            title={loading ? "Loading KYC details..." : "Open KYC management"}
-            className="h-[60px] rounded-[14px]"
-            disabled={loading}
-            onClick={() => {
-              window.location.assign("/dashboard/admin/kyc-verification");
-            }}
-          />
         </div>
       ) : null}
     </RightSlider>
@@ -559,10 +412,6 @@ export default function AdminPlatformUsersPage() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [usersPage, setUsersPage] = useState(EMPTY_PAGE);
   const [selectedUser, setSelectedUser] = useState<AdminPlatformUserRow | null>(null);
-  const [selectedKycUser, setSelectedKycUser] = useState<AdminPlatformUserRow | null>(null);
-  const [selectedKycDetail, setSelectedKycDetail] = useState<AdminKycSubmissionDetail | null>(null);
-  const [selectedKycLoading, setSelectedKycLoading] = useState(false);
-  const [selectedKycError, setSelectedKycError] = useState("");
   const [selectedOnboarding, setSelectedOnboarding] = useState<OnboardingRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -636,49 +485,6 @@ export default function AdminPlatformUsersPage() {
     setAppliedFilters({ ...draftFilters });
     setPage(1);
   };
-
-  const openBuyerKycOverview = useCallback(
-    async (user: AdminPlatformUserRow) => {
-      setSelectedKycUser(user);
-      setSelectedKycDetail(null);
-      setSelectedKycError("");
-      setSelectedKycLoading(true);
-
-      if (!token) {
-        setSelectedKycLoading(false);
-        return;
-      }
-
-      try {
-        const response = await kycService.getAdminSubmissions(token, {
-          userCategory: "buyer",
-          limit: 100,
-        });
-
-        const kycRows = normalizeAdminKycRows(response.data);
-        const matchedRow =
-          kycRows.find((row) => row.email?.toLowerCase() === user.email?.toLowerCase()) ??
-          kycRows.find((row) => row.fullName?.trim().toLowerCase() === user.name?.trim().toLowerCase()) ??
-          null;
-
-        if (!matchedRow) {
-          return;
-        }
-
-        const detailResponse = await kycService.getAdminSubmission(token, matchedRow._id);
-        setSelectedKycDetail(detailResponse.data);
-      } catch (nextError) {
-        setSelectedKycError(
-          nextError instanceof Error
-            ? nextError.message
-            : "Unable to load buyer compliance details.",
-        );
-      } finally {
-        setSelectedKycLoading(false);
-      }
-    },
-    [token],
-  );
 
   const approvedSummary = summary.approvedUsers;
   const onboardingSummary = summary.onboardingRequests;
@@ -1157,20 +963,9 @@ export default function AdminPlatformUsersPage() {
       <PlatformUserDrawer
         user={selectedUser}
         onClose={() => setSelectedUser(null)}
-        onOpenKycOverview={(user) => {
+        onOpenKycManagement={() => {
           setSelectedUser(null);
-          void openBuyerKycOverview(user);
-        }}
-      />
-      <PlatformUserKycDrawer
-        user={selectedKycUser}
-        detail={selectedKycDetail}
-        loading={selectedKycLoading}
-        error={selectedKycError}
-        onClose={() => {
-          setSelectedKycUser(null);
-          setSelectedKycDetail(null);
-          setSelectedKycError("");
+          window.location.assign("/dashboard/admin/kyc-verification");
         }}
       />
       <OnboardingDrawer
