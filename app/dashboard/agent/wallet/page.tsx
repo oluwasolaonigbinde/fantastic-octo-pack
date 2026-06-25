@@ -18,14 +18,19 @@ import {
 
 import Header from "../../component/header";
 import { ProtectedRoute } from "@/components/dashboard/protected-routes";
+import { useEscrowSummary } from "@/hooks/useEscrowSummary";
+import { useWallet } from "@/hooks/useWallet";
+import { formatKobo } from "@/lib/wallet-format";
 import { UserRole } from "@/types/user";
 import { agentWalletTransactions } from "../mockdata";
 
 function WithdrawModal({
   onClose,
+  availableLabel,
   standalone = false,
 }: {
   onClose: () => void;
+  availableLabel: string;
   standalone?: boolean;
 }) {
   const shellClassName = standalone
@@ -53,7 +58,9 @@ function WithdrawModal({
 
         <div className="mb-6 rounded-2xl border border-[#22C55E] bg-white px-4 py-5 text-center">
           <p className="text-[13px] text-[#111827]">Available:</p>
-          <p className="mt-2 text-[22px] font-semibold text-[#111827]">N150, 000</p>
+          <p className="mt-2 text-[22px] font-semibold text-[#111827]">
+            {availableLabel}
+          </p>
         </div>
 
         <label className="mb-2 block text-sm text-[#111827]">Amount to withdraw</label>
@@ -97,6 +104,20 @@ export default function AgentWalletPage() {
   const [showWithdraw, setShowWithdraw] = useState(false);
   const queryShowsWithdraw = searchParams.get("modal") === "withdraw";
 
+  const { wallet, isLoading: walletLoading } = useWallet();
+  const { summary: escrowSummary, isLoading: escrowLoading } = useEscrowSummary();
+
+  const availableLabel = wallet
+    ? formatKobo(wallet.availableBalance)
+    : walletLoading
+      ? "..."
+      : "--";
+  const escrowLabel = escrowSummary
+    ? formatKobo(escrowSummary.expectedNetKobo)
+    : escrowLoading
+      ? "..."
+      : "--";
+
   const closeWithdraw = () => {
     setShowWithdraw(false);
     if (queryShowsWithdraw) {
@@ -112,6 +133,7 @@ export default function AgentWalletPage() {
       {(showWithdraw || queryShowsWithdraw) && (
         <WithdrawModal
           onClose={closeWithdraw}
+          availableLabel={availableLabel}
           standalone={queryShowsWithdraw}
         />
       )}
@@ -126,21 +148,21 @@ export default function AgentWalletPage() {
           {[
             {
               label: "Available balance",
-              value: "â‚¦150,000",
+              value: availableLabel,
               meta: "Ready to withdraw",
               icon: <BadgeDollarSign size={18} className="text-[#F97316]" />,
               bg: "#FFE6D6",
             },
             {
               label: "Pending balance",
-              value: "â‚¦150,000",
+              value: escrowLabel,
               meta: "Commissions not yet released",
               icon: <Layers3 size={18} className="text-[#10B981]" />,
               bg: "#D7FBE1",
             },
             {
               label: "Total earnings",
-              value: "â‚¦150,000",
+              value: "N150,000",
               meta: "Your earnings",
               icon: <Percent size={20} className="text-[#F59E0B]" />,
               bg: "#FFF1C2",
@@ -188,7 +210,7 @@ export default function AgentWalletPage() {
               </span>
               <div>
                 <p className="text-xs text-[#6B7280]">Subscription commissions</p>
-                <p className="font-semibold text-[#111827]">â‚¦150,000</p>
+                <p className="font-semibold text-[#111827]">N150,000</p>
               </div>
             </div>
             <div className="flex items-center gap-3 md:border-l md:border-[#DDE0E5] md:px-14">
@@ -197,7 +219,7 @@ export default function AgentWalletPage() {
               </span>
               <div>
                 <p className="text-xs text-[#6B7280]">Escrow commissions</p>
-                <p className="font-semibold text-[#111827]">â‚¦150,000</p>
+                <p className="font-semibold text-[#111827]">N150,000</p>
               </div>
             </div>
             <div className="flex items-center gap-3 md:border-l md:border-[#DDE0E5] md:px-14">
@@ -206,7 +228,7 @@ export default function AgentWalletPage() {
               </span>
               <div>
                 <p className="text-xs text-[#6B7280]">Bonuses & rewards</p>
-                <p className="font-semibold text-[#111827]">â‚¦150,000</p>
+                <p className="font-semibold text-[#111827]">N150,000</p>
               </div>
             </div>
           </div>
