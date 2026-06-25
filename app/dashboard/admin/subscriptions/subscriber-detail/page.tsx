@@ -1,47 +1,35 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 import { ArrowLeft, ArrowRight, Check, Circle } from "lucide-react";
 
 import Header from "@/app/dashboard/component/header";
-
-const subscriberFields = [
-  ["Name of subscriber", "Samuel Smart"],
-  ["Email address", "example245@gmail.com"],
-  ["Start Date", "28/11/2025"],
-  ["End date", "28/11/2025"],
-  ["Usage limit", "2 - months"],
-  ["Renewal status", "Auto - renewal"],
-] as const;
-
-const access = [
-  ["Visibility level", "Lorem ipsum dolor sit amet consectetur. Pellentesque tellus in sed neque mi."],
-  ["RFQ Access", "Lorem ipsum dolor sit amet consectetur. Pellentesque tellus in sed neque mi fermentum nisl."],
-  ["Messaging Access", "Lorem ipsum dolor sit amet consectetur. Pellentesque tellus in sed neque mi fermentum nisl."],
-] as const;
-
-const plans = [
-  {
-    title: "Free Plan",
-    price: "This is a free plan",
-    sub: "No fee is required",
-    active: false,
-  },
-  {
-    title: "Basic Plan",
-    price: "₦50,000 / month",
-    sub: "₦150,000 billed yearly",
-    active: true,
-  },
-  {
-    title: "Premium Plan",
-    price: "₦75,000 / month",
-    sub: "₦225,000 billed yearly",
-    active: false,
-  },
-] as const;
+import {
+  ADMIN_SUBSCRIPTION_ROWS,
+  ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK,
+} from "@/constants/adminFigmaFallbacks";
 
 export default function AdminSubscriptionSubscriberDetailPage() {
+  const searchParams = useSearchParams();
+  const subscriberId = searchParams.get("subscriberId");
+
+  const subscriberRow = useMemo(
+    () =>
+      ADMIN_SUBSCRIPTION_ROWS.find((row) => row.id === subscriberId) ?? null,
+    [subscriberId],
+  );
+
+  const subscriberFields = [
+    ["Name of subscriber", subscriberRow?.name || ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK.subscriberFields[0][1]],
+    ["Email address", subscriberRow?.email || ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK.subscriberFields[1][1]],
+    ["Start Date", subscriberRow?.startDate || ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK.subscriberFields[2][1]],
+    ["End date", subscriberRow?.endDate || ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK.subscriberFields[3][1]],
+    ["Usage limit", subscriberRow?.usageLimit || ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK.subscriberFields[4][1]],
+    ["Renewal status", subscriberRow?.renewalStatus || ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK.subscriberFields[5][1]],
+  ] as const;
+
   return (
     <div className="min-h-[1457px] bg-gray7">
       <Header title="Subscription" description="View all subscribed users." />
@@ -80,7 +68,9 @@ export default function AdminSubscriptionSubscriberDetailPage() {
             <div className="flex items-start gap-[39px]">
               <div className="space-y-0.5">
                 <p className="text-sm font-normal leading-5 text-gray3">Status</p>
-                <p className="text-base font-normal leading-6 text-success">ACTIVE</p>
+                <p className="text-base font-normal leading-6 text-success">
+                  {subscriberRow?.status || "ACTIVE"}
+                </p>
               </div>
               <button
                 type="button"
@@ -96,17 +86,23 @@ export default function AdminSubscriptionSubscriberDetailPage() {
           <div className="flex items-center gap-[66px]">
             <div className="rounded-lg border border-[#AAD3F3] bg-[#F6FBFF] py-[18px] pl-6 pr-14">
               <p className="text-base font-normal leading-6 text-gray2">Current Plan</p>
-              <p className="text-lg font-medium leading-6 text-gray1">Basic Plan</p>
+              <p className="text-lg font-medium leading-6 text-gray1">
+                {subscriberRow?.currentPlan || "Basic Plan"}
+              </p>
             </div>
             <div className="h-12 border-l border-gray5" />
             <div>
               <p className="text-base font-normal leading-6 text-gray2">Fee</p>
-              <p className="text-lg font-medium leading-6 text-gray1">₦25,000</p>
+              <p className="text-lg font-medium leading-6 text-gray1">
+                {ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK.planFee}
+              </p>
             </div>
             <div className="h-12 border-l border-gray5" />
             <div>
               <p className="text-base font-normal leading-6 text-gray2">Renewal date</p>
-              <p className="text-lg font-medium leading-6 text-gray1">30th May 2025</p>
+              <p className="text-lg font-medium leading-6 text-gray1">
+                {subscriberRow?.expRenewalDate || "30th May 2025"}
+              </p>
             </div>
           </div>
           <button
@@ -122,7 +118,7 @@ export default function AdminSubscriptionSubscriberDetailPage() {
           <h2 className="mb-[39px] text-xl font-medium leading-8 text-gray1">All available plans - 3</h2>
 
           <div className="grid grid-cols-3 gap-5">
-            {plans.map((plan) => (
+            {ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK.plans.map((plan) => (
               <div
                 key={plan.title}
                 className={`h-40 rounded-xl border p-5 ${
@@ -153,7 +149,7 @@ export default function AdminSubscriptionSubscriberDetailPage() {
           </div>
 
           <div className="mt-10 grid grid-cols-3 gap-5">
-            {access.map(([title, body]) => (
+            {ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK.access.map(([title, body]) => (
               <div key={title}>
                 <h3 className="text-lg font-normal leading-6 text-gray1">{title}</h3>
                 <p className="mt-1 text-base font-normal leading-6 text-gray2">{body}</p>
@@ -164,13 +160,13 @@ export default function AdminSubscriptionSubscriberDetailPage() {
           <div className="mt-[90px]">
             <h3 className="text-lg font-normal leading-6 text-gray1">Features</h3>
             <div className="mt-5 grid grid-cols-2 gap-x-[360px] gap-y-5">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div key={index} className="flex items-center gap-3">
+              {ADMIN_SUBSCRIPTION_SUBSCRIBER_FIGMA_FALLBACK.planFeatures.map((feature) => (
+                <div key={feature} className="flex items-center gap-3">
                   <span className="flex size-[18px] items-center justify-center rounded-sm border border-primary text-primary">
                     <Check size={14} />
                   </span>
                   <span className="text-base font-normal leading-6 text-gray2">
-                    Lorem ipsum dolor sit amet consectetur.
+                    {feature}
                   </span>
                 </div>
               ))}

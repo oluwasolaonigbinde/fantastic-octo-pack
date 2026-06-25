@@ -25,9 +25,9 @@ function PlanField({
 }) {
   return (
     <label className="block">
-      <span className="block px-4 text-base leading-6 text-gray1">{label}</span>
+      <span className="block text-base leading-6 text-gray1">{label}</span>
       <span
-        className={`mt-1 flex w-full rounded-[14px] border border-gray5 px-4 py-4 text-base leading-6 text-gray4 ${
+        className={`mt-3 flex w-full rounded-[14px] border border-gray5 px-4 py-4 text-base leading-6 text-gray4 ${
           type === "textarea" ? "h-[100px] items-start" : "h-[60px] items-center"
         }`}
       >
@@ -51,10 +51,10 @@ export default function AdminCreateSubscriptionPlanPage() {
         </Link>
       </header>
 
-      <main className="px-[35px] pt-[32px]">
-        <div className="flex h-[616px] w-[425px] flex-col items-start gap-10">
-          <div className="flex w-full flex-col items-end gap-4">
-            <p className="w-[420px] text-sm leading-5">
+      <main className="h-[calc(100vh-100px)] overflow-y-auto px-8 pb-10 pt-8 sm:px-[35px]">
+        <div className="flex flex-col gap-10">
+          <div className="flex w-full flex-col gap-6">
+            <p className="w-full text-sm leading-5">
               Kindly provide all required information to successfully create a new
               subscription plan.
             </p>

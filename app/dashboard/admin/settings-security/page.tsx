@@ -236,21 +236,27 @@ function PreferencesContent() {
               key={key}
               type="button"
               onClick={() => setTheme(key)}
-              className={`flex flex-col gap-3 rounded-2xl border-2 p-4 transition ${
+              className={`flex flex-col gap-3 rounded-2xl border p-4 transition ${
                 theme === key
-                  ? "border-primary bg-primary/5"
+                  ? "border-primary bg-white"
                   : "border-gray5 bg-white"
               }`}
             >
               <ThemePreview mode={key} />
               <div className="flex items-center gap-2">
                 <span
-                  className={`size-4 rounded-full border-2 ${
+                  className={`flex size-4 items-center justify-center rounded-full border ${
                     theme === key
-                      ? "border-primary bg-primary"
+                      ? "border-primary bg-white"
                       : "border-gray5 bg-white"
                   }`}
-                />
+                >
+                  <span
+                    className={`size-2 rounded-full ${
+                      theme === key ? "bg-primary" : "bg-transparent"
+                    }`}
+                  />
+                </span>
                 <span className="text-sm text-gray1">{label}</span>
               </div>
             </button>
@@ -313,8 +319,8 @@ export default function AdminSettingsSecurityPage() {
                         onClick={() => setSubTab(tab.key)}
                         className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition ${
                           isActive
-                            ? "bg-primary-light font-semibold text-primary-dark"
-                            : "text-gray2 hover:bg-primary/5 hover:text-primary"
+                            ? "font-semibold text-primary"
+                            : "text-gray2 hover:text-primary"
                         }`}
                       >
                         {tab.icon}

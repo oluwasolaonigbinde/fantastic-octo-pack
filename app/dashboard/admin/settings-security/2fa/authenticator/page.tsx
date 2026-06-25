@@ -28,7 +28,7 @@ export default function AdminSettingsAuthenticatorPage() {
         <div className="mt-5 flex justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/images/admin-2fa-qr.svg"
+            src="/images/admin-2fa-qr-figma.png"
             alt="Authenticator QR code"
             width={200}
             height={200}

@@ -41,10 +41,12 @@ function Stepper() {
 function Field({
   label,
   placeholder,
+  select = false,
   textarea = false,
 }: {
   label: string;
   placeholder: string;
+  select?: boolean;
   textarea?: boolean;
 }) {
   return (
@@ -56,7 +58,7 @@ function Field({
         }`}
       >
         <span className="min-w-0 flex-1">{placeholder}</span>
-        {!textarea ? <ChevronDown size={24} className="text-gray3" /> : null}
+        {select && !textarea ? <ChevronDown size={24} className="text-gray3" /> : null}
       </span>
     </label>
   );
@@ -93,12 +95,12 @@ export default function AdminCreateRolePage() {
           Go Back
         </Link>
 
-        <section className="mt-4 h-24 rounded-2xl border border-gray5 bg-white p-5">
+        <section className="mt-4 rounded-2xl border border-gray5 bg-white p-5">
           <h1 className="text-xl font-semibold leading-8 text-gray1">Create A New Role</h1>
           <p className="text-sm leading-5 text-gray1">Follow these 3 simple steps to create a new role.</p>
         </section>
 
-        <section className="mt-4 h-[678px] rounded-2xl border border-gray5 bg-white p-10">
+        <section className="mt-4 rounded-2xl border border-gray5 bg-white p-10">
           <Stepper />
 
           <div className="mt-12 max-w-[999px] space-y-12">
@@ -109,13 +111,13 @@ export default function AdminCreateRolePage() {
               </p>
             </div>
 
-            <div className="flex items-center gap-[94px]">
-              <div className="flex w-[432px] flex-col gap-6">
-                <Field label="Role name" placeholder="Select role" />
+            <div className="flex flex-col gap-8 xl:flex-row xl:items-start xl:gap-[94px]">
+              <div className="flex w-full max-w-[432px] flex-col gap-6">
+                <Field label="Role name" placeholder="Enter role name" />
                 <Field label="Role description" placeholder="Enter description here..." textarea />
               </div>
 
-              <div className="flex w-[473px] flex-col gap-6">
+              <div className="flex w-full max-w-[473px] flex-col gap-6">
                 <div>
                   <h2 className="text-lg font-medium leading-6 text-gray1">
                     Assign this role <span className="font-normal">(optional)</span>
@@ -125,9 +127,9 @@ export default function AdminCreateRolePage() {
                   </p>
                 </div>
                 <div className="space-y-2">
-                  <Field label="Enter a user" placeholder="Select user" />
+                  <Field label="Enter a user" placeholder="Select user" select />
                   <div className="h-[110px] rounded-2xl border border-gray5 p-6">
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-4">
                       <UserPill name="Ibrahim Zainab" initials="IZ" />
                       <UserPill name="Abang Okon" initials="AO" />
                     </div>

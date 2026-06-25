@@ -13,7 +13,6 @@ import {
   Plus,
   Search,
   Settings,
-  Store,
   Users,
 } from "lucide-react";
 
@@ -30,12 +29,12 @@ const profileRows = [
 const actions = [
   {
     title: "Operations",
-    description: "View full profile and details",
+    description: "View full profile, user details and activity",
     icon: Settings,
   },
   {
     title: "Compliance",
-    description: "Product, Store, verification",
+    description: "Products, store and verification history",
     icon: Box,
   },
   {
@@ -45,12 +44,12 @@ const actions = [
   },
   {
     title: "Disputes",
-    description: "Manage dispute",
+    description: "Disputes and resolution history",
     icon: Search,
   },
   {
     title: "Relationships",
-    description: "OEM Relationship, Agent",
+    description: "OEM relationships and assigned agent",
     icon: Users,
   },
   {
@@ -87,8 +86,8 @@ export default function AdminDistributorDetailPage() {
           </button>
         </div>
 
-        <section className="mt-5 h-[937px] w-full bg-white px-10 py-10">
-          <div className="grid h-full grid-cols-[1fr_1fr] gap-10">
+        <section className="mt-5 w-full rounded-2xl border border-gray5 bg-white px-10 py-10">
+          <div className="grid gap-10 xl:grid-cols-[1fr_1fr]">
             <div className="flex flex-col gap-8 py-6">
               <div className="flex flex-col items-center gap-4">
                 <div className="size-[120px] overflow-hidden rounded-full bg-gray6">
@@ -110,7 +109,7 @@ export default function AdminDistributorDetailPage() {
                     </span>
                     <span className="inline-flex items-center gap-3 rounded-lg bg-[rgba(107,114,128,0.06)] p-2 text-lg font-medium leading-6 text-success">
                       <BadgeCheck size={24} fill="currentColor" className="text-success" />
-                      kYC Verified
+                      KYC Verified
                     </span>
                   </div>
                 </div>
@@ -166,7 +165,7 @@ export default function AdminDistributorDetailPage() {
               <div className="mb-5 space-y-1">
                 <h2 className="text-xl font-semibold leading-8 text-gray1">Actions</h2>
                 <p className="text-sm font-normal leading-5 text-gray2">
-                  Manage OEM and key action for this OEM
+                  Manage platform actions for this distributor.
                 </p>
               </div>
 
@@ -177,15 +176,15 @@ export default function AdminDistributorDetailPage() {
                     type="button"
                     className="flex h-[78px] w-full items-center justify-between rounded-[20px] border border-gray6 bg-white px-2 py-3 text-left"
                   >
-                    <span className="flex w-[236px] items-center gap-4">
+                    <span className="flex min-w-0 items-center gap-4">
                       <span className="flex size-[62px] items-center justify-center rounded-[20px] bg-[#EAF9FF] text-primary">
                         <Icon size={38} strokeWidth={1.8} />
                       </span>
-                      <span className="flex flex-col justify-center whitespace-nowrap">
+                      <span className="flex min-w-0 flex-col justify-center">
                         <span className="text-xl font-semibold leading-8 text-gray1">
                           {title}
                         </span>
-                        <span className="text-lg font-normal leading-7 text-gray2">
+                        <span className="text-base font-normal leading-6 text-gray2">
                           {description}
                         </span>
                       </span>

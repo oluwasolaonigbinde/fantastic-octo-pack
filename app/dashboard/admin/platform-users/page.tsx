@@ -30,7 +30,10 @@ import adminService, {
   type AdminPlatformUserRow,
   type AdminPlatformUsersSummary,
 } from "@/services/adminService";
+import kycService from "@/services/kycService";
+import type { AdminKycListRow, AdminKycSubmissionDetail } from "@/types/kyc";
 import { UserRole } from "@/types/user";
+import { ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 
 const POLL_INTERVAL_MS = 60_000;
 const PAGE_SIZE = 20;
@@ -56,15 +59,62 @@ const ROLE_TABS: { key: RoleTab; label: string; role: UserRole }[] = [
   { key: "engineers", label: "Service engineers", role: UserRole.ENGINEER },
 ];
 
-const ONBOARDING_ROWS: OnboardingRow[] = Array.from({ length: 12 }).map((_, index) => ({
-  id: `onboarding-${index + 1}`,
-  name: "The name of the user",
-  userType: "Service Engineers",
-  status: "Pending",
-  requestDate: "17/09/2025 - 04:09pm",
-  country: "Nigeria",
-  category: "Equipment maintenance",
-}));
+const ONBOARDING_ROWS: OnboardingRow[] = [
+  {
+    id: "onboarding-1",
+    name: "Samuel Smart",
+    userType: "Service Engineer",
+    status: "Pending",
+    requestDate: "17/09/2025 - 04:09pm",
+    country: "Nigeria",
+    category: "Equipment maintenance",
+  },
+  {
+    id: "onboarding-2",
+    name: "Emmanuella Ifeanyi",
+    userType: "Distributor",
+    status: "Approved",
+    requestDate: "15/09/2025 - 10:30am",
+    country: "Nigeria",
+    category: "Medical consumables",
+  },
+  {
+    id: "onboarding-3",
+    name: "Amina Yusuf",
+    userType: "OEM",
+    status: "Pending",
+    requestDate: "14/09/2025 - 03:45pm",
+    country: "Ghana",
+    category: "Diagnostic equipment",
+  },
+  {
+    id: "onboarding-4",
+    name: "Ibrahim Zainab",
+    userType: "Service Engineer",
+    status: "Rejected",
+    requestDate: "13/09/2025 - 01:16pm",
+    country: "Nigeria",
+    category: "Imaging systems",
+  },
+  {
+    id: "onboarding-5",
+    name: "Abang Okon",
+    userType: "Distributor",
+    status: "Pending",
+    requestDate: "12/09/2025 - 05:02pm",
+    country: "Cameroon",
+    category: "Hospital furniture",
+  },
+  {
+    id: "onboarding-6",
+    name: "Kelechi Okafor",
+    userType: "OEM",
+    status: "Pending",
+    requestDate: "11/09/2025 - 09:12am",
+    country: "Nigeria",
+    category: "Laboratory supplies",
+  },
+];
 
 const EMPTY_SUMMARY: AdminPlatformUsersSummary = {
   approvedUsers: {
@@ -160,7 +210,7 @@ function ActionIcons({ onView }: { onView: () => void }) {
       <button
         type="button"
         disabled
-        title="Messaging is deferred"
+        title="Messaging unavailable"
         className="cursor-not-allowed text-primary opacity-70"
       >
         <MessageSquare size={18} />
@@ -194,15 +244,23 @@ function ActionCard({
   icon,
   title,
   description,
+  disabled = false,
+  onClick,
 }: {
   icon: React.ReactNode;
   title: string;
   description: string;
+  disabled?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <button
       type="button"
-      className="flex h-[86px] w-full items-center justify-between rounded-[12px] px-2 text-left hover:bg-gray7"
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex h-[86px] w-full items-center justify-between rounded-[12px] px-2 text-left ${
+        disabled ? "cursor-not-allowed opacity-60" : "hover:bg-gray7"
+      }`}
     >
       <span className="flex min-w-0 items-center gap-4">
         <span className="flex size-[62px] shrink-0 items-center justify-center rounded-[12px] bg-primary-light text-primary">
@@ -223,9 +281,11 @@ function ActionCard({
 function PlatformUserDrawer({
   user,
   onClose,
+  onOpenKycOverview,
 }: {
   user: AdminPlatformUserRow | null;
   onClose: () => void;
+  onOpenKycOverview: (user: AdminPlatformUserRow) => void;
 }) {
   const actionCards = [
     {
@@ -240,6 +300,8 @@ function PlatformUserDrawer({
     { icon: <Store size={30} />, title: "Store", description: "Manage store" },
     { icon: <Package size={30} />, title: "Products", description: "View and manage product" },
   ];
+
+  const isBuyer = user?.role === UserRole.BUYER;
 
   return (
     <RightSlider
@@ -290,10 +352,163 @@ function PlatformUserDrawer({
             </div>
             <div className="space-y-3">
               {actionCards.map((card) => (
-                <ActionCard key={card.title} {...card} />
+                <ActionCard
+                  key={card.title}
+                  {...card}
+                  disabled={card.title === "KYC" ? !isBuyer : false}
+                  onClick={
+                    card.title === "KYC" && user && isBuyer
+                      ? () => onOpenKycOverview(user)
+                      : undefined
+                  }
+                />
               ))}
             </div>
           </section>
+        </div>
+      ) : null}
+    </RightSlider>
+  );
+}
+
+function normalizeAdminKycRows(
+  payload:
+    | AdminKycListRow[]
+    | {
+        docs: AdminKycListRow[];
+      },
+): AdminKycListRow[] {
+  return Array.isArray(payload) ? payload : payload.docs;
+}
+
+function PlatformUserKycDrawer({
+  user,
+  detail,
+  loading,
+  error,
+  onClose,
+}: {
+  user: AdminPlatformUserRow | null;
+  detail: AdminKycSubmissionDetail | null;
+  loading: boolean;
+  error: string;
+  onClose: () => void;
+}) {
+  const displayName =
+    user?.name ||
+    (detail?.user
+      ? `${detail.user.firstName ?? ""} ${detail.user.lastName ?? ""}`.trim()
+      : "") ||
+    ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.fullName;
+
+  const statusLabel =
+    detail?.requestStatusLabel ||
+    detail?.status ||
+    ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.status;
+
+  const tierLabel =
+    detail?.tierLabel || ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.tierLabel;
+
+  const registrationDate = detail?.createdAt
+    ? formatDateTime(detail.createdAt)
+    : ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.registrationDate;
+
+  const detailFields = Object.entries(detail?.textFields ?? {}).filter(([, value]) => Boolean(value));
+  const fallbackFields = ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.textFields;
+  const documentNames =
+    detail?.documents.length
+      ? detail.documents.map((document) => document.fileName)
+      : [...ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.documents];
+
+  return (
+    <RightSlider
+      title="Compliance / KYC"
+      open={Boolean(user)}
+      onClose={onClose}
+      bodyClassName="px-10 pb-10"
+    >
+      {user ? (
+        <div className="space-y-8 pt-6">
+          <section className="space-y-5">
+            <div className="rounded-[16px] border border-[#FFE079] bg-[#FFF6D9] px-8 py-5">
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-lg font-medium leading-6 text-[#272B36]">
+                  Verification Status
+                </p>
+                <span className="rounded-[8px] bg-warning px-4 py-2 text-base leading-7 text-white">
+                  {statusLabel}
+                </span>
+              </div>
+            </div>
+
+            {error ? (
+              <div className="rounded-[12px] border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                {error}
+              </div>
+            ) : null}
+
+            <DetailItem label="Name of user" value={displayName} />
+            <DetailItem
+              label="Email address"
+              value={user.email || detail?.user?.email || ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.email}
+            />
+            <DetailItem
+              label="Role"
+              value={detail?.user?.role || user.roleLabel || ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.role}
+            />
+            <DetailItem label="KYC level" value={tierLabel} />
+            <DetailItem label="Registration date" value={registrationDate} />
+            <DetailItem
+              label="Documents submitted"
+              value={
+                detail?.documents.length
+                  ? `${detail.documents.length}/${detail.documents.length}`
+                  : ADMIN_PLATFORM_USER_KYC_OVERVIEW_FIGMA_FALLBACK.documentSubmitted
+              }
+            />
+          </section>
+
+          <section className="space-y-4 border-t border-gray6 pt-8">
+            <div>
+              <h4 className="text-lg font-medium leading-8 text-gray1">Submitted details</h4>
+              <p className="text-sm leading-5 text-gray2">
+                Admin-facing compliance snapshot for this buyer.
+              </p>
+            </div>
+            <div className="space-y-5">
+              {(detailFields.length ? detailFields : fallbackFields).map(([label, value]) => (
+                <DetailItem key={label} label={label} value={value} />
+              ))}
+            </div>
+          </section>
+
+          <section className="space-y-4 border-t border-gray6 pt-8">
+            <div>
+              <h4 className="text-lg font-medium leading-8 text-gray1">Uploaded documents</h4>
+              <p className="text-sm leading-5 text-gray2">
+                Use live files where available, otherwise keep the Figma-backed shell intact.
+              </p>
+            </div>
+            <div className="space-y-3">
+              {documentNames.map((documentName) => (
+                <div
+                  key={documentName}
+                  className="rounded-[12px] border border-gray6 px-4 py-3 text-sm text-gray1"
+                >
+                  {documentName}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <Button
+            title={loading ? "Loading KYC details..." : "Open KYC management"}
+            className="h-[60px] rounded-[14px]"
+            disabled={loading}
+            onClick={() => {
+              window.location.assign("/dashboard/admin/kyc-verification");
+            }}
+          />
         </div>
       ) : null}
     </RightSlider>
@@ -344,6 +559,10 @@ export default function AdminPlatformUsersPage() {
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [usersPage, setUsersPage] = useState(EMPTY_PAGE);
   const [selectedUser, setSelectedUser] = useState<AdminPlatformUserRow | null>(null);
+  const [selectedKycUser, setSelectedKycUser] = useState<AdminPlatformUserRow | null>(null);
+  const [selectedKycDetail, setSelectedKycDetail] = useState<AdminKycSubmissionDetail | null>(null);
+  const [selectedKycLoading, setSelectedKycLoading] = useState(false);
+  const [selectedKycError, setSelectedKycError] = useState("");
   const [selectedOnboarding, setSelectedOnboarding] = useState<OnboardingRow | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -418,6 +637,49 @@ export default function AdminPlatformUsersPage() {
     setPage(1);
   };
 
+  const openBuyerKycOverview = useCallback(
+    async (user: AdminPlatformUserRow) => {
+      setSelectedKycUser(user);
+      setSelectedKycDetail(null);
+      setSelectedKycError("");
+      setSelectedKycLoading(true);
+
+      if (!token) {
+        setSelectedKycLoading(false);
+        return;
+      }
+
+      try {
+        const response = await kycService.getAdminSubmissions(token, {
+          userCategory: "buyer",
+          limit: 100,
+        });
+
+        const kycRows = normalizeAdminKycRows(response.data);
+        const matchedRow =
+          kycRows.find((row) => row.email?.toLowerCase() === user.email?.toLowerCase()) ??
+          kycRows.find((row) => row.fullName?.trim().toLowerCase() === user.name?.trim().toLowerCase()) ??
+          null;
+
+        if (!matchedRow) {
+          return;
+        }
+
+        const detailResponse = await kycService.getAdminSubmission(token, matchedRow._id);
+        setSelectedKycDetail(detailResponse.data);
+      } catch (nextError) {
+        setSelectedKycError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Unable to load buyer compliance details.",
+        );
+      } finally {
+        setSelectedKycLoading(false);
+      }
+    },
+    [token],
+  );
+
   const approvedSummary = summary.approvedUsers;
   const onboardingSummary = summary.onboardingRequests;
   const onboardingTotal = onboardingSummary.supported
@@ -474,7 +736,7 @@ export default function AdminPlatformUsersPage() {
                 <p className="text-lg leading-7 text-gray1">
                   {topTab === "approved"
                     ? "Total platform users"
-                    : "Total onboarding request"}
+                    : "Total onboarding requests"}
                 </p>
                 {topTab === "approved" ? (
                   <div className="mt-2 flex flex-wrap items-center gap-3 text-base leading-6 text-gray3">
@@ -514,6 +776,11 @@ export default function AdminPlatformUsersPage() {
                   iconLeft={<Plus size={18} />}
                   className="h-[60px] w-full rounded-[12px] md:w-[250px]"
                   type="button"
+                  onClick={() => {
+                    window.location.assign(
+                      "/dashboard/admin/user-management/add-user?source=platform-users&role=agent"
+                    );
+                  }}
                 />
               ) : null}
             </div>
@@ -817,7 +1084,7 @@ export default function AdminPlatformUsersPage() {
                   className="rounded-[12px]"
                 />
                 <Input
-                  label="Date verified"
+                  label="Date submitted"
                   type="date"
                   value=""
                   onChange={() => {}}
@@ -890,6 +1157,21 @@ export default function AdminPlatformUsersPage() {
       <PlatformUserDrawer
         user={selectedUser}
         onClose={() => setSelectedUser(null)}
+        onOpenKycOverview={(user) => {
+          setSelectedUser(null);
+          void openBuyerKycOverview(user);
+        }}
+      />
+      <PlatformUserKycDrawer
+        user={selectedKycUser}
+        detail={selectedKycDetail}
+        loading={selectedKycLoading}
+        error={selectedKycError}
+        onClose={() => {
+          setSelectedKycUser(null);
+          setSelectedKycDetail(null);
+          setSelectedKycError("");
+        }}
       />
       <OnboardingDrawer
         request={selectedOnboarding}

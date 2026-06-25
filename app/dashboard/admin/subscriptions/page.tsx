@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight, CalendarDays, Coins, CreditCard, Eye, FileText, RefreshCw, Repeat, SlidersHorizontal, TrendingUp, Users } from "lucide-react";
 import Header from "../../component/header";
 import { Button, Input, SingleSelect, SummaryCard } from "@/components/base";
+import { ADMIN_SUBSCRIPTION_ROWS } from "@/constants/adminFigmaFallbacks";
 import {
   Table,
   TableBody,
@@ -475,10 +476,10 @@ export default function AdminSubscriptionsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {SUBSCRIBER_ROWS.map((row, index) => (
+                {ADMIN_SUBSCRIPTION_ROWS.map((row, index) => (
                   <TableRow
                     key={row.id}
-                    className={index === SUBSCRIBER_ROWS.length - 1 ? "hidden md:table-row" : undefined}
+                    className={index === ADMIN_SUBSCRIPTION_ROWS.length - 1 ? "hidden md:table-row" : undefined}
                   >
                     <TableCell className="min-w-[160px]">
                       <div className="flex items-center gap-3">
@@ -501,14 +502,16 @@ export default function AdminSubscriptionsPage() {
                     <TableCell className="whitespace-nowrap">{row.expRenewalDate}</TableCell>
                     <TableCell>{row.arpu}</TableCell>
                     <TableCell>
-                      <Button
-                        title="View"
-                        variant="primaryLight"
-                        size="sm"
-                        iconLeft={<Eye size={14} />}
-                        className="w-auto"
-                        type="button"
-                      />
+                      <Link href={`/dashboard/admin/subscriptions/subscriber-detail?subscriberId=${row.id}`}>
+                        <Button
+                          title="View"
+                          variant="primaryLight"
+                          size="sm"
+                          iconLeft={<Eye size={14} />}
+                          className="w-auto"
+                          type="button"
+                        />
+                      </Link>
                     </TableCell>
                   </TableRow>
                 ))}

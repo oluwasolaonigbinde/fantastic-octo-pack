@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { CreditCard, Eye, Filter, Wallet } from "lucide-react";
 import Header from "../../component/header";
 import { Button, Input, SummaryCard } from "@/components/base";
+import { ADMIN_PAYMENT_ROWS } from "@/constants/adminFigmaFallbacks";
 import {
   Table,
   TableBody,
@@ -15,17 +17,6 @@ import {
 /* ------------------------------------------------------------------ */
 /*  Mock data matching Figma                                           */
 /* ------------------------------------------------------------------ */
-
-const PAYMENT_ROWS = Array.from({ length: 9 }).map((_, i) => ({
-  id: `pay-${i + 1}`,
-  orderId: "The order ID",
-  buyerId: "Buyer ID/name",
-  sellerId: "Samuel S.",
-  nameOfItem: "MRI machine",
-  engineerId: "Samuel S.",
-  status: (["Under dispute", "Delivered", "Payment", "Delivered", "Delivered", "Under dispute", "Under dispute", "Under dispute", "Under dispute"] as const)[i],
-  dateTime: "25/11/25 - 08:00 AM",
-}));
 
 const statusColor: Record<string, string> = {
   "Under dispute": "text-warning",
@@ -103,7 +94,7 @@ export default function AdminPaymentPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {PAYMENT_ROWS.map((row) => (
+                {ADMIN_PAYMENT_ROWS.map((row) => (
                   <TableRow key={row.id}>
                     <TableCell className="font-medium text-gray1">
                       {row.orderId}
@@ -123,14 +114,16 @@ export default function AdminPaymentPage() {
                       {row.dateTime}
                     </TableCell>
                     <TableCell>
-                      <Button
-                        title="View"
-                        variant="primaryLight"
-                        size="sm"
-                        iconLeft={<Eye size={14} />}
-                        className="w-auto"
-                        type="button"
-                      />
+                      <Link href={`/dashboard/admin/payment/escrow-detail?paymentId=${row.id}`}>
+                        <Button
+                          title="View"
+                          variant="primaryLight"
+                          size="sm"
+                          iconLeft={<Eye size={14} />}
+                          className="w-auto"
+                          type="button"
+                        />
+                      </Link>
                     </TableCell>
                   </TableRow>
                 ))}
