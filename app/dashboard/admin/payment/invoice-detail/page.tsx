@@ -1,27 +1,42 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 import { X } from "lucide-react";
 
-const rows = [
-  ["Invoice ID", "This will be the ID number", false],
-  ["Item", "This will be the name of the item", false],
-  ["Unit price", "₦50,000", true],
-  ["Quantity", "10", false],
-  ["Total amount", "₦500,000", true],
-  ["Buyer’s name", "This will be the name of the buyer", false],
-  ["Distributor’s name", "This will be the name of the distributor", false],
-  ["Payment method", "ESCROW", false],
-  ["Distributor’s account", "43546536577", true],
-  ["Bank name", "Opay", true],
-  ["Date created", "25/11/25", false],
-] as const;
+import {
+  ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK,
+  ADMIN_PAYMENT_ROWS,
+} from "@/constants/adminFigmaFallbacks";
 
 export default function AdminPaymentInvoiceDetailPage() {
+  const searchParams = useSearchParams();
+  const paymentId = searchParams.get("paymentId");
+
+  const paymentRow = useMemo(
+    () => ADMIN_PAYMENT_ROWS.find((row) => row.id === paymentId) ?? null,
+    [paymentId],
+  );
+
+  const rows = [
+    ["Invoice ID", paymentRow?.orderId || ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.invoiceId, false],
+    ["Item", paymentRow?.nameOfItem || ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.itemName, false],
+    ["Unit price", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.unitPrice, true],
+    ["Quantity", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.quantity, false],
+    ["Total amount", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.totalAmount, true],
+    ["Buyer's name", paymentRow?.buyerId || ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.buyerName, false],
+    ["Distributor's name", paymentRow?.sellerId || ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.distributorName, false],
+    ["Payment method", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.paymentMethod, false],
+    ["Distributor's account", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.distributorAccount, true],
+    ["Bank name", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.bankName, true],
+    ["Date created", paymentRow?.dateTime || ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.dateCreated, false],
+  ] as const;
+
   return (
     <div className="fixed inset-y-0 right-0 z-[100] w-full max-w-[500px] overflow-hidden bg-white text-gray1 shadow-xl">
       <header className="flex h-[100px] items-end justify-between border-b border-gray5 px-10 pb-5 pt-10">
-        <h1 className="text-2xl font-semibold leading-10">Resolution summary</h1>
+        <h1 className="text-2xl font-semibold leading-10">Invoice Details</h1>
         <Link
           href="/dashboard/admin/payment"
           aria-label="Close invoice details"

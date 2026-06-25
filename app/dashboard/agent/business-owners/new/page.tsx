@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { CheckCircle2, UserPlus, XCircle } from "lucide-react";
+import { AlertCircle, ThumbsUp, UserPlus } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
 import Header from "../../../component/header";
@@ -17,16 +17,16 @@ export default function AgentAddBusinessOwnerPage() {
       {state === "success" ? (
         <StateOverlay
           tone="success"
-          title="Business owner added"
-          description="The business owner has been successfully added to your network."
+          title="Congratulations"
+          description="You've onboarded a new business"
           href="/dashboard/agent/business-owners"
         />
       ) : null}
       {state === "error" ? (
         <StateOverlay
           tone="error"
-          title="Unable to add business owner"
-          description="Check the submitted information and try again."
+          title="Sorry, business owner onboarding failed"
+          description="Click below to try the submission again."
           href="/dashboard/agent/business-owners/new"
         />
       ) : null}
@@ -112,27 +112,53 @@ function StateOverlay({
   href: string;
 }) {
   const isSuccess = tone === "success";
+
+  if (isSuccess) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div
+          data-testid="add-business-owner-success-modal"
+          className="w-full max-w-[320px] rounded-[32px] border-2 border-[#0669D9] bg-white px-10 pb-7 pt-9 text-center"
+        >
+          <span className="mx-auto flex size-14 items-center justify-center text-[#13A83B]">
+            <ThumbsUp size={40} strokeWidth={1.8} />
+          </span>
+          <h2 className="mt-4 text-[18px] font-medium text-[#13A83B]">{title}</h2>
+          <p className="mt-3 text-[15px] leading-7 text-[#111827]">{description}</p>
+          <Link
+            href={href}
+            className="mt-9 inline-flex h-[54px] w-full items-center justify-center rounded-[14px] bg-[#156FE5] text-[15px] font-medium text-white"
+          >
+            Okay
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl">
-        <span
-          className={`mx-auto flex size-14 items-center justify-center rounded-full ${
-            isSuccess ? "bg-[#DCFCE7]" : "bg-[#FEE2E2]"
-          }`}
-        >
-          {isSuccess ? (
-            <CheckCircle2 size={30} className="text-[#13A83B]" />
-          ) : (
-            <XCircle size={30} className="text-[#DC2626]" />
-          )}
-        </span>
-        <h2 className="mt-4 text-lg font-semibold text-[#111827]">{title}</h2>
-        <p className="mt-2 text-sm leading-6 text-[#6B7280]">{description}</p>
+      <div
+        data-testid="add-business-owner-error-modal"
+        className="w-full max-w-[320px] rounded-[32px] border-2 border-[#0669D9] bg-white px-8 pb-7 pt-6"
+      >
+        <div className="rounded-[18px] border border-[#FFD6C2] bg-[#FFFDFC] p-4">
+          <AlertCircle size={28} className="text-[#FE6E00]" />
+          <h2 className="mt-4 max-w-[180px] text-[18px] font-medium leading-8 text-[#111827]">
+            {title}
+          </h2>
+          <Link
+            href={href}
+            className="mt-4 inline-flex text-[15px] font-medium text-[#FE6E00]"
+          >
+            Click here to try again
+          </Link>
+        </div>
         <Link
-          href={href}
-          className="mt-6 inline-flex w-full justify-center rounded-xl bg-[#0669D9] px-5 py-3 text-sm font-medium text-white"
+          href="/dashboard/agent/business-owners"
+          className="mt-6 inline-flex h-[54px] w-full items-center justify-center rounded-[14px] border border-[#0669D9] bg-[#EAF9FF] text-[15px] font-medium text-[#03265C]"
         >
-          Continue
+          Cancel
         </Link>
       </div>
     </div>

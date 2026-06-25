@@ -1,17 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ChevronDown, X } from "lucide-react";
 
 import { Button } from "@/components/base";
-
-const fields = [
-  { label: "Full name", placeholder: "Enter full name", select: false },
-  { label: "Email address", placeholder: "Enter user's email address", select: false },
-  { label: "Phone number", placeholder: "Enter phone number", select: false },
-  { label: "Status", placeholder: "Select status", select: true },
-  { label: "Role", placeholder: "Select role", select: true },
-];
+import { ADMIN_PLATFORM_USERS_ADD_AGENT_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 
 function UserField({
   label,
@@ -34,13 +28,45 @@ function UserField({
 }
 
 export default function AdminAddUserPage() {
+  const searchParams = useSearchParams();
+  const role = searchParams.get("role");
+  const source = searchParams.get("source");
+  const isAgentMode = role === "agent" && source === "platform-users";
+
+  const fields = [
+    { label: "Full name", placeholder: "Enter full name", select: false },
+    { label: "Email address", placeholder: "Enter user's email address", select: false },
+    { label: "Phone number", placeholder: "Enter phone number", select: false },
+    { label: "Status", placeholder: "Select status", select: true },
+    {
+      label: "Role",
+      placeholder: isAgentMode
+        ? ADMIN_PLATFORM_USERS_ADD_AGENT_FIGMA_FALLBACK.rolePlaceholder
+        : "Select role",
+      select: true,
+    },
+  ];
+
+  const title = isAgentMode
+    ? ADMIN_PLATFORM_USERS_ADD_AGENT_FIGMA_FALLBACK.title
+    : "Add a New User";
+  const description = isAgentMode
+    ? ADMIN_PLATFORM_USERS_ADD_AGENT_FIGMA_FALLBACK.description
+    : "Kindly enter all correct information to successfully create a new user.";
+  const cta = isAgentMode
+    ? ADMIN_PLATFORM_USERS_ADD_AGENT_FIGMA_FALLBACK.cta
+    : "Proceed To Create This User";
+  const closeHref = isAgentMode
+    ? "/dashboard/admin/platform-users"
+    : "/dashboard/admin/user-management";
+
   return (
-    <div className="fixed inset-y-0 right-0 z-[100] w-full max-w-[500px] overflow-hidden bg-white text-gray1 shadow-xl">
-      <main className="h-[750px] w-[420px] px-10 pt-10">
+    <div className="fixed inset-0 z-[100] flex justify-end bg-black/20 text-gray1">
+      <main className="h-full w-full max-w-[500px] overflow-y-auto border-l border-gray6 bg-white px-10 pt-10 shadow-xl">
         <div className="flex h-8 w-full items-center justify-between">
-          <h1 className="text-xl font-semibold leading-8 text-black">Add a New User</h1>
+          <h1 className="text-xl font-semibold leading-8 text-black">{title}</h1>
           <Link
-            href="/dashboard/admin/user-management"
+            href={closeHref}
             aria-label="Close add user"
             className="flex size-6 items-center justify-center"
           >
@@ -48,10 +74,8 @@ export default function AdminAddUserPage() {
           </Link>
         </div>
 
-        <div className="mt-6 flex flex-col gap-8">
-          <p className="whitespace-nowrap text-sm leading-5 text-black">
-            Kindly enter all correct information to successfully create a new user
-          </p>
+        <div className="mt-6 flex flex-col gap-8 pb-10">
+          <p className="text-sm leading-5 text-black">{description}</p>
 
           <div className="flex flex-col gap-6">
             {fields.map((field) => (
@@ -60,7 +84,7 @@ export default function AdminAddUserPage() {
           </div>
 
           <Button
-            title="Proceed To Create This User"
+            title={cta}
             className="h-[60px] w-full rounded-[14px] text-lg"
             type="button"
           />

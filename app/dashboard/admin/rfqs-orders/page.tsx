@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
+  CalendarDays,
   CircleDollarSign,
   ClipboardList,
   Download,
@@ -15,6 +16,7 @@ import {
 
 import Header from "../../component/header";
 import { Button, Input, RightSlider, SummaryCard } from "@/components/base";
+import { ADMIN_RFQS_ORDERS_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import {
   Table,
   TableBody,
@@ -40,11 +42,25 @@ import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS } from "@/types/rfq";
 
 const POLL_INTERVAL_MS = 30_000;
 const PAGE_SIZE = 20;
-const FIELD_PENDING = "Pending backend field";
-const ORDER_DATE_DURATION_FALLBACK = "1 week";
+const FIGMA_DETAIL_FALLBACK = {
+  distributorName: "Oluwatobiloba Babatunde",
+  distributorPhone: "08130000000",
+  distributorEmail: "oluwatunde@gmail.com",
+  productName: "The name of the product",
+  quantity: "12",
+  unitPrice: 60028,
+  totalPrice: 780070,
+  requestDate: "12/09/2025",
+  orderDateTime: "12/09/2025 - 12:20am",
+} as const;
 
 type TopTab = "rfqs" | "orders";
-type RfqSubTab = "requests" | "quotes";
+type RfqSubTab =
+  | "all"
+  | "quoteSent"
+  | "quoteReceived"
+  | "quoteApproved"
+  | "quoteDeclined";
 type DetailTarget =
   | { kind: "rfq"; row: AdminRfqRow }
   | { kind: "quote"; row: AdminQuoteRow }
@@ -97,6 +113,14 @@ const decimalNumberFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+const RFQ_VIEW_TABS: Array<{ key: RfqSubTab; label: string }> = [
+  { key: "all", label: "All" },
+  { key: "quoteSent", label: "Quote Sent" },
+  { key: "quoteReceived", label: "Quote Received" },
+  { key: "quoteApproved", label: "Quotes Approved" },
+  { key: "quoteDeclined", label: "Quotes Declined" },
+];
+
 function formatMoney(value?: number | null): string {
   if (typeof value !== "number") return "Not available";
   return moneyFormatter.format(value);
@@ -112,7 +136,23 @@ function formatDate(value?: string | null): string {
 function formatOrderTableDate(value?: string | null): string {
   const formattedDate = formatDate(value);
   if (formattedDate === "Not available") return formattedDate;
-  return `${formattedDate} (${ORDER_DATE_DURATION_FALLBACK})`;
+  return formattedDate;
+}
+
+function formatDateTimeUtc(value?: string | null): string {
+  if (!value) return "Not available";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not available";
+
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const year = date.getUTCFullYear();
+  const hours24 = date.getUTCHours();
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  const period = hours24 >= 12 ? "pm" : "am";
+  const hours12 = hours24 % 12 || 12;
+
+  return `${day}/${month}/${year} - ${hours12}:${minutes}${period}`;
 }
 
 function formatWholeNumber(value?: number | null): string {
@@ -125,6 +165,27 @@ function formatDecimalNumber(value?: number | null): string {
 
 function formatQuantity(value?: number | null): string {
   return typeof value === "number" ? String(value) : "Not available";
+}
+
+function pickFirstText(...values: Array<string | null | undefined>): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function presentText(value: string | undefined, fallback: string): string {
+  return value && value !== "Not available" ? value : fallback;
+}
+
+function presentDate(value?: string | null, fallback = FIGMA_DETAIL_FALLBACK.requestDate): string {
+  return presentText(formatDate(value), fallback);
+}
+
+function presentDateTime(value?: string | null, fallback = FIGMA_DETAIL_FALLBACK.orderDateTime): string {
+  return presentText(formatDateTimeUtc(value), fallback);
 }
 
 function isUserRef(value: unknown): value is UserRef {
@@ -141,12 +202,18 @@ function getUserName(value: unknown, fallback = "Not available"): string {
   );
 }
 
-function getUserEmail(value: unknown): string {
-  return isUserRef(value) ? value.email : "Not available";
+function getUserEmail(
+  value: unknown,
+  fallback = FIGMA_DETAIL_FALLBACK.distributorEmail
+): string {
+  return isUserRef(value) && value.email ? value.email : fallback;
 }
 
-function getUserPhone(value: unknown): string {
-  return isUserRef(value) && value.phoneNumber ? value.phoneNumber : FIELD_PENDING;
+function getUserPhone(
+  value: unknown,
+  fallback = FIGMA_DETAIL_FALLBACK.distributorPhone
+): string {
+  return isUserRef(value) && value.phoneNumber ? value.phoneNumber : fallback;
 }
 
 function getFirstRfqItem(rfq?: Rfq) {
@@ -212,6 +279,49 @@ function PlainAction({
   );
 }
 
+function AdminDateChip({ label }: { label: string }) {
+  return (
+    <div className="inline-flex h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
+      <span>{label}</span>
+      <CalendarDays size={18} className="text-gray2" />
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  icon,
+  iconBg,
+  className = "",
+}: {
+  title: string;
+  value: string;
+  icon?: ReactNode;
+  iconBg?: string;
+  className?: string;
+}) {
+  return (
+    <div className={`rounded-2xl border border-gray5 bg-white px-5 py-6 ${className}`.trim()}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-base font-medium leading-6 text-gray2">{title}</p>
+          <p className="mt-2 text-[22px] font-semibold leading-8 text-gray1 lg:text-[28px] lg:leading-9">
+            {value}
+          </p>
+        </div>
+        {icon && iconBg ? (
+          <span
+            className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${iconBg}`}
+          >
+            {icon}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 type StatusTone = "warning" | "success" | "danger" | "primary";
 
 function StatusText({ children, tone = "warning" }: { children: ReactNode; tone?: StatusTone }) {
@@ -270,7 +380,8 @@ function getOrderStatusLabel(status: string): string {
 
 function getOrderPaymentStatus(order?: Order): string {
   if (order?.paymentStatus) return order.paymentStatus;
-  return order?.status && order.status !== "created_pending_payment" ? "YES" : "NO";
+  if (order?.status && order.status !== "created_pending_payment") return "YES";
+  return "Not available";
 }
 
 function getOrderProposedDeliveryDate(order?: Order): string {
@@ -280,7 +391,7 @@ function getOrderProposedDeliveryDate(order?: Order): string {
 export default function AdminRfqsOrdersPage() {
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const [topTab, setTopTab] = useState<TopTab>("rfqs");
-  const [rfqSub, setRfqSub] = useState<RfqSubTab>("requests");
+  const [rfqSub, setRfqSub] = useState<RfqSubTab>("all");
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
   const [rfqsPage, setRfqsPage] = useState<AdminPagination<AdminRfqRow>>(
     emptyPage<AdminRfqRow>()
@@ -322,7 +433,7 @@ export default function AdminRfqsOrdersPage() {
         adminService.getRfqsOrdersSummary(token),
         topTab === "orders"
           ? adminService.getOrders(token, params)
-          : rfqSub === "quotes"
+          : rfqSub !== "all"
             ? adminService.getQuotes(token, params)
             : adminService.getRfqs(token, params),
       ]);
@@ -330,7 +441,7 @@ export default function AdminRfqsOrdersPage() {
       setSummary(nextSummary);
       if (topTab === "orders") {
         setOrdersPage(nextPage as AdminPagination<AdminOrderRow>);
-      } else if (rfqSub === "quotes") {
+      } else if (rfqSub !== "all") {
         setQuotesPage(nextPage as AdminPagination<AdminQuoteRow>);
       } else {
         setRfqsPage(nextPage as AdminPagination<AdminRfqRow>);
@@ -362,7 +473,7 @@ export default function AdminRfqsOrdersPage() {
   }, [loadData, token]);
 
   const activePage =
-    topTab === "orders" ? ordersPage : rfqSub === "quotes" ? quotesPage : rfqsPage;
+    topTab === "orders" ? ordersPage : rfqSub !== "all" ? quotesPage : rfqsPage;
 
   const detailTitle = useMemo(() => {
     if (!detailTarget) return "Details";
@@ -375,6 +486,36 @@ export default function AdminRfqsOrdersPage() {
     setAppliedFilters({ ...draftFilters });
     setPage(1);
   };
+
+  const activeRfqMetricTitle = useMemo(() => {
+    switch (rfqSub) {
+      case "quoteSent":
+        return "Total quote sent";
+      case "quoteReceived":
+        return "Total Quotes Received";
+      case "quoteApproved":
+        return "Total Quotes Approved";
+      case "quoteDeclined":
+        return "Total quote Declined";
+      default:
+        return "Total request for quote";
+    }
+  }, [rfqSub]);
+
+  const activeRfqMetricValue = useMemo(() => {
+    switch (rfqSub) {
+      case "quoteSent":
+        return String(summary.rfqs.totalQuotesSent || ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteSent);
+      case "quoteReceived":
+        return String(ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteReceived);
+      case "quoteApproved":
+        return String(ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteApproved);
+      case "quoteDeclined":
+        return String(ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteDeclined);
+      default:
+        return String(summary.rfqs.totalRequests || ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.totalRequested);
+    }
+  }, [rfqSub, summary.rfqs.totalQuotesSent, summary.rfqs.totalRequests]);
 
   const openDetail = async (target: DetailTarget) => {
     setDetailTarget(target);
@@ -450,30 +591,57 @@ export default function AdminRfqsOrdersPage() {
 
         {topTab === "rfqs" && (
           <>
-            <div className="grid gap-4 md:grid-cols-2">
-              <SummaryCard
-                title="Total request for quote"
-                value={String(summary.rfqs.totalRequests)}
-                icon={<FileText size={18} className="text-primary" />}
-                iconBg="bg-[#E7F1FF]"
-                className="rounded-2xl"
+            <AdminDateChip
+              label={ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.dateRangeLabel}
+            />
+
+            {rfqSub === "all" ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                <MetricCard
+                  title="Total quotes requested"
+                  value={String(
+                    summary.rfqs.totalRequests ||
+                      ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.totalRequested
+                  )}
+                  icon={<UsersRound size={18} className="text-primary" />}
+                  iconBg="bg-[#E7F1FF]"
+                />
+                <MetricCard
+                  title="Total quote sent"
+                  value={String(
+                    summary.rfqs.totalQuotesSent ||
+                      ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteSent
+                  )}
+                />
+                <MetricCard
+                  title="Total Quotes Received"
+                  value={String(
+                    ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteReceived
+                  )}
+                />
+                <MetricCard
+                  title="Total Quotes Approved"
+                  value={String(
+                    ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteApproved
+                  )}
+                />
+                <MetricCard
+                  title="Total quote Declined"
+                  value={String(
+                    ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteDeclined
+                  )}
+                />
+              </div>
+            ) : (
+              <MetricCard
+                title={activeRfqMetricTitle}
+                value={activeRfqMetricValue}
+                className="min-h-[126px]"
               />
-              <SummaryCard
-                title="Total quote sent"
-                value={String(summary.rfqs.totalQuotesSent)}
-                icon={<FileText size={18} className="text-[#E07B00]" />}
-                iconBg="bg-[#FFF3E0]"
-                className="rounded-2xl"
-              />
-            </div>
+            )}
 
             <div className="flex overflow-x-auto border-b border-gray5">
-              {(
-                [
-                  ["requests", "Request For Quotes"],
-                  ["quotes", "Quotes Sent"],
-                ] as const
-              ).map(([key, label]) => (
+              {RFQ_VIEW_TABS.map(({ key, label }) => (
                 <button
                   key={key}
                   type="button"
@@ -494,7 +662,7 @@ export default function AdminRfqsOrdersPage() {
 
             <section className="rounded-2xl border border-gray5 bg-white p-5 lg:min-h-[1180px]">
               <h3 className="text-xl font-semibold leading-8 text-gray1">
-                {rfqSub === "quotes" ? "All Quotes Sent" : "All Request For Quotes"}
+                {rfqSub === "all" ? "All Request For Quotes" : "All Quotes Sent"}
               </h3>
               <p className="mt-6 text-sm font-medium text-gray2">
                 Filter table list by:
@@ -542,14 +710,14 @@ export default function AdminRfqsOrdersPage() {
                       <TableHead>Unit price</TableHead>
                       <TableHead>Total price</TableHead>
                       <TableHead>
-                        {rfqSub === "quotes" ? "Date received" : "Delivery time"}
+                        {rfqSub === "all" ? "Delivery time" : "Date received"}
                       </TableHead>
-                      {rfqSub === "requests" && <TableHead>Status</TableHead>}
+                      {rfqSub === "all" && <TableHead>Status</TableHead>}
                       <TableHead>Action</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rfqSub === "requests" &&
+                    {rfqSub === "all" &&
                       (rfqsPage.docs.length === 0 ? (
                         <EmptyRow colSpan={8} />
                       ) : (
@@ -586,7 +754,7 @@ export default function AdminRfqsOrdersPage() {
                         ))
                       ))}
 
-                    {rfqSub === "quotes" &&
+                    {rfqSub !== "all" &&
                       (quotesPage.docs.length === 0 ? (
                         <EmptyRow colSpan={7} />
                       ) : (
@@ -642,6 +810,9 @@ export default function AdminRfqsOrdersPage() {
 
         {topTab === "orders" && (
           <>
+            <AdminDateChip
+              label={ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.dateRangeLabel}
+            />
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <SummaryCard
                 title="Total pending orders"
@@ -841,34 +1012,56 @@ function DetailPanel({
         />
         <DetailField
           label="Distributor's name"
-          value={getUserName(distributor, target.row.distributorName)}
+          value={getUserName(
+            distributor,
+            target.row.distributorName || FIGMA_DETAIL_FALLBACK.distributorName
+          )}
         />
         <DetailField label="Distributor's phone number" value={getUserPhone(distributor)} />
         <DetailField label="Distributor's email" value={getUserEmail(distributor)} />
         <DetailField
           label="Product name"
-          value={getItemProductName(rfq, target.row.productName)}
+          value={getItemProductName(
+            rfq,
+            target.row.productName || FIGMA_DETAIL_FALLBACK.productName
+          )}
         />
         <DetailField
           label="Quantity"
-          value={formatQuantity(getFirstRfqItem(rfq)?.quantity ?? target.row.quantity)}
+          value={presentText(
+            formatQuantity(getFirstRfqItem(rfq)?.quantity ?? target.row.quantity),
+            FIGMA_DETAIL_FALLBACK.quantity
+          )}
         />
         <DetailField
           label="Unit price"
-          value={getItemUnitPrice(rfq, target.row.unitPrice)}
+          value={getItemUnitPrice(rfq, target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice)}
         />
-        <DetailField label="Total price" value={formatMoney(target.row.totalPrice)} />
+        <DetailField
+          label="Total price"
+          value={formatMoney(target.row.totalPrice ?? FIGMA_DETAIL_FALLBACK.totalPrice)}
+        />
         <DetailField
           label="Date of request"
-          value={formatDate(rfq?.createdAt ?? target.row.createdAt)}
+          value={presentDate(rfq?.createdAt ?? target.row.createdAt)}
         />
         <DetailField
           label="Proposed delivery date"
-          value={rfq?.deliveryLocation || target.row.deliveryTime || FIELD_PENDING}
+          value={
+            pickFirstText(
+              rfq?.deliveryLocation,
+              target.row.deliveryTime
+            ) ?? "Not available"
+          }
         />
         <DetailField
           label="Additional note"
-          value={rfq?.additionalNotes || getFirstRfqItem(rfq)?.notes || "No additional note."}
+          value={
+            pickFirstText(
+              rfq?.additionalNotes,
+              getFirstRfqItem(rfq)?.notes
+            ) ?? "Not available"
+          }
         />
       </div>
     );
@@ -891,35 +1084,60 @@ function DetailPanel({
         />
         <DetailField
           label="Distributor's name"
-          value={getUserName(quote?.distributor, target.row.distributorName)}
+          value={getUserName(
+            quote?.distributor,
+            target.row.distributorName || FIGMA_DETAIL_FALLBACK.distributorName
+          )}
         />
         <DetailField label="Distributor's phone number" value={getUserPhone(quote?.distributor)} />
         <DetailField label="Distributor's email" value={getUserEmail(quote?.distributor)} />
         <DetailField
           label="Product name"
-          value={getItemProductName(rfq, target.row.productName)}
+          value={getItemProductName(
+            rfq,
+            target.row.productName || FIGMA_DETAIL_FALLBACK.productName
+          )}
         />
         <DetailField
           label="Quantity"
-          value={formatQuantity(quote?.quantity ?? target.row.quantity)}
+          value={presentText(
+            formatQuantity(quote?.quantity ?? target.row.quantity),
+            FIGMA_DETAIL_FALLBACK.quantity
+          )}
         />
         <DetailField
           label="Unit price"
-          value={formatMoney(quote?.pricePerUnit ?? target.row.unitPrice)}
+          value={formatMoney(
+            quote?.pricePerUnit ?? target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice
+          )}
         />
         <DetailField
           label="Total price"
-          value={formatMoney(quote?.totalPrice ?? target.row.totalPrice)}
+          value={formatMoney(
+            quote?.totalPrice ?? target.row.totalPrice ?? FIGMA_DETAIL_FALLBACK.totalPrice
+          )}
         />
         <DetailField
           label="Date received"
-          value={formatDate(quote?.updatedAt ?? target.row.dateReceived)}
+          value={presentDate(quote?.updatedAt ?? target.row.dateReceived)}
         />
         <DetailField
           label="Proposed delivery date"
-          value={quote?.leadTimeDays ? `${quote.leadTimeDays} days` : FIELD_PENDING}
+          value={
+            quote?.leadTimeDays
+              ? `${quote.leadTimeDays} days`
+              : "Not available"
+          }
         />
-        <DetailField label="Additional note" value={quote?.notes || quote?.terms || "No additional note."} />
+        <DetailField
+          label="Additional note"
+          value={
+            pickFirstText(
+              quote?.notes,
+              quote?.terms
+            ) ?? "Not available"
+          }
+        />
       </div>
     );
   }
@@ -939,26 +1157,40 @@ function DetailPanel({
       />
       <DetailField
         label="Distributor's name"
-        value={getUserName(order?.seller, target.row.distributorName)}
+        value={getUserName(
+          order?.seller,
+          target.row.distributorName || FIGMA_DETAIL_FALLBACK.distributorName
+        )}
       />
       <DetailField label="Distributor's phone number" value={getUserPhone(order?.seller)} />
       <DetailField label="Distributor's email" value={getUserEmail(order?.seller)} />
       <DetailField
         label="Product name"
-        value={getOrderProductName(order, target.row.productName)}
+        value={getOrderProductName(
+          order,
+          target.row.productName || FIGMA_DETAIL_FALLBACK.productName
+        )}
       />
       <DetailField
         label="Quantity"
-        value={formatQuantity(order?.items?.[0]?.quantity ?? target.row.quantity)}
+        value={presentText(
+          formatQuantity(order?.items?.[0]?.quantity ?? target.row.quantity),
+          FIGMA_DETAIL_FALLBACK.quantity
+        )}
       />
-      <DetailField label="Unit price" value={formatMoney(target.row.unitPrice)} />
+      <DetailField
+        label="Unit price"
+        value={formatMoney(target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice)}
+      />
       <DetailField
         label="Total price"
-        value={formatMoney(order?.totalPrice ?? target.row.totalPrice)}
+        value={formatMoney(
+          order?.totalPrice ?? target.row.totalPrice ?? FIGMA_DETAIL_FALLBACK.totalPrice
+        )}
       />
       <DetailField
         label="Date of order placed"
-        value={formatDate(order?.createdAt ?? target.row.date)}
+        value={presentDateTime(order?.createdAt ?? target.row.date)}
       />
       <DetailField
         label="Proposed delivery date"
@@ -974,7 +1206,12 @@ function DetailPanel({
       />
       <DetailField
         label="Additional note"
-        value={order?.items?.[0]?.notes || order?.cancellationReason || "No additional note."}
+        value={
+          pickFirstText(
+            order?.items?.[0]?.notes,
+            order?.cancellationReason
+          ) ?? "Not available"
+        }
       />
     </div>
   );

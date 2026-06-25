@@ -1,23 +1,38 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useMemo } from "react";
 import { CheckSquare, X } from "lucide-react";
 
-const detailRows = [
-  ["Order ID", "This will be the ID number", false],
-  ["Buyer ID", "This will be the name of the item", false],
-  ["Seller ID", "This will be the name of the item", false],
-  ["Name of item", "This will be the name of the item", false],
-  ["Engineer ID", "This will be the name of the item", false],
-  ["Amount", "\u20a650,000", true],
-  ["Age of days", "2 - days", false],
-] as const;
+import {
+  ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK,
+  ADMIN_PAYMENT_ROWS,
+} from "@/constants/adminFigmaFallbacks";
 
 export default function AdminPaymentEscrowDetailPage() {
+  const searchParams = useSearchParams();
+  const paymentId = searchParams.get("paymentId");
+
+  const paymentRow = useMemo(
+    () => ADMIN_PAYMENT_ROWS.find((row) => row.id === paymentId) ?? null,
+    [paymentId],
+  );
+
+  const detailRows = [
+    ["Order ID", paymentRow?.orderId || ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.orderId, false],
+    ["Buyer ID", paymentRow?.buyerId || ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.buyerId, false],
+    ["Seller ID", paymentRow?.sellerId || ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.sellerId, false],
+    ["Name of item", paymentRow?.nameOfItem || ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.itemName, false],
+    ["Engineer ID", paymentRow?.engineerId || ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.engineerId, false],
+    ["Amount", ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.amount, true],
+    ["Age of days", ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.ageOfDays, false],
+  ] as const;
+
   return (
     <div className="fixed inset-y-0 right-0 z-[100] w-full max-w-[500px] overflow-hidden bg-white text-gray1 shadow-xl">
       <header className="flex h-[100px] items-end justify-between border-b border-gray5 px-10 pb-5 pt-10">
-        <h1 className="text-2xl font-semibold leading-10">Invoice Details</h1>
+        <h1 className="text-2xl font-semibold leading-10">Escrow Details</h1>
         <Link
           href="/dashboard/admin/payment"
           aria-label="Close escrow details"
@@ -33,7 +48,9 @@ export default function AdminPaymentEscrowDetailPage() {
             <p className="text-lg font-medium leading-6 text-[#272B36]">Request Status</p>
             <div className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#FE6E00] px-[18px] py-[11px]">
               <CheckSquare size={18} strokeWidth={2.25} className="text-white" />
-              <span className="text-lg font-normal leading-7 text-white">Under dispute</span>
+              <span className="text-lg font-normal leading-7 text-white">
+                {paymentRow?.status || "Under dispute"}
+              </span>
             </div>
           </div>
 

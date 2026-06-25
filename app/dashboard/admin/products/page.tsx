@@ -12,7 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, Eye, Filter } from "lucide-react";
+import { CalendarDays, Download, Eye, Filter } from "lucide-react";
+import { ADMIN_PRODUCTS_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { fetchProducts } from "@/store/slices/product-slice";
 import { fetchCategories } from "@/store/slices/category-slice";
@@ -74,6 +75,37 @@ const getAdminTableStatusTextClass = (status: ProductStatus): string => {
   }
 };
 
+function AdminDateChip({ label }: { label: string }) {
+  return (
+    <div className="inline-flex h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
+      <span>{label}</span>
+      <CalendarDays size={18} className="text-gray2" />
+    </div>
+  );
+}
+
+function MetricCard({
+  title,
+  value,
+  subtitle,
+}: {
+  title: string;
+  value: string;
+  subtitle?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-gray5 bg-white px-5 py-6">
+      <p className="text-[22px] font-semibold leading-8 text-gray1 lg:text-[28px] lg:leading-9">
+        {value}
+      </p>
+      <p className="mt-3 text-base font-medium leading-6 text-gray2">{title}</p>
+      {subtitle ? (
+        <p className="mt-3 text-sm leading-5 text-gray3">{subtitle}</p>
+      ) : null}
+    </div>
+  );
+}
+
 export default function AdminProductsPage() {
   const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
@@ -132,6 +164,19 @@ export default function AdminProductsPage() {
   }, [dispatch, token, appliedFilters, currentPage]);
 
   const visibleProducts = useMemo(() => products ?? [], [products]);
+  const statusCounts = useMemo(
+    () =>
+      visibleProducts.reduce(
+        (acc, product) => {
+          if (product.status === "approved") acc.approved += 1;
+          if (product.status === "pending") acc.pending += 1;
+          if (product.status === "rejected") acc.rejected += 1;
+          return acc;
+        },
+        { approved: 0, pending: 0, rejected: 0 }
+      ),
+    [visibleProducts]
+  );
   const equipmentCount = useMemo(
     () =>
       visibleProducts.filter(
@@ -146,6 +191,48 @@ export default function AdminProductsPage() {
       ).length,
     [visibleProducts]
   );
+  const topMetrics = useMemo(
+    () => {
+      const hasLiveProducts = visibleProducts.length > 0;
+
+      return [
+        {
+          title: "Total product listed",
+          value: String(
+            hasLiveProducts
+              ? totalProducts
+              : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.totalListed
+          ),
+          subtitle: `Equipment: ${equipmentCount} | Consumables: ${consumablesCount}`,
+        },
+        {
+          title: "Approved Product",
+          value: String(
+            hasLiveProducts
+              ? statusCounts.approved
+              : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.approved
+          ),
+        },
+        {
+          title: "Pending Product",
+          value: String(
+            hasLiveProducts
+              ? statusCounts.pending
+              : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.pending
+          ),
+        },
+        {
+          title: "Declined Product",
+          value: String(
+            hasLiveProducts
+              ? statusCounts.rejected
+              : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.declined
+          ),
+        },
+      ];
+    },
+    [consumablesCount, equipmentCount, statusCounts, totalProducts, visibleProducts.length]
+  );
 
   return (
     <div>
@@ -155,24 +242,30 @@ export default function AdminProductsPage() {
       />
 
       <div className="space-y-6 p-5 lg:p-6">
-        <section className="flex min-h-[228px] flex-col justify-between rounded-2xl border border-gray5 bg-white p-5 lg:min-h-[158px] lg:flex-row lg:items-center lg:px-6 lg:py-7">
-          <div>
-            <h2 className="text-[32px] font-semibold leading-10 text-gray1">
-              {totalProducts}
-            </h2>
-            <p className="mt-1 text-base text-gray2">Total product listed</p>
-            <p className="mt-3 text-sm text-gray3">
-              Equipment: {equipmentCount} <span className="mx-2">|</span>
-              Consumables: {consumablesCount}
-            </p>
+        <section className="space-y-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <AdminDateChip
+              label={ADMIN_PRODUCTS_FIGMA_FALLBACK.dateRangeLabel}
+            />
+
+            <Button
+              title="Export Record"
+              iconLeft={<Download size={16} />}
+              disabled
+              className="h-[60px] w-full rounded-[14px] opacity-100 disabled:bg-primary disabled:text-white lg:w-[230px]"
+            />
           </div>
 
-          <Button
-            title="Export Record"
-            iconLeft={<Download size={16} />}
-            disabled
-            className="h-[60px] w-full rounded-[14px] opacity-100 disabled:bg-primary disabled:text-white lg:w-[230px]"
-          />
+          <div className="grid gap-4 xl:grid-cols-4">
+            {topMetrics.map((metric) => (
+              <MetricCard
+                key={metric.title}
+                title={metric.title}
+                value={metric.value}
+                subtitle={metric.subtitle}
+              />
+            ))}
+          </div>
         </section>
 
         <section className="rounded-2xl border border-gray5 bg-white p-5 lg:min-h-[1180px]">

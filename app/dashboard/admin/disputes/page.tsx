@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   ArrowLeft,
+  ArrowRight,
+  CalendarDays,
+  ChevronDown,
   CheckCircle2,
+  CircleDollarSign,
   Eye,
-  Filter,
-  Scale,
-  Search,
+  FileText,
+  MessageCircleMore,
+  SearchCheck,
+  SlidersHorizontal,
+  SquareCheck,
 } from "lucide-react";
 
 import Header from "../../component/header";
@@ -16,12 +23,15 @@ import { Button, SummaryCard } from "@/components/base";
 import { ProtectedRoute } from "@/components/dashboard/protected-routes";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { serviceDisputeService } from "@/services/serviceDisputeService";
+import { ServiceRequestData } from "@/types/service-request";
 import {
   ServiceDisputeData,
   ServiceDisputeResolutionOutcome,
   ServiceDisputeStatus,
 } from "@/types/service-dispute";
 import { UserRole } from "@/types/user";
+
+const DISPUTE_NOTE_ACCENTS = ["bg-[#2F6BFF]", "bg-[#F6B90A]", "bg-[#22C55E]"] as const;
 
 function getPartyName(
   party:
@@ -56,6 +66,56 @@ function formatDate(value?: string): string {
     month: "2-digit",
     year: "numeric",
   }).format(parsedDate);
+}
+
+function parseFilterDate(value: string): string {
+  const trimmedValue = value.trim();
+
+  if (!trimmedValue) {
+    return "";
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmedValue)) {
+    return trimmedValue;
+  }
+
+  const compactDateMatch = trimmedValue.match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);
+  if (!compactDateMatch) {
+    return "";
+  }
+
+  const [, dayValue, monthValue, rawYearValue] = compactDateMatch;
+  const yearValue =
+    rawYearValue.length === 2 ? `20${rawYearValue}` : rawYearValue;
+  const isoValue = `${yearValue}-${monthValue}-${dayValue}`;
+  const parsedDate = new Date(`${isoValue}T00:00:00Z`);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return "";
+  }
+
+  if (
+    parsedDate.getUTCFullYear() !== Number(yearValue) ||
+    parsedDate.getUTCMonth() + 1 !== Number(monthValue) ||
+    parsedDate.getUTCDate() !== Number(dayValue)
+  ) {
+    return "";
+  }
+
+  return isoValue;
+}
+
+function formatFilterDateInput(value: string): string {
+  if (!value) {
+    return "";
+  }
+
+  const [yearValue, monthValue, dayValue] = value.split("-");
+  if (!yearValue || !monthValue || !dayValue) {
+    return value;
+  }
+
+  return `${dayValue}/${monthValue}/${yearValue.slice(-2)}`;
 }
 
 function disputeStatusLabel(status: ServiceDisputeStatus): string {
@@ -111,6 +171,12 @@ function getServiceRequestId(dispute: ServiceDisputeData): string {
   return typeof dispute.serviceRequest === "string" ? dispute.serviceRequest : "--";
 }
 
+function getServiceRequest(dispute: ServiceDisputeData): ServiceRequestData | null {
+  return dispute.serviceRequest && typeof dispute.serviceRequest === "object"
+    ? dispute.serviceRequest
+    : null;
+}
+
 function getServiceRequestField(
   dispute: ServiceDisputeData,
   key: "equipmentName" | "jobType",
@@ -125,6 +191,79 @@ function getServiceRequestField(
   }
 
   return "--";
+}
+
+function deriveResolutionSummaryQuantity(
+  serviceRequest: ServiceRequestData | null,
+): string {
+  if (!serviceRequest) {
+    return "";
+  }
+
+  const unitPrice = serviceRequest.unitPrice;
+  const totalAmount = serviceRequest.price ?? serviceRequest.unitPrice;
+
+  if (
+    typeof unitPrice !== "number" ||
+    !Number.isFinite(unitPrice) ||
+    unitPrice <= 0 ||
+    typeof totalAmount !== "number" ||
+    !Number.isFinite(totalAmount) ||
+    totalAmount <= 0
+  ) {
+    return "";
+  }
+
+  const quantity = totalAmount / unitPrice;
+
+  return Number.isInteger(quantity) && quantity > 0 ? String(quantity) : "";
+}
+
+function buildResolutionSummaryHref(dispute: ServiceDisputeData): string {
+  const params = new URLSearchParams();
+  const serviceRequest = getServiceRequest(dispute);
+  const invoiceId = getServiceRequestId(dispute);
+  const itemName = getServiceRequestField(dispute, "equipmentName");
+  const totalAmount = serviceRequest?.price ?? serviceRequest?.unitPrice;
+  const quantity = deriveResolutionSummaryQuantity(serviceRequest);
+  const buyerName = getPartyName(dispute.buyer);
+  const distributorName = getPartyName(dispute.engineer);
+
+  params.set("disputeId", dispute._id);
+
+  if (invoiceId !== "--") {
+    params.set("invoiceId", invoiceId);
+  }
+
+  if (itemName !== "--") {
+    params.set("itemName", itemName);
+  }
+
+  if (typeof serviceRequest?.unitPrice === "number" && Number.isFinite(serviceRequest.unitPrice)) {
+    params.set("unitPrice", String(serviceRequest.unitPrice));
+  }
+
+  if (typeof totalAmount === "number" && Number.isFinite(totalAmount)) {
+    params.set("totalAmount", String(totalAmount));
+  }
+
+  if (quantity) {
+    params.set("quantity", quantity);
+  }
+
+  if (buyerName !== "--") {
+    params.set("buyerName", buyerName);
+  }
+
+  if (distributorName !== "--") {
+    params.set("distributorName", distributorName);
+  }
+
+  if (dispute.createdAt) {
+    params.set("dateCreated", dispute.createdAt);
+  }
+
+  return `/dashboard/admin/disputes/resolution-summary?${params.toString()}`;
 }
 
 
@@ -174,8 +313,64 @@ function EvidenceList({
   );
 }
 
+function DisputeNoteCard({
+  accentClassName,
+  noteText,
+  timestamp,
+  senderLabel,
+  attachment,
+}: {
+  accentClassName: string;
+  noteText: string;
+  timestamp: string;
+  senderLabel: string;
+  attachment?: {
+    fileName: string;
+    url: string;
+  };
+}) {
+  return (
+    <article className="relative rounded-2xl border border-[#EEF1F5] bg-[#FBFCFD] px-5 py-4">
+      <div className="flex gap-4">
+        <span className={`mt-1 w-[3px] shrink-0 rounded-full ${accentClassName}`} />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm leading-8 text-[#111827]">{noteText}</p>
+
+          <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+            {attachment ? (
+              <div className="flex flex-wrap items-center gap-5">
+                <span className="inline-flex items-center gap-2 text-sm text-[#6B7280]">
+                  <FileText size={16} className="text-[#22C55E]" />
+                  {attachment.fileName}
+                </span>
+                <a
+                  href={attachment.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 text-base text-[#FE6E00]"
+                >
+                  <Eye size={16} />
+                  View
+                </a>
+              </div>
+            ) : (
+              <span />
+            )}
+            <p className="text-sm text-[#4B5563]">
+              {senderLabel} {timestamp}
+            </p>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 export default function AdminDisputesPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
+  const selectedDisputeId = searchParams.get("disputeId");
 
   const [disputes, setDisputes] = useState<ServiceDisputeData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,8 +378,7 @@ export default function AdminDisputesPage() {
 
   const [statusFilter, setStatusFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
-
-  const [selectedDisputeId, setSelectedDisputeId] = useState<string | null>(null);
+  const [dateInputValue, setDateInputValue] = useState("");
   const [selectedDispute, setSelectedDispute] = useState<ServiceDisputeData | null>(
     null,
   );
@@ -196,7 +390,7 @@ export default function AdminDisputesPage() {
   const [resolveBusy, setResolveBusy] = useState(false);
   const [requestEvidenceBusy, setRequestEvidenceBusy] = useState(false);
 
-  const loadDisputes = async () => {
+  const loadDisputes = useCallback(async () => {
     if (!token) {
       return;
     }
@@ -219,16 +413,21 @@ export default function AdminDisputesPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void loadDisputes();
   }, [token]);
 
   useEffect(() => {
+    queueMicrotask(() => {
+      void loadDisputes();
+    });
+  }, [loadDisputes]);
+
+  useEffect(() => {
     if (!token || !selectedDisputeId) {
-      setSelectedDispute(null);
-      setSelectedError("");
+      queueMicrotask(() => {
+        setSelectedDispute(null);
+        setSelectedError("");
+        setSelectedLoading(false);
+      });
       return;
     }
 
@@ -296,6 +495,18 @@ export default function AdminDisputesPage() {
     }),
     [disputes],
   );
+
+  const displayYear = useMemo(() => {
+    const candidate =
+      filteredDisputes[0]?.createdAt || disputes[0]?.createdAt || new Date().toISOString();
+    const parsedDate = new Date(candidate);
+
+    return String(
+      Number.isNaN(parsedDate.getTime())
+        ? new Date().getFullYear()
+        : parsedDate.getFullYear(),
+    );
+  }, [disputes, filteredDisputes]);
 
   const handleAddComment = async () => {
     if (!token || !selectedDispute || !commentDraft.trim()) {
@@ -385,7 +596,47 @@ export default function AdminDisputesPage() {
     }
   };
 
-  const detailView = selectedDisputeId != null;
+  const detailView = Boolean(selectedDisputeId);
+  const resolutionSummaryHref = useMemo(
+    () =>
+      selectedDispute
+        ? buildResolutionSummaryHref(selectedDispute)
+        : "/dashboard/admin/disputes/resolution-summary",
+    [selectedDispute],
+  );
+
+  const handleDateInputChange = (value: string) => {
+    setDateInputValue(value);
+    setDateFilter(parseFilterDate(value));
+  };
+
+  const handleDateInputBlur = () => {
+    if (!dateInputValue.trim()) {
+      setDateFilter("");
+      setDateInputValue("");
+      return;
+    }
+
+    const parsedValue = parseFilterDate(dateInputValue);
+    if (!parsedValue) {
+      return;
+    }
+
+    setDateFilter(parsedValue);
+    setDateInputValue(formatFilterDateInput(parsedValue));
+  };
+
+  const handleOpenDisputeDetail = (disputeId: string) => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.set("disputeId", disputeId);
+    router.push(`/dashboard/admin/disputes?${nextParams.toString()}`);
+  };
+
+  const handleCloseDisputeDetail = () => {
+    setCommentDraft("");
+    setSelectedError("");
+    router.push("/dashboard/admin/disputes");
+  };
 
   return (
     <ProtectedRoute requiredRole={[UserRole.ADMIN, UserRole.SUPER_ADMIN]}>
@@ -402,78 +653,101 @@ export default function AdminDisputesPage() {
         <div className="space-y-8 p-4 md:p-6">
           {!detailView ? (
             <>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
                 <SummaryCard
                   title="Total disputes"
                   value={String(summary.total)}
-                  icon={<Scale size={18} className="text-primary" />}
+                  icon={<CircleDollarSign size={18} className="text-primary" />}
                   iconBg="bg-[#E7F1FF]"
+                  subtitle={`${summary.total} records in queue`}
                 />
                 <SummaryCard
                   title="Awaiting evidence"
                   value={String(summary.awaitingEvidence)}
-                  icon={<Search size={18} className="text-[#C04FE0]" />}
-                  iconBg="bg-[#F8E8FF]"
+                  icon={<SearchCheck size={18} className="text-[#F08A32]" />}
+                  iconBg="bg-[#FFF3E8]"
+                  subtitle={`${summary.awaitingEvidence} need evidence`}
                 />
                 <SummaryCard
                   title="Resolved disputes"
                   value={String(summary.resolved)}
                   icon={<CheckCircle2 size={18} className="text-[#13A83B]" />}
                   iconBg="bg-[#E8FAEE]"
+                  subtitle={`${summary.resolved} resolved cases`}
                 />
                 <SummaryCard
                   title="Pending review"
                   value={String(summary.pendingReview)}
-                  icon={<AlertTriangle size={18} className="text-[#F6B90A]" />}
+                  icon={<FileText size={18} className="text-[#F6B90A]" />}
                   iconBg="bg-[#FFF5DB]"
+                  subtitle={`${summary.pendingReview} under review`}
                 />
               </div>
 
-              <section className="card space-y-4">
-                <div>
-                  <h3 className="medium3 text-gray1">All Disputes</h3>
-                  <p className="text-sm text-gray3">View all disputes logs</p>
+              <section className="card space-y-6">
+                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 className="medium3 text-gray1">All Disputes</h3>
+                    <p className="mt-1 text-sm text-gray3">View all disputes logs</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="hidden h-14 items-center justify-between rounded-2xl border border-[#E6ECF2] bg-white px-4 text-base text-[#667085] md:inline-flex md:w-[154px]"
+                  >
+                    <span>{displayYear}</span>
+                    <CalendarDays className="size-5 text-[#667085]" />
+                  </button>
                 </div>
-                <p className="text-xs font-medium uppercase tracking-[0.12em] text-gray3">
+                <p className="text-sm text-gray3">
                   Filter table list by:
                 </p>
-                <div className="grid gap-3 lg:grid-cols-[1.5fr_1fr_auto]">
+                <div className="grid gap-5 lg:grid-cols-[1.35fr_1fr_auto]">
                   <div>
-                    <label className="mb-2 block text-xs font-medium text-gray3">
+                    <label className="mb-2 block text-sm font-medium text-gray1">
                       Disputes status
                     </label>
-                    <select
-                      value={statusFilter}
-                      onChange={(event) => setStatusFilter(event.target.value)}
-                      className="h-11 w-full rounded-xl border border-[#E6ECF2] bg-white px-4 text-sm text-[#111827] outline-none"
-                    >
-                      <option value="">Select status</option>
-                      <option value={ServiceDisputeStatus.UNDER_REVIEW}>
-                        Under review
-                      </option>
-                      <option value={ServiceDisputeStatus.AWAITING_EVIDENCE}>
-                        Awaiting evidence
-                      </option>
-                      <option value={ServiceDisputeStatus.RESOLVED}>Resolved</option>
-                    </select>
+                    <div className="relative">
+                      <select
+                        value={statusFilter}
+                        onChange={(event) => setStatusFilter(event.target.value)}
+                        className={`h-14 w-full appearance-none rounded-2xl border border-[#E6ECF2] bg-white px-4 pr-12 text-base outline-none ${statusFilter ? "text-[#111827]" : "text-[#D0D5DD]"}`}
+                      >
+                        <option value="">Select status</option>
+                        <option value={ServiceDisputeStatus.UNDER_REVIEW}>
+                          Under review
+                        </option>
+                        <option value={ServiceDisputeStatus.AWAITING_EVIDENCE}>
+                          Awaiting evidence
+                        </option>
+                        <option value={ServiceDisputeStatus.RESOLVED}>Resolved</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-5 -translate-y-1/2 text-[#667085]" />
+                    </div>
                   </div>
                   <div>
-                    <label className="mb-2 block text-xs font-medium text-gray3">
+                    <label className="mb-2 hidden text-sm font-medium text-gray1 md:block">
                       Date
                     </label>
+                    <label className="mb-2 block text-sm font-medium text-gray1 md:hidden">
+                      Date &amp; time
+                    </label>
                     <input
-                      type="date"
-                      value={dateFilter}
-                      onChange={(event) => setDateFilter(event.target.value)}
-                      className="h-11 w-full rounded-xl border border-[#E6ECF2] px-4 text-sm text-[#111827] outline-none"
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="DD/MM/YY"
+                      value={dateInputValue}
+                      onChange={(event) => handleDateInputChange(event.target.value)}
+                      onBlur={handleDateInputBlur}
+                      className="h-14 w-full rounded-2xl border border-[#E6ECF2] px-4 text-base text-[#111827] outline-none placeholder:text-[#D0D5DD]"
                     />
                   </div>
-                  <Button
-                    title="Filter"
-                    iconLeft={<Filter size={16} />}
-                    className="self-end"
+                  <button
                     type="button"
-                  />
+                    className="inline-flex h-14 items-center justify-center gap-3 self-end rounded-2xl bg-primary px-4 text-base font-medium text-white"
+                  >
+                    <SlidersHorizontal size={18} />
+                    <span>Filter</span>
+                  </button>
                 </div>
 
                 {loading ? (
@@ -491,11 +765,12 @@ export default function AdminDisputesPage() {
                     />
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-2xl border border-gray5">
-                    <table className="w-full min-w-[860px] text-left text-sm">
+                  <div className="mt-10 overflow-x-auto">
+                    <table className="w-full min-w-[820px] text-left text-sm">
                       <thead>
-                        <tr className="text-xs font-medium text-gray3">
+                        <tr className="border-b border-[#EEF2F7] text-xs font-medium text-gray3">
                           <th className="pb-3 pr-4">Dispute ID</th>
+                          <th className="pb-3 pr-4">Order ID</th>
                           <th className="pb-3 pr-4">Raised by</th>
                           <th className="pb-3 pr-4">Against</th>
                           <th className="pb-3 pr-4">Status</th>
@@ -507,7 +782,7 @@ export default function AdminDisputesPage() {
                         {filteredDisputes.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={6}
+                              colSpan={7}
                               className="py-8 text-center text-sm text-gray3"
                             >
                               No disputes found.
@@ -517,7 +792,17 @@ export default function AdminDisputesPage() {
                           filteredDisputes.map((dispute) => (
                             <tr key={dispute._id} className="border-t border-[#EEF2F7]">
                               <td className="py-4 pr-4 font-medium text-gray1">
-                                {dispute._id}
+                                <span className="inline-block max-w-[120px] truncate align-bottom">
+                                  {dispute._id}
+                                </span>
+                              </td>
+                              <td className="py-4 pr-4">
+                                <span
+                                  className="inline-block max-w-[140px] truncate align-bottom"
+                                  title={getServiceRequestId(dispute)}
+                                >
+                                  {getServiceRequestId(dispute)}
+                                </span>
                               </td>
                               <td className="py-4 pr-4">
                                 {getPartyName(dispute.buyer)}
@@ -538,7 +823,7 @@ export default function AdminDisputesPage() {
                               <td className="py-4">
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedDisputeId(dispute._id)}
+                                  onClick={() => handleOpenDisputeDetail(dispute._id)}
                                   className="inline-flex items-center gap-2 text-sm font-medium text-primary"
                                 >
                                   <Eye size={14} />
@@ -558,11 +843,7 @@ export default function AdminDisputesPage() {
             <>
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedDisputeId(null);
-                  setCommentDraft("");
-                  setSelectedError("");
-                }}
+                onClick={handleCloseDisputeDetail}
                 className="inline-flex items-center gap-2 text-sm font-medium text-[#4B5563]"
               >
                 <ArrowLeft className="size-4" />
@@ -602,7 +883,8 @@ export default function AdminDisputesPage() {
 
                       <div className="rounded-xl border border-[#F4B183] bg-[#FFF8F2] px-4 py-3">
                         <p className="text-xs text-[#6B7280]">Request Status</p>
-                        <p className="mt-2 text-sm font-semibold text-[#F08A32]">
+                        <p className="mt-2 inline-flex items-center gap-2 rounded-lg bg-[#FE6E00] px-4 py-2 text-sm font-semibold text-white">
+                          <SquareCheck className="size-4" />
                           {disputeStatusLabel(selectedDispute.status)}
                         </p>
                       </div>
@@ -670,9 +952,12 @@ export default function AdminDisputesPage() {
                   />
 
                   <section className="rounded-2xl border border-[#E6ECF2] bg-white p-5">
-                    <h3 className="text-sm font-semibold text-[#111827]">
-                      Previous notes on dispute ({selectedDispute.comments.length})
-                    </h3>
+                    <div className="flex items-center gap-3">
+                      <MessageCircleMore size={20} className="text-[#0D7CF2]" />
+                      <h3 className="text-sm font-semibold text-[#111827]">
+                        Previous notes on dispute ({selectedDispute.comments.length})
+                      </h3>
+                    </div>
 
                     {selectedDispute.comments.length === 0 ? (
                       <p className="mt-4 text-sm text-[#6B7280]">
@@ -681,25 +966,34 @@ export default function AdminDisputesPage() {
                     ) : (
                       <div className="mt-4 space-y-3">
                         {selectedDispute.comments.map((comment, index) => (
-                          <div
+                          <DisputeNoteCard
                             key={`${comment.createdAt}-${index}`}
-                            className="rounded-xl bg-[#F9FAFB] px-4 py-4"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-medium text-[#111827]">
-                                {getPartyName(comment.author)}
-                              </p>
-                              <p className="text-xs text-[#9CA3AF]">
-                                {formatDate(comment.createdAt)}
-                              </p>
-                            </div>
-                            <p className="mt-2 text-sm text-[#4B5563]">
-                              {comment.text}
-                            </p>
-                          </div>
+                            accentClassName={
+                              DISPUTE_NOTE_ACCENTS[index % DISPUTE_NOTE_ACCENTS.length]
+                            }
+                            noteText={comment.text}
+                            timestamp={formatDate(comment.createdAt)}
+                            senderLabel={`Sent by ${getPartyName(comment.author)}`}
+                            attachment={
+                              index === 0 && selectedDispute.evidence[0]
+                                ? {
+                                    fileName: selectedDispute.evidence[0].fileName,
+                                    url: selectedDispute.evidence[0].url,
+                                  }
+                                : undefined
+                            }
+                          />
                         ))}
                       </div>
                     )}
+
+                    <Link
+                      href={resolutionSummaryHref}
+                      className="mt-6 inline-flex items-center gap-3 text-base font-medium text-primary"
+                    >
+                      See resolution summary
+                      <ArrowRight size={16} />
+                    </Link>
                   </section>
 
                   <div className="grid gap-5 lg:grid-cols-[1fr_1.35fr]">

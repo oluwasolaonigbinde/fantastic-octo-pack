@@ -1,25 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  Briefcase,
-  CheckCircle2,
-  Clock,
   Eye,
-  Filter,
-  Loader2,
+  SlidersHorizontal,
+  SquareCheck,
 } from "lucide-react";
 
 import Header from "../../component/header";
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, SummaryCard } from "@/components/base";
 import { ProtectedRoute } from "@/components/dashboard/protected-routes";
 import { useAppSelector } from "@/hooks/useAppSelector";
+import { ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import serviceRequestService from "@/services/serviceRequestService";
 import {
   ServiceRequestData,
   ServiceRequestStatus,
 } from "@/types/service-request";
 import { UserRole } from "@/types/user";
+
+const NOT_AVAILABLE = "Not available";
 
 function getPartyName(
   party: ServiceRequestData["requester"] | ServiceRequestData["engineer"],
@@ -39,7 +39,7 @@ function getPartyName(
     }
   }
 
-  return "--";
+  return NOT_AVAILABLE;
 }
 
 function getRequesterPhone(request: ServiceRequestData): string {
@@ -48,10 +48,10 @@ function getRequesterPhone(request: ServiceRequestData): string {
     typeof request.requester === "object" &&
     "phoneNumber" in request.requester
   ) {
-    return request.requester.phoneNumber || "No phone number provided";
+    return request.requester.phoneNumber || ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.requesterPhone;
   }
 
-  return "No phone number provided";
+  return ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.requesterPhone;
 }
 
 function getRequesterEmail(request: ServiceRequestData): string {
@@ -60,15 +60,15 @@ function getRequesterEmail(request: ServiceRequestData): string {
     typeof request.requester === "object" &&
     "email" in request.requester
   ) {
-    return request.requester.email || "--";
+    return request.requester.email || ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.requesterEmail;
   }
 
-  return "--";
+  return ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.requesterEmail;
 }
 
 function formatDate(value?: string): string {
   if (!value) {
-    return "--";
+    return NOT_AVAILABLE;
   }
 
   const parsedDate = new Date(value);
@@ -85,7 +85,7 @@ function formatDate(value?: string): string {
 
 function formatDateTime(value?: string): string {
   if (!value) {
-    return "--";
+    return NOT_AVAILABLE;
   }
 
   const parsedDate = new Date(value);
@@ -303,6 +303,11 @@ export default function AdminServicesPage() {
     };
   }, [requests]);
 
+  const activeRequest = useMemo(
+    () => selectedRequest ?? requests.find((request) => request._id === selectedRequestId) ?? null,
+    [requests, selectedRequest, selectedRequestId],
+  );
+
   return (
     <ProtectedRoute
       requiredRole={[UserRole.ADMIN, UserRole.SUPER_ADMIN]}
@@ -318,30 +323,30 @@ export default function AdminServicesPage() {
             <SummaryCard
               title="Total pending services"
               value={String(summary.pending)}
-              icon={<Clock size={18} className="text-primary" />}
-              iconBg="bg-[#E7F1FF]"
-              subtitle="Live count"
+              icon={<SquareCheck size={18} className="text-[#D946EF]" />}
+              iconBg="bg-[#F8E8FF]"
+              subtitle="Pending queue"
             />
             <SummaryCard
               title="Total ongoing services"
               value={String(summary.ongoing)}
-              icon={<Loader2 size={18} className="text-[#C04FE0]" />}
+              icon={<SquareCheck size={18} className="text-[#D946EF]" />}
               iconBg="bg-[#F8E8FF]"
-              subtitle="Live count"
+              subtitle="Accepted and in progress"
             />
             <SummaryCard
               title="Total completed services"
               value={String(summary.completed)}
-              icon={<CheckCircle2 size={18} className="text-[#13A83B]" />}
-              iconBg="bg-[#E8FAEE]"
-              subtitle="Live count"
+              icon={<SquareCheck size={18} className="text-[#D946EF]" />}
+              iconBg="bg-[#F8E8FF]"
+              subtitle="Completed requests"
             />
             <SummaryCard
               title="Total overdue requests"
               value={String(summary.overdue)}
-              icon={<Briefcase size={18} className="text-[#F6B90A]" />}
-              iconBg="bg-[#FFF5DB]"
-              subtitle="Live count"
+              icon={<SquareCheck size={18} className="text-[#D946EF]" />}
+              iconBg="bg-[#F8E8FF]"
+              subtitle="Past preferred date"
             />
           </div>
 
@@ -377,7 +382,7 @@ export default function AdminServicesPage() {
               </div>
               <Button
                 title="Filter"
-                iconLeft={<Filter size={16} />}
+                iconLeft={<SlidersHorizontal size={16} />}
                 className="self-end"
                 type="button"
               />
@@ -427,7 +432,7 @@ export default function AdminServicesPage() {
                         <tr key={request._id} className="border-t border-[#EEF2F7]">
                           <td className="py-4 pr-4">
                             <div className="flex items-center gap-3">
-                              <span className="size-8 shrink-0 rounded-full bg-gray5" />
+                              <span className="size-8 shrink-0 rounded-xl bg-gray5" />
                               <span className="font-medium text-gray1">
                                 {getPartyName(request.requester)}
                               </span>
@@ -479,30 +484,31 @@ export default function AdminServicesPage() {
             }
           }}
         >
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
-            <DialogHeader>
+          <DialogContent className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-[500px]">
+            <DialogHeader className="border-b border-[#E6ECF2] px-10 pb-5 pt-10">
               <DialogTitle className="text-[28px] font-semibold text-[#111827]">
                 Service Details
               </DialogTitle>
             </DialogHeader>
 
             {selectedLoading ? (
-              <div className="rounded-2xl border border-[#E6ECF2] bg-white p-4 text-sm text-[#6B7280]">
+              <div className="px-10 py-6 text-sm text-[#6B7280]">
                 Loading service detail...
               </div>
             ) : selectedError ? (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+              <div className="mx-10 my-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
                 {selectedError}
               </div>
-            ) : selectedRequest ? (
-              <div className="space-y-4">
-                <div className="rounded-[24px] bg-[#FFF4D8] px-5 py-4">
+            ) : activeRequest ? (
+              <div className="space-y-4 px-10 pb-10 pt-6">
+                <div className="rounded-[24px] bg-[#FFF4D8] px-8 py-5">
                   <div className="flex items-center justify-between gap-4">
                     <span className="text-sm font-medium text-[#6B7280]">
                       Request Status
                     </span>
-                    <span className="inline-flex rounded-xl bg-[#FF7A2E] px-4 py-2 text-sm font-semibold text-white">
-                      {serviceStatusLabel(selectedRequest.status)}
+                    <span className="inline-flex items-center gap-2 rounded-xl bg-[#FF7A2E] px-4 py-2 text-sm font-semibold text-white">
+                      <SquareCheck className="size-4" />
+                      {serviceStatusLabel(activeRequest.status)}
                     </span>
                   </div>
                 </div>
@@ -511,7 +517,7 @@ export default function AdminServicesPage() {
                   <div>
                     <p className="text-xs text-[#6B7280]">Distributor&apos;s name</p>
                     <p className="mt-1 text-sm font-medium text-[#111827]">
-                      {getPartyName(selectedRequest.requester)}
+                      {getPartyName(activeRequest.requester)}
                     </p>
                   </div>
                   <div>
@@ -519,7 +525,7 @@ export default function AdminServicesPage() {
                       Distributor&apos;s phone number
                     </p>
                     <p className="mt-1 text-sm font-medium text-[#111827]">
-                      {getRequesterPhone(selectedRequest)}
+                      {getRequesterPhone(activeRequest)}
                     </p>
                   </div>
                   <div>
@@ -527,43 +533,43 @@ export default function AdminServicesPage() {
                       Distributor&apos;s email address
                     </p>
                     <p className="mt-1 text-sm font-medium text-[#111827]">
-                      {getRequesterEmail(selectedRequest)}
+                      {getRequesterEmail(activeRequest)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-[#6B7280]">Product name</p>
                     <p className="mt-1 text-sm font-medium text-[#111827]">
-                      {selectedRequest.equipmentName}
+                      {activeRequest.equipmentName || ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.productName}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-[#6B7280]">Request type</p>
                     <p className="mt-1 text-sm font-medium text-[#111827]">
-                      {selectedRequest.jobType}
+                      {activeRequest.jobType || ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.requestType}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-[#6B7280]">Assigned engineer</p>
                     <p className="mt-1 text-sm font-medium text-[#111827]">
-                      {getPartyName(selectedRequest.engineer)}
+                      {getPartyName(activeRequest.engineer)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-[#6B7280]">Date of request</p>
                     <p className="mt-1 text-sm font-medium text-[#111827]">
-                      {formatDateTime(selectedRequest.createdAt)}
+                      {formatDateTime(activeRequest.createdAt)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-[#6B7280]">Proposed delivery date</p>
                     <p className="mt-1 text-sm font-medium text-[#111827]">
-                      {formatDate(selectedRequest.preferredDate)}
+                      {formatDate(activeRequest.preferredDate)}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-[#6B7280]">Additional note</p>
                     <p className="mt-1 text-sm leading-6 text-[#111827]">
-                      {selectedRequest.serviceDescription || "--"}
+                      {activeRequest.serviceDescription || NOT_AVAILABLE}
                     </p>
                   </div>
                 </div>

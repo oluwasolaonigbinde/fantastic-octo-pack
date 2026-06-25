@@ -1,130 +1,304 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, CheckSquare, ChevronLeft, ChevronRight } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  Ban,
+  BriefcaseBusiness,
+  ChevronRight,
+  CircleDollarSign,
+  KeyRound,
+  ShieldCheck,
+  TriangleAlert,
+  UserCheck,
+  Users,
+  Workflow,
+} from "lucide-react";
 
 import Header from "@/app/dashboard/component/header";
+import adminService, { type AdminPlatformUserRow } from "@/services/adminService";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { UserRole } from "@/types/user";
 
-const specs = [
-  ["Magnet Strength", "70ucm wide bore"],
-  ["Bore Size", "16  ehuimal RF system : advanced imaging respients"],
-  ["Imaging Technology", "1.5 Telsa"],
-  ["Gradient Strength", "35 mT Jm"],
-  ["Power Supply", "336-450v 90/50Hz"],
-  ["Cooling System", "Helium coherent superducting magnet"],
-  ["Installation Space", "1.5 Telsa"],
-  ["Widget", "5: 60Omg"],
-  ["User Interface", "16 inc coder monitor"],
+const NOT_AVAILABLE = "Not available";
+
+const actionCards = [
+  {
+    title: "Operations",
+    description: "View full profile, managed businesses and activity",
+    icon: BriefcaseBusiness,
+  },
+  {
+    title: "Relationships",
+    description: "Buyer, distributor, OEM and engineer coverage",
+    icon: Users,
+  },
+  {
+    title: "Compliance",
+    description: "KYC, verification and oversight status",
+    icon: ShieldCheck,
+  },
+  {
+    title: "Commission",
+    description: "Commission history and payout summary",
+    icon: CircleDollarSign,
+  },
+  {
+    title: "Disputes",
+    description: "Disputes raised across managed businesses",
+    icon: TriangleAlert,
+  },
+  {
+    title: "System Control",
+    description: "Permissions, activity log and analytics",
+    icon: KeyRound,
+  },
 ] as const;
 
-export default function AdminAgentDetailPage() {
+function formatDateTime(value?: string | null) {
+  if (!value) return NOT_AVAILABLE;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return NOT_AVAILABLE;
+
+  return `${date.toLocaleDateString("en-GB")} - ${date
+    .toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    })
+    .toLowerCase()}`;
+}
+
+function formatStatus(value?: string | null) {
+  if (!value) return NOT_AVAILABLE;
+
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function getInitials(value: string) {
   return (
-    <div className="min-h-[1688px] bg-gray7">
+    value
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((segment) => segment[0]?.toUpperCase() ?? "")
+      .join("") || "AG"
+  );
+}
+
+export default function AdminAgentDetailPage() {
+  const searchParams = useSearchParams();
+  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
+  const [agent, setAgent] = useState<AdminPlatformUserRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const requestedId = searchParams.get("id");
+
+  useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    const loadAgent = async () => {
+      setLoading(true);
+      setError("");
+
+      try {
+        const response = await adminService.getPlatformUsers(token, {
+          role: UserRole.AGENT,
+          page: 1,
+          limit: 20,
+        });
+
+        if (!isMounted) return;
+
+        const matchedAgent =
+          response.docs.find((row) => row.id === requestedId) ?? response.docs[0] ?? null;
+
+        setAgent(matchedAgent);
+      } catch (nextError) {
+        if (!isMounted) return;
+
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Unable to load agent details.",
+        );
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadAgent();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [requestedId, token]);
+
+  const agentName = useMemo(() => agent?.name || "Agent detail", [agent]);
+  const statusLabel = useMemo(() => formatStatus(agent?.status), [agent?.status]);
+  const statusClassName = statusLabel.toLowerCase().includes("pending")
+    ? "text-warning"
+    : "text-success";
+
+  const detailRows = useMemo(
+    () => [
+      ["User ID", agent?.id || NOT_AVAILABLE],
+      ["Phone Number", agent?.phoneNumber || NOT_AVAILABLE],
+      ["Email", agent?.email || NOT_AVAILABLE],
+      ["Date Joined", formatDateTime(agent?.dateRegistered)],
+      ["Country", agent?.country || NOT_AVAILABLE],
+    ],
+    [agent],
+  );
+
+  return (
+    <div className="min-h-screen bg-gray7">
       <Header
         title="Platform Users"
         description="View all users and process onboarding request from users"
       />
 
       <main className="px-4 pt-4">
-        <Link
-          href="/dashboard/admin/platform-users"
-          className="inline-flex h-8 items-center gap-2 text-lg font-normal leading-8 text-primary"
-        >
-          <ArrowLeft size={24} strokeWidth={1.75} />
-          Go Back
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link
+            href="/dashboard/admin/platform-users"
+            className="inline-flex h-8 items-center gap-2 text-lg font-normal leading-8 text-primary"
+          >
+            <ArrowLeft size={24} strokeWidth={1.75} />
+            Go Back
+          </Link>
 
-        <section className="mt-5 flex h-[136px] items-center justify-between rounded-2xl border border-gray5 bg-white px-8">
-          <div className="flex items-center gap-4">
-            <div className="relative size-8 overflow-hidden rounded-full bg-primary">
-              <span className="absolute inset-y-0 right-0 w-1/2 bg-[#FE6E00]" />
-            </div>
-            <p className="text-base font-normal leading-6 text-gray1">
-              This will be the name of the distributor
-            </p>
+          <button
+            type="button"
+            className="inline-flex h-8 items-center gap-2 text-lg font-normal leading-8 text-danger"
+          >
+            <Ban size={18} strokeWidth={1.8} />
+            Suspend Account
+          </button>
+        </div>
+
+        {error ? (
+          <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-800">
+            {error}
           </div>
+        ) : null}
 
-          <div className="flex h-[88px] w-[282px] items-center justify-between rounded-2xl border border-[#FFE079] bg-[#FFF6D9] px-8">
-            <p className="text-base font-normal leading-6 text-[#272B36]">Product status</p>
-            <div className="inline-flex items-center gap-2 rounded-lg bg-[#FFC000] px-[18px] py-[11px] text-white">
-              <CheckSquare size={18} strokeWidth={2.25} />
-              <span className="text-lg font-normal leading-7">Pending</span>
-            </div>
-          </div>
-        </section>
+        <section className="mt-5 w-full rounded-2xl border border-gray5 bg-white px-10 py-10">
+          <div className="grid gap-10 xl:grid-cols-[1fr_1fr]">
+            <div className="flex flex-col gap-8 py-6">
+              <div className="flex flex-col items-center gap-4">
+                <div className="relative flex size-[120px] items-center justify-center overflow-hidden rounded-full bg-primary text-3xl font-semibold text-white">
+                  {agent?.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={agent.avatarUrl} alt="" className="size-full object-cover" />
+                  ) : (
+                    <>
+                      <span className="absolute inset-y-0 right-0 w-1/2 bg-[#FE6E00]" />
+                      <span className="relative z-10">{getInitials(agentName)}</span>
+                    </>
+                  )}
+                </div>
 
-        <section className="mt-[14px] h-[1470px] rounded-2xl border border-gray5 bg-white p-10">
-          <div className="flex gap-8">
-            <div className="h-[414px] w-[556px] overflow-hidden rounded-[9px] border border-gray5 bg-white">
-              <div className="flex h-[350px] items-center justify-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/images/admin-agent-product.jpg"
-                  alt=""
-                  className="h-[300px] w-[470px] object-contain"
-                />
-              </div>
-              <div className="flex justify-center">
-                <div className="inline-flex h-[24px] items-center gap-2 rounded-lg border border-gray4 bg-gray6 px-2">
-                  <ChevronLeft size={17} />
-                  <span className="flex gap-1">
-                    <span className="size-1.5 rounded-full bg-[#FE6E00]" />
-                    <span className="size-1.5 rounded-full bg-[#FE6E00]" />
-                    <span className="size-1.5 rounded-full bg-[#FE6E00]" />
-                  </span>
-                  <ChevronRight size={17} />
+                <div className="flex flex-col items-center">
+                  <h1 className="text-center text-[32px] font-medium leading-[48px] text-gray1">
+                    {loading ? "Loading agent..." : agentName}
+                  </h1>
+                  <div className="flex flex-col items-center gap-3">
+                    <span className="rounded-lg bg-[#EAF9FF] px-2 py-1 text-base font-normal leading-6 text-primary">
+                      Agent
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-3 rounded-lg bg-[rgba(107,114,128,0.06)] p-2 text-lg font-medium leading-6 ${statusClassName}`}
+                    >
+                      <UserCheck size={24} className={statusClassName} />
+                      {loading ? "Loading status" : statusLabel}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="flex min-h-[414px] flex-1 flex-col justify-between">
-              <h1 className="max-w-[460px] text-[32px] font-semibold leading-[48px] text-black">
-                MRI (Magnetic Resonance Imaging)
-              </h1>
-              <div className="space-y-5">
-                <div className="flex h-16 w-[143px] items-center justify-center rounded-lg bg-[#C7EEFF] px-5 py-3">
-                  <span className="text-2xl font-medium leading-10 text-primary">25 In stock</span>
-                </div>
-                <p className="text-[40px] font-medium leading-none text-[#03265C]">₦175,000</p>
-              </div>
               <div className="border-t border-gray5" />
-            </div>
-          </div>
 
-          <div className="mt-10 space-y-0 text-black">
-            <h2 className="text-2xl font-medium leading-10">Description</h2>
-            <p className="text-xl font-normal leading-8">
-              The ScintCare MRI systems from Minfound are high-performing, clinically versatile
-              magnetic resonance imaging machines, designed to deliver high image quality, patient
-              comfort and workflow efficiency. They incorporate advanced magnet, coil and RF
-              technologies suited for a wide range of diagnostic.
-            </p>
-          </div>
+              <div className="flex flex-col gap-5">
+                {detailRows.map(([label, value]) => (
+                  <div key={label} className="border-b border-gray5 pb-5">
+                    <div className="space-y-1">
+                      <p className="text-sm font-normal leading-5 text-gray2">{label}</p>
+                      <p className="text-xl font-semibold leading-8 text-gray1">{value}</p>
+                    </div>
+                  </div>
+                ))}
 
-          <div className="mt-10">
-            <h2 className="mb-5 text-[32px] font-semibold leading-[48px] text-gray1">
-              Key Specifications
-            </h2>
-            <div className="overflow-hidden rounded-xl border border-gray5">
-              <div className="grid grid-cols-2 border-b border-gray5 bg-[#EEF0F4]">
-                <div className="border-r border-gray5 px-4 py-3 text-2xl font-semibold leading-normal text-gray2">
-                  Specifications
+                <div className="rounded-2xl border border-[#EAF1F6] bg-[#F8FBFD] px-5 py-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <p className="text-sm font-normal leading-5 text-gray2">Managed businesses</p>
+                      <p className="text-xl font-semibold leading-8 text-gray1">Not available</p>
+                    </div>
+                    <div className="inline-flex items-center gap-2 rounded-lg bg-[#EAF9FF] px-3 py-2 text-sm font-medium text-primary">
+                      <Workflow size={18} />
+                      Cross-role oversight
+                    </div>
+                  </div>
                 </div>
-                <div className="px-4 py-3 text-2xl font-semibold leading-normal text-gray2">
-                  Details
-                </div>
+
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center gap-2 self-start text-lg font-normal leading-8 text-danger"
+                >
+                  <Ban size={18} strokeWidth={1.8} />
+                  Suspend Account
+                </button>
               </div>
-              {specs.map(([label, value]) => (
-                <div key={label} className="grid grid-cols-2 border-b border-gray5 last:border-b-0">
-                  <div className="border-r border-gray5 bg-[#F8F8FA] px-4 py-3 text-2xl font-medium leading-normal text-gray2">
-                    {label}
-                  </div>
-                  <div className="bg-[#FEFDFE] px-4 py-3 text-2xl font-medium leading-normal text-gray2">
-                    {value}
-                  </div>
-                </div>
-              ))}
             </div>
+
+            <aside className="border-l border-gray5 pl-6 pt-6">
+              <div className="mb-5 space-y-1">
+                <h2 className="text-xl font-semibold leading-8 text-gray1">Actions</h2>
+                <p className="text-sm font-normal leading-5 text-gray2">
+                  Manage platform actions for this agent.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-5">
+                {actionCards.map(({ title, description, icon: Icon }) => (
+                  <button
+                    key={title}
+                    type="button"
+                    className="flex h-[78px] w-full items-center justify-between rounded-[20px] border border-gray6 bg-white px-2 py-3 text-left"
+                  >
+                    <span className="flex min-w-0 items-center gap-4">
+                      <span className="flex size-[62px] items-center justify-center rounded-[20px] bg-[#EAF9FF] text-primary">
+                        <Icon size={36} strokeWidth={1.8} />
+                      </span>
+                      <span className="flex min-w-0 flex-col justify-center">
+                        <span className="text-xl font-semibold leading-8 text-gray1">
+                          {title}
+                        </span>
+                        <span className="text-base font-normal leading-6 text-gray2">
+                          {description}
+                        </span>
+                      </span>
+                    </span>
+                    <ChevronRight size={22} strokeWidth={1.8} className="shrink-0 text-primary" />
+                  </button>
+                ))}
+              </div>
+            </aside>
           </div>
         </section>
       </main>

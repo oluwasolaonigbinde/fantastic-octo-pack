@@ -4,9 +4,9 @@ import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
+  Banknote,
   CalendarDays,
-  CheckCircle2,
-  CreditCard,
+  ClipboardCheck,
   Eye,
   FileText,
   Monitor,
@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/base";
+import { ADMIN_DASHBOARD_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import adminService, { type AdminDashboardSummary } from "@/services/adminService";
 
@@ -107,10 +108,10 @@ function OverviewCard({
   loading = false,
 }: OverviewCardProps) {
   return (
-    <div className="min-h-[130px] rounded-2xl border border-gray5 bg-white p-3 shadow-sm md:min-h-0 md:p-4">
+    <div className="min-h-[130px] rounded-2xl border border-gray5 bg-white p-3 shadow-[0_4px_12px_rgba(15,23,42,0.04)] md:min-h-0 md:p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-[13px] font-normal leading-5 text-gray2 md:text-sm">
+          <p className="text-[11px] font-normal leading-4 text-gray2 md:text-sm">
             {mobileTitle ? (
               <>
                 <span className="md:hidden">{mobileTitle}</span>
@@ -120,10 +121,10 @@ function OverviewCard({
               title
             )}
           </p>
-          <p className="mt-2 whitespace-nowrap text-[17px] font-medium leading-6 text-gray1 md:text-xl">
+          <p className="mt-2 whitespace-nowrap text-[14px] font-medium leading-5 text-gray1 md:text-[18px] md:leading-6">
             {loading ? "--" : value}
           </p>
-          <p className="mt-2 text-xs text-gray3 md:whitespace-nowrap md:text-[11px]">
+          <p className="mt-2 text-[10px] leading-4 text-gray3 md:whitespace-nowrap md:text-[11px]">
             {mobileMeta ? (
               <>
                 <span className="md:hidden">
@@ -141,7 +142,7 @@ function OverviewCard({
           </p>
         </div>
         <span
-          className={`flex size-6 shrink-0 items-center justify-center rounded-lg md:size-10 md:rounded-xl ${iconClassName}`}
+          className={`flex size-7 shrink-0 items-center justify-center rounded-xl md:size-10 ${iconClassName}`}
         >
           {icon}
         </span>
@@ -217,8 +218,9 @@ function RfqRatioCard({
   const quotePercent = total ? Math.round((quotesSent / total) * 100) : 0;
   const rfqPercent = total ? 100 - quotePercent : 0;
   const quoteDegrees = total ? Math.round((quotesSent / total) * 360) : 0;
-  const mobileQuotePercent = 30;
-  const mobileRfqPercent = 70;
+  const desktopGradientStart = 148;
+  const mobileQuotePercent = ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.quotesPercent;
+  const mobileRfqPercent = ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.rfqsPercent;
   const mobileQuoteDegrees = Math.round((mobileQuotePercent / 100) * 360);
 
   return (
@@ -232,7 +234,7 @@ function RfqRatioCard({
         <div
           className="relative hidden size-52 rounded-full md:block"
           style={{
-            background: `conic-gradient(#F6B90A 0deg ${quoteDegrees}deg,#0669D9 ${quoteDegrees}deg 360deg)`,
+            background: `conic-gradient(from ${desktopGradientStart}deg, #F6B90A 0deg ${quoteDegrees}deg, #0669D9 ${quoteDegrees}deg 360deg)`,
           }}
         />
         <div
@@ -253,23 +255,23 @@ function RfqRatioCard({
       <div className="mt-6 space-y-3 md:hidden">
         <div className="flex items-center gap-3 text-sm text-gray2">
           <span className="size-4 rounded bg-[#F6B90A]" />
-          <span>{mobileQuotePercent}% - Expiry rate</span>
+          <span>{ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.quotesLabel}</span>
         </div>
         <div className="flex items-center gap-3 text-sm text-gray2">
           <span className="size-4 rounded bg-primary" />
-          <span>{mobileRfqPercent}% - Renewal rate</span>
+          <span>{ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.rfqsLabel}</span>
         </div>
       </div>
 
       <div className="mt-6 hidden space-y-3 md:block">
         <div className="flex items-center gap-3 text-sm text-gray2">
-          <span className="size-3 rounded-full bg-[#F6B90A]" />
+          <span className="size-6 rounded-lg bg-[#F6B90A]" />
           <span>
             {quotePercent}% - Quotes received ({compactFormatter.format(quotesSent)})
           </span>
         </div>
         <div className="flex items-center gap-3 text-sm text-gray2">
-          <span className="size-3 rounded-full bg-primary" />
+          <span className="size-6 rounded-lg bg-primary" />
           <span>
             {rfqPercent}% - Request For Quotes sent ({compactFormatter.format(rfqsSent)})
           </span>
@@ -427,7 +429,7 @@ function StaticTableCard({
             title={actionLabel}
             iconRight={<ArrowRight size={18} />}
             size="sm"
-            className="w-[150px] rounded-lg px-4 md:w-auto md:rounded-full"
+            className="w-[132px] whitespace-nowrap rounded-xl px-3 text-[13px] md:w-auto md:rounded-full md:px-4"
           />
         </Link>
       </div>
@@ -561,6 +563,12 @@ export default function AdminDashboardPage() {
     [summary.recentUsers]
   );
 
+  // Keep the live total and trend data, but where the current API does not yet
+  // expose the category split shown in Figma, use a scoped Figma-backed adapter
+  // instead of inventing neutral placeholder copy.
+  const revenueMeta = ADMIN_DASHBOARD_FIGMA_FALLBACK.revenueBreakdownDesktop;
+  const mobileRevenueMeta = ADMIN_DASHBOARD_FIGMA_FALLBACK.revenueBreakdownMobile.join("\n");
+
   return (
     <div className="overflow-x-hidden">
       <Header
@@ -597,11 +605,11 @@ export default function AdminDashboardPage() {
             loading={loading}
           />
           <OverviewCard
-            title="Total Revenue"
+            title="Total revenue"
             value={decimalFormatter.format(summary.revenue.total)}
-            meta="Equipment 305 | Consumables 105"
-            mobileMeta={"Equipment: 305\nConsumables: 105"}
-            icon={<CreditCard size={18} className="text-[#13A83B]" />}
+            meta={revenueMeta}
+            mobileMeta={mobileRevenueMeta}
+            icon={<Banknote size={18} className="text-[#13A83B]" />}
             iconClassName="bg-[#E8FAEE]"
             loading={loading}
           />
@@ -610,7 +618,7 @@ export default function AdminDashboardPage() {
             value={compactFormatter.format(summary.approvals.total)}
             meta={`Accounts ${summary.approvals.accounts} | Product listing ${summary.approvals.productListings}`}
             mobileMeta={`Accounts: ${summary.approvals.accounts}\nProduct listing: ${summary.approvals.productListings}`}
-            icon={<CheckCircle2 size={18} className="text-[#F6B90A]" />}
+            icon={<ClipboardCheck size={18} className="text-[#F6B90A]" />}
             iconClassName="bg-[#FFF5DB]"
             loading={loading}
           />
@@ -642,7 +650,7 @@ export default function AdminDashboardPage() {
             title="Top 10 Products by RFQs"
             actionLabel="View All Product"
             actionHref="/dashboard/admin/products"
-            columns={["Products name", "RFQs count"]}
+            columns={["Products' name", "RFQs count"]}
             rows={topProductRows}
             emptyText="No RFQs with stable product identifiers yet."
             mobileClassName="min-h-[480px] w-[474px] md:min-h-0 md:w-auto"
@@ -652,12 +660,12 @@ export default function AdminDashboardPage() {
             title="Recently Onboarded Users"
             actionLabel="View All Users"
             actionHref="/dashboard/admin/platform-users"
-            columns={["Users name", "User type", "Date onboarded", "Action"]}
+            columns={["Users' name", "User type", "Date onboarded", "Action"]}
             rows={recentUserRows}
             emptyText="No users onboarded yet."
             hideActionOnMobile
             mobileHiddenColumnIndexes={[2, 3]}
-            mobileClassName="min-h-[436px] w-[670px] md:min-h-0 md:w-auto"
+            mobileClassName="min-h-[436px] w-[560px] md:min-h-0 md:w-auto"
           />
         </section>
       </div>
