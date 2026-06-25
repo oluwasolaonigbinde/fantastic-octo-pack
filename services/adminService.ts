@@ -1,7 +1,7 @@
 import { apiUrl } from "@/utils/api-base-url";
 import type { UserRole } from "@/types/user";
 import type { OrderStatus } from "@/types/order";
-import type { RfqStatus } from "@/types/rfq";
+import type { QuoteStatus, RfqStatus } from "@/types/rfq";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -144,6 +144,7 @@ export interface AdminQuoteRow {
   totalPrice: number | null;
   dateReceived: string | null;
   downloadUrl: string | null;
+  status?: QuoteStatus;
 }
 
 export interface AdminOrderRow {
@@ -171,6 +172,7 @@ interface PlatformUserParams {
 interface AdminTableParams {
   productName?: string;
   distributorName?: string;
+  status?: OrderStatus | QuoteStatus | RfqStatus;
   page?: number;
   limit?: number;
 }

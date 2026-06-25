@@ -15,11 +15,12 @@ import {
 import { CalendarDays, Download, Eye, Filter } from "lucide-react";
 import { ADMIN_PRODUCTS_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import productService from "@/services/productService";
 import { fetchProducts } from "@/store/slices/product-slice";
 import { fetchCategories } from "@/store/slices/category-slice";
 import { getListingStatusMeta } from "@/utils/productStatus";
 import { getProductStockTableValue } from "@/utils/productDisplay";
-import type { Product, ProductStatus } from "@/types/product";
+import type { Product, ProductStatus, ProductStatusCounts } from "@/types/product";
 import type { UserData } from "@/types/user";
 
 type AdminProductFilters = {
@@ -37,6 +38,13 @@ const DEFAULT_FILTERS: AdminProductFilters = {
   submittedFrom: "",
   submittedTo: "",
 };
+
+const LISTING_SUMMARY_STATUSES: ProductStatus[] = [
+  "draft",
+  "pending",
+  "approved",
+  "rejected",
+];
 
 const formatMoney = (amount: number): string =>
   new Intl.NumberFormat("en-NG", {
@@ -125,6 +133,8 @@ export default function AdminProductsPage() {
   const [appliedFilters, setAppliedFilters] =
     useState<AdminProductFilters>(DEFAULT_FILTERS);
   const [currentPage, setCurrentPage] = useState(1);
+  const [listingSummary, setListingSummary] =
+    useState<ProductStatusCounts | null>(null);
 
   const token = authData?.tokens?.accessToken;
 
@@ -163,20 +173,47 @@ export default function AdminProductsPage() {
     );
   }, [dispatch, token, appliedFilters, currentPage]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    if (!token) {
+      return () => {
+        ignore = true;
+      };
+    }
+
+    const loadListingSummary = async () => {
+      try {
+        const result = await productService.fetchWithFilter({
+          token,
+          populate: "createdBy,assignedOem",
+          page: 1,
+          limit: 1,
+          includeSummary: true,
+          search: appliedFilters.search.trim() || undefined,
+          statuses: LISTING_SUMMARY_STATUSES,
+          category: appliedFilters.category !== "all" ? appliedFilters.category : undefined,
+          submittedFrom: appliedFilters.submittedFrom || undefined,
+          submittedTo: appliedFilters.submittedTo || undefined,
+        });
+
+        if (ignore) return;
+
+        setListingSummary(result.data.summary?.statusCounts ?? null);
+      } catch {
+        if (ignore) return;
+        setListingSummary(null);
+      }
+    };
+
+    void loadListingSummary();
+
+    return () => {
+      ignore = true;
+    };
+  }, [appliedFilters, token]);
+
   const visibleProducts = useMemo(() => products ?? [], [products]);
-  const statusCounts = useMemo(
-    () =>
-      visibleProducts.reduce(
-        (acc, product) => {
-          if (product.status === "approved") acc.approved += 1;
-          if (product.status === "pending") acc.pending += 1;
-          if (product.status === "rejected") acc.rejected += 1;
-          return acc;
-        },
-        { approved: 0, pending: 0, rejected: 0 }
-      ),
-    [visibleProducts]
-  );
   const equipmentCount = useMemo(
     () =>
       visibleProducts.filter(
@@ -193,13 +230,14 @@ export default function AdminProductsPage() {
   );
   const topMetrics = useMemo(
     () => {
-      const hasLiveProducts = visibleProducts.length > 0;
+      const hasLoadedProducts = products !== null;
+      const liveListingSummary = token ? listingSummary : null;
 
       return [
         {
           title: "Total product listed",
           value: String(
-            hasLiveProducts
+            hasLoadedProducts
               ? totalProducts
               : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.totalListed
           ),
@@ -208,30 +246,30 @@ export default function AdminProductsPage() {
         {
           title: "Approved Product",
           value: String(
-            hasLiveProducts
-              ? statusCounts.approved
+            liveListingSummary
+              ? liveListingSummary.approved
               : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.approved
           ),
         },
         {
           title: "Pending Product",
           value: String(
-            hasLiveProducts
-              ? statusCounts.pending
+            liveListingSummary
+              ? liveListingSummary.pending
               : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.pending
           ),
         },
         {
           title: "Declined Product",
           value: String(
-            hasLiveProducts
-              ? statusCounts.rejected
+            liveListingSummary
+              ? liveListingSummary.rejected
               : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.declined
           ),
         },
       ];
     },
-    [consumablesCount, equipmentCount, statusCounts, totalProducts, visibleProducts.length]
+    [consumablesCount, equipmentCount, listingSummary, products, token, totalProducts]
   );
 
   return (

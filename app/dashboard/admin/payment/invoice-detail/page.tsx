@@ -2,35 +2,31 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo } from "react";
 import { X } from "lucide-react";
 
-import {
-  ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK,
-  ADMIN_PAYMENT_ROWS,
-} from "@/constants/adminFigmaFallbacks";
+import { ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
+
+const pickParam = (
+  searchParams: URLSearchParams,
+  key: string,
+  fallback: string,
+) => searchParams.get(key)?.trim() || fallback;
 
 export default function AdminPaymentInvoiceDetailPage() {
   const searchParams = useSearchParams();
-  const paymentId = searchParams.get("paymentId");
-
-  const paymentRow = useMemo(
-    () => ADMIN_PAYMENT_ROWS.find((row) => row.id === paymentId) ?? null,
-    [paymentId],
-  );
 
   const rows = [
-    ["Invoice ID", paymentRow?.orderId || ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.invoiceId, false],
-    ["Item", paymentRow?.nameOfItem || ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.itemName, false],
+    ["Invoice ID", pickParam(searchParams, "orderId", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.invoiceId), false],
+    ["Item", pickParam(searchParams, "itemName", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.itemName), false],
     ["Unit price", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.unitPrice, true],
     ["Quantity", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.quantity, false],
-    ["Total amount", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.totalAmount, true],
-    ["Buyer's name", paymentRow?.buyerId || ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.buyerName, false],
-    ["Distributor's name", paymentRow?.sellerId || ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.distributorName, false],
+    ["Total amount", pickParam(searchParams, "amount", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.totalAmount), true],
+    ["Buyer's name", pickParam(searchParams, "buyerId", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.buyerName), false],
+    ["Distributor's name", pickParam(searchParams, "sellerId", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.distributorName), false],
     ["Payment method", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.paymentMethod, false],
     ["Distributor's account", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.distributorAccount, true],
     ["Bank name", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.bankName, true],
-    ["Date created", paymentRow?.dateTime || ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.dateCreated, false],
+    ["Date created", pickParam(searchParams, "dateTime", ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.dateCreated), false],
   ] as const;
 
   return (
