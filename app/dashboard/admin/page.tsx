@@ -507,12 +507,14 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     if (!token) return;
 
-    void loadSummary();
-    const intervalId = window.setInterval(() => void loadSummary(), POLL_INTERVAL_MS);
-    const onFocus = () => void loadSummary();
+    const runLoadSummary = () => void loadSummary();
+    const initialLoadId = window.setTimeout(runLoadSummary, 0);
+    const intervalId = window.setInterval(runLoadSummary, POLL_INTERVAL_MS);
+    const onFocus = () => runLoadSummary();
     window.addEventListener("focus", onFocus);
 
     return () => {
+      window.clearTimeout(initialLoadId);
       window.clearInterval(intervalId);
       window.removeEventListener("focus", onFocus);
     };

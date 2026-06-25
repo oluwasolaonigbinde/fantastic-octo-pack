@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Eye,
   SlidersHorizontal,
@@ -206,7 +206,7 @@ export default function AdminServicesPage() {
   const [selectedLoading, setSelectedLoading] = useState(false);
   const [selectedError, setSelectedError] = useState("");
 
-  const loadRequests = async () => {
+  const loadRequests = useCallback(async () => {
     if (!token) {
       return;
     }
@@ -226,17 +226,20 @@ export default function AdminServicesPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void loadRequests();
   }, [token]);
 
   useEffect(() => {
+    const timeoutId = window.setTimeout(() => void loadRequests(), 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [loadRequests]);
+
+  useEffect(() => {
     if (!token || !selectedRequestId) {
-      setSelectedRequest(null);
-      setSelectedError("");
-      return;
+      const timeoutId = window.setTimeout(() => {
+        setSelectedRequest(null);
+        setSelectedError("");
+      }, 0);
+      return () => window.clearTimeout(timeoutId);
     }
 
     let isMounted = true;

@@ -103,8 +103,8 @@ export default function AdminAgentDetailPage() {
 
   useEffect(() => {
     if (!token) {
-      setLoading(false);
-      return;
+      const timeoutId = window.setTimeout(() => setLoading(false), 0);
+      return () => window.clearTimeout(timeoutId);
     }
 
     let isMounted = true;
