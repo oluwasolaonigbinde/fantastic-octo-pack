@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowLeft,
   CheckCircle2,
   ChevronDown,
-  ChevronRight,
+  ChevronUp,
   FileCheck2,
   Mail,
   MessagesSquare,
@@ -16,67 +15,76 @@ import {
   Button,
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   PopUp,
+  Spinner,
 } from "@/components/base";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useSubscription } from "@/hooks/useSubscription";
+import { useWallet } from "@/hooks/useWallet";
+import { useWalletTopup } from "@/hooks/useWalletTopup";
+import { TopUpDrawer, TopUpReturnBanner } from "@/components/wallet/wallet-topup";
+import { koboToNaira } from "@/lib/wallet-format";
 import { fetchUserProducts } from "@/store/slices/product-slice";
 import { fetchDistributorInbox } from "@/store/slices/rfq-slice";
+import { fetchMySubscription } from "@/store/slices/subscription-slice";
+import type { PlanFeature, Subscription, SubscriptionPlan } from "@/types/subscription";
 
-// Silver removed — not in Figma design
-type PlanId = "free" | "starter" | "bronze" | "gold" | "platinum";
-type ModalMode = "upgrade" | "downgrade";
-type BillingAction = "now" | "later";
-type PaymentMethod = "credit_card" | "bank_transfer" | "wallet";
-
-const PLAN_ORDER: PlanId[] = ["free", "starter", "bronze", "gold", "platinum"];
-
-// Badge bg/text colours from Figma design tokens
-const PLAN_DETAILS: Record<
-  PlanId,
-  { name: string; monthly: string; yearly: string; accentClass: string }
-> = {
-  free: {
-    name: "Free",
-    monthly: "₦0.00",
-    yearly: "No recurring billing",
-    accentClass: "bg-[#F3F4F6] text-[#6B7280]",
-  },
-  starter: {
-    name: "Starter",
-    monthly: "₦25,000 / month",
-    yearly: "₦150,000 billed yearly",
-    accentClass: "bg-[#EAF9FF] text-[#3586E4]",
-  },
-  bronze: {
-    name: "Bronze",
-    monthly: "₦50,000 / month",
-    yearly: "₦300,000 billed yearly",
-    accentClass: "bg-[#FFF7F0] text-[#FF8D36]",
-  },
-  gold: {
-    name: "Gold",
-    monthly: "₦100,000 / month",
-    yearly: "₦600,000 billed yearly",
-    accentClass: "bg-[rgba(255,204,0,0.12)] text-[#F2C100]",
-  },
-  platinum: {
-    name: "Platinum",
-    monthly: "₦150,000 / month",
-    yearly: "₦900,000 billed yearly",
-    accentClass: "bg-[rgba(52,199,89,0.12)] text-[#34C759]",
-  },
-};
-
-// Plans available in the plan-selector dropdown (Component 16) — excludes Free
-const SELECTABLE_PLANS: PlanId[] = ["starter", "bronze", "gold", "platinum"];
+const MOCK_MESSAGE_SUMMARY = { total: 4, read: 1, unread: 3 };
 
 // Per-card icon background tints from Figma
 const KPI_ICON_BG = ["#FCE4FF", "#DEFFE7", "#E2F1FF", "#E2F1FF"] as const;
 
-const MOCK_MESSAGE_SUMMARY = { total: 4, read: 1, unread: 3 };
+// ─── Formatting helpers ──────────────────────────────────────────────────────
+
+/** Amounts are stored in kobo; render as naira. */
+const formatNaira = (kobo: number) =>
+  `₦${(kobo / 100).toLocaleString("en-NG")}`;
+
+const intervalLabel = (interval: SubscriptionPlan["interval"]) =>
+  interval === "yearly" ? "year" : "month";
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleDateString("en-NG", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+};
+
+/** "product_listing_limit" → "Product listing limit". */
+const humanizeFeatureKey = (key: string) => {
+  const spaced = key.replace(/_/g, " ");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+};
+
+const featureValueLabel = (feature: PlanFeature) => {
+  if (typeof feature.numericValue === "number")
+    return feature.numericValue === -1 ? "Unlimited" : String(feature.numericValue);
+  if (typeof feature.booleanValue === "boolean")
+    return feature.booleanValue ? "Included" : "Not included";
+  return "—";
+};
+
+const subscriptionPlanId = (subscription: Subscription | null) => {
+  if (!subscription) return null;
+  return typeof subscription.plan === "string"
+    ? subscription.plan
+    : subscription.plan?._id ?? null;
+};
+
+/**
+ * A subscription that blocks taking a new one — anything the backend still
+ * considers in force. Only fully `canceled`/`expired` subscriptions free the
+ * caller to subscribe again.
+ */
+const isLiveSubscription = (subscription: Subscription | null) =>
+  !!subscription && !["canceled", "expired"].includes(subscription.status);
 
 // ─── KPI Summary Card ────────────────────────────────────────────────────────
 
@@ -109,171 +117,154 @@ function SummaryCard({
   );
 }
 
-// ─── Plan Selector Dropdown (Figma Component 16 — node 6306-68020) ────────────
-
-function PlanSelectorDropdown({
-  value,
-  onChange,
-}: {
-  value: PlanId | null;
-  onChange: (plan: PlanId) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const selectedName = value ? PLAN_DETAILS[value].name : null;
-
-  return (
-    <div className="relative w-full">
-      {/* Closed state — bg #F9FAFB, rounded-[20px] */}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between rounded-[20px] bg-[#F9FAFB] px-5 py-[22px]"
-      >
-        <div className="flex items-center gap-3.5">
-          <span className="inline-block size-[23px] rounded-full bg-[#E8ECF4]" />
-          <span className="text-[20px] font-medium leading-8 text-black">
-            {selectedName ?? "Select new plan"}
-          </span>
-        </div>
-        <ChevronDown className="size-6 text-[#4B5563]" />
-      </button>
-
-      {/* Expanded state — white bg, shadow */}
-      {open && (
-        <div className="absolute left-0 top-[calc(100%+4px)] z-20 w-full rounded-[20px] bg-white py-5 shadow-lg">
-          <div className="flex flex-col gap-4 px-5">
-            {SELECTABLE_PLANS.map((planId) => (
-              <button
-                key={planId}
-                type="button"
-                onClick={() => {
-                  onChange(planId);
-                  setOpen(false);
-                }}
-                className="flex w-full items-center gap-3.5 text-[20px] font-medium leading-8 text-black"
-              >
-                <span className="inline-block size-[23px] rounded-full bg-[#E8ECF4]" />
-                {PLAN_DETAILS[planId].name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Payment Method Option ────────────────────────────────────────────────────
-
-function PaymentOption({
-  active,
-  title,
-  subtitle,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  title: string;
-  subtitle?: string;
-  children?: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <div className="w-full rounded-[20px] border border-[#E8ECF4] bg-white p-5 text-left">
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex w-full items-center justify-between gap-4"
-      >
-        <div className="flex items-center gap-3">
-          <span
-            className={`inline-flex size-6 items-center justify-center rounded-full border ${
-              active ? "border-[#FF7A00]" : "border-[#DDE0E5]"
-            }`}
-          >
-            <span
-              className={`size-3 rounded-full ${active ? "bg-[#FF7A00]" : "bg-transparent"}`}
-            />
-          </span>
-          <div>
-            <p className="text-[18px] font-medium text-[#111827]">{title}</p>
-            {subtitle ? <p className="text-sm text-[#6B7280]">{subtitle}</p> : null}
-          </div>
-        </div>
-        <ChevronDown className="size-5 text-[#6B7280]" />
-      </button>
-      {active ? (
-        <div className="mt-5 border-t border-[#EEF2F7] pt-5">{children}</div>
-      ) : null}
-    </div>
-  );
-}
-
 // ─── Plan Card ────────────────────────────────────────────────────────────────
 
 function PlanCard({
-  planId,
-  currentPlan,
-  onChoose,
+  plan,
+  isCurrent,
+  subscribed,
+  canAfford,
+  isBusy,
+  onSubscribe,
   onManage,
+  onTopUp,
 }: {
-  planId: PlanId;
-  currentPlan: PlanId;
-  onChoose: (planId: PlanId) => void;
+  plan: SubscriptionPlan;
+  isCurrent: boolean;
+  /** The caller already holds a live subscription — no plan is subscribable. */
+  subscribed: boolean;
+  /** The wallet has enough available balance to pay for this plan. */
+  canAfford: boolean;
+  isBusy: boolean;
+  onSubscribe: () => void;
   onManage: () => void;
+  onTopUp: () => void;
 }) {
-  const plan = PLAN_DETAILS[planId];
-  const isCurrent = currentPlan === planId;
-  const priceDisplay = plan.monthly.replace(" / month", "");
+  const [showBilling, setShowBilling] = useState(false);
+  const [showFeatures, setShowFeatures] = useState(false);
+
+  // The free tier is the baseline — it's never subscribed to or managed.
+  const isFree = plan.price <= 0;
 
   return (
-    <article className="flex flex-col justify-between rounded-[12px] border border-[#DDE0E5] bg-white p-5">
+    <article className="flex flex-col justify-between rounded-[12px] border border-[#DDE0E5] bg-white p-4">
       {/* Top — badge, price, tagline */}
-      <div className="border-b border-[#DDE0E5] pb-10">
-        <div
-          className={`inline-flex items-center rounded-full px-5 py-2 text-2xl font-semibold leading-10 ${plan.accentClass}`}
-        >
+      <div className="border-b border-[#DDE0E5] pb-4">
+        <div className="inline-flex items-center rounded-full bg-[#EAF9FF] px-3 py-1 text-sm font-semibold text-[#3586E4]">
           {plan.name}
           {isCurrent ? " (current)" : ""}
         </div>
-        <p className="mt-4 text-[32px] font-semibold leading-[48px] text-[#4B5563]">
-          {priceDisplay}
+        <p className="mt-2 text-xl font-semibold text-[#4B5563]">
+          {formatNaira(plan.price)}
         </p>
-        <p className="text-[20px] font-semibold leading-8 text-[#6B7280]">
-          Design for growing distributors
+        <p className="text-sm text-[#6B7280]">
+          {plan.description || "Designed for growing distributors"}
         </p>
       </div>
 
-      {/* Accordion rows — right-arrow icon (icon-park-solid:right-one equivalent) */}
-      <div className="mt-6 space-y-5">
-        <div className="flex items-center justify-between">
-          <span className="text-[24px] font-bold leading-10 text-[#4B5563]">Billing Period</span>
-          <ChevronRight className="size-6 text-[#4B5563]" />
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[21px] font-bold leading-[36px] text-[#4B5563]">Features</span>
-          <ChevronRight className="size-6 text-[#4B5563]" />
-        </div>
-      </div>
-
-      {/* CTA button */}
-      <div className="mt-10">
-        {isCurrent ? (
-          // Current plan — "Manage Subscription" greyed button (Figma: #C4C8CE bg, #111827 text)
+      {/* Billing Period — collapsible */}
+      <div className="mt-3 space-y-3">
+        <div>
           <button
             type="button"
-            onClick={onManage}
-            className="w-full rounded-[12px] py-3 text-[16px] font-normal leading-6 text-[#111827]"
-            style={{ backgroundColor: "#C4C8CE" }}
+            onClick={() => setShowBilling((v) => !v)}
+            className="flex w-full items-center justify-between"
           >
-            Manage Subscription
+            <span className="text-sm font-bold text-[#4B5563]">Billing Period</span>
+            {showBilling ? (
+              <ChevronUp className="size-4 text-[#4B5563]" />
+            ) : (
+              <ChevronDown className="size-4 text-[#4B5563]" />
+            )}
           </button>
+          {showBilling ? (
+            <p className="mt-1 text-xs text-[#6B7280]">
+              {formatNaira(plan.price)} billed{" "}
+              {plan.interval === "yearly" ? "yearly" : "monthly"}
+              {plan.intervalCount > 1 ? ` (every ${plan.intervalCount} ${intervalLabel(plan.interval)}s)` : ""}
+            </p>
+          ) : null}
+        </div>
+
+        {/* Features — collapsible */}
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowFeatures((v) => !v)}
+            className="flex w-full items-center justify-between"
+          >
+            <span className="text-sm font-bold text-[#4B5563]">Features</span>
+            {showFeatures ? (
+              <ChevronUp className="size-4 text-[#4B5563]" />
+            ) : (
+              <ChevronDown className="size-4 text-[#4B5563]" />
+            )}
+          </button>
+          {showFeatures ? (
+            <ul className="mt-1 space-y-1">
+              {plan.features.length === 0 ? (
+                <li className="text-xs text-[#6B7280]">No features listed.</li>
+              ) : (
+                plan.features.map((feature) => (
+                  <li
+                    key={feature.key}
+                    className="flex items-center justify-between text-xs text-[#4B5563]"
+                  >
+                    <span>{humanizeFeatureKey(feature.key)}</span>
+                    <span className="font-medium text-[#111827]">
+                      {featureValueLabel(feature)}
+                    </span>
+                  </li>
+                ))
+              )}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+
+      {/* CTA. Free is the baseline (no subscribe). On a paid plan, only the
+          current plan shows Manage — every other card has no action. */}
+      <div className="mt-4">
+        {isFree ? (
+          isCurrent ? (
+            <div className="w-full rounded-[12px] bg-[#F3F4F6] py-2 text-center text-sm font-normal text-[#6B7280]">
+              Current plan
+            </div>
+          ) : null
+        ) : subscribed ? (
+          isCurrent ? (
+            <button
+              type="button"
+              onClick={onManage}
+              className="w-full rounded-[12px] py-2 text-sm font-normal text-[#111827]"
+              style={{ backgroundColor: "#C4C8CE" }}
+            >
+              Manage Subscription
+            </button>
+          ) : null
         ) : (
-          <Button
-            title={planId === "free" ? "Downgrade to Free" : `Upgrade to ${plan.name}`}
-            onClick={() => onChoose(planId)}
-            className="rounded-[12px]"
-          />
+          <>
+            <Button
+              title={`Subscribe to ${plan.name}`}
+              onClick={onSubscribe}
+              isBusy={isBusy}
+              disabled={!canAfford}
+              className="rounded-[12px]"
+            />
+            {!canAfford ? (
+              <p className="mt-3 text-center text-[13px] leading-5 text-[#E33C13]">
+                Insufficient wallet balance.{" "}
+                <button
+                  type="button"
+                  onClick={onTopUp}
+                  className="font-medium underline"
+                >
+                  Top up your wallet
+                </button>{" "}
+                to subscribe.
+              </p>
+            ) : null}
+          </>
         )}
       </div>
     </article>
@@ -288,19 +279,38 @@ export default function DistributorSubscriptions() {
   const { myProducts, totalProducts } = useAppSelector((state) => state.product);
   const { distributorQuotes } = useAppSelector((state) => state.rfq);
 
-  const [currentPlan, setCurrentPlan] = useState<PlanId>("starter");
-  const [selectedPlan, setSelectedPlan] = useState<PlanId>("starter");
-  const [modalMode, setModalMode] = useState<ModalMode | null>(null);
-  const [billingAction, setBillingAction] = useState<BillingAction>("later");
-  const [showPaymentView, setShowPaymentView] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] =
-    useState<PaymentMethod>("bank_transfer");
-  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
-  // Manage subscription modal (plan selector dropdown — Component 16)
+  const {
+    plans,
+    subscription,
+    isLoading,
+    isMutating,
+    subscribe,
+    cancel,
+  } = useSubscription();
+  const { wallet } = useWallet();
+  const availableBalance = wallet?.availableBalance ?? 0;
+  const {
+    open: topUpOpen,
+    openTopUp,
+    returnStatus,
+    dismissReturnStatus,
+    panelProps,
+  } = useWalletTopup({ callbackPath: "/dashboard/distributor/subscriptions" });
+
+  /** Open the top-up panel prefilled with the shortfall needed for a plan. */
+  const handleTopUp = (plan: SubscriptionPlan) => {
+    const shortfallKobo = Math.max(plan.price - availableBalance, 0);
+    openTopUp(koboToNaira(shortfallKobo));
+  };
+
   const [showManageModal, setShowManageModal] = useState(false);
-  const [manageSelectedPlan, setManageSelectedPlan] = useState<PlanId | null>(null);
-  // Cancel subscription modal (Figma node 6312-68206)
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
+  const [popup, setPopup] = useState<{
+    type: "success" | "warning";
+    title: string;
+    description: string;
+  } | null>(null);
 
   useEffect(() => {
     if (authData?._id && authData?.tokens?.accessToken && !myProducts) {
@@ -346,19 +356,81 @@ export default function DistributorSubscriptions() {
     [quotes],
   );
 
-  const selectedPlanDetails = PLAN_DETAILS[selectedPlan];
+  const availablePlans = useMemo(() => plans ?? [], [plans]);
+  // A live subscription to a paid plan. The free tier also comes back as a live
+  // subscription, but it's the baseline — it must not block subscribing to a
+  // paid plan, so treat it as "not subscribed" here.
+  const hasPaidSubscription =
+    isLiveSubscription(subscription) &&
+    (subscription?.planSnapshot?.price ?? 0) > 0;
+  const currentPlan = useMemo(() => {
+    if (!hasPaidSubscription) return null;
+    const planId = subscriptionPlanId(subscription);
+    const byId = availablePlans.find((plan) => plan._id === planId);
+    if (byId) return byId;
+    // The subscribed plan may be archived / not in the caller's plan list —
+    // fall back to matching the snapshot name so it still reads as current.
+    const snapshotName = subscription?.planSnapshot?.name?.toLowerCase();
+    return (
+      availablePlans.find((plan) => plan.name.toLowerCase() === snapshotName) ??
+      null
+    );
+  }, [availablePlans, hasPaidSubscription, subscription]);
+  const currentPlanId = currentPlan?._id ?? null;
 
-  const finishPaymentFlow = () => {
-    setCurrentPlan(selectedPlan);
-    setShowPaymentView(false);
-    setShowSuccessPopup(true);
+  const handleSubscribe = async (plan: SubscriptionPlan) => {
+    // Frontend guard — don't attempt to subscribe when the wallet can't cover
+    // the plan's first billing cycle.
+    if (availableBalance < plan.price) {
+      setPopup({
+        type: "warning",
+        title: "Insufficient wallet balance",
+        description: `This plan costs ${formatNaira(plan.price)} but your available wallet balance is ${formatNaira(availableBalance)}. Top up your wallet, then try again.`,
+      });
+      return;
+    }
+    setPendingPlanId(plan._id);
+    const { ok, error } = await subscribe(plan._id);
+    setPendingPlanId(null);
+    if (ok) {
+      setPopup({
+        type: "success",
+        title: "Subscription started",
+        description:
+          "Your plan is now active. An invoice has been generated for this billing cycle.",
+      });
+      return;
+    }
+    // If the backend says a subscription already exists, refresh so the cards
+    // flip to "Manage Subscription".
+    const token = authData?.tokens?.accessToken;
+    if (token) void dispatch(fetchMySubscription(token));
+    setPopup({
+      type: "warning",
+      title: "Couldn't subscribe",
+      description:
+        error ?? "We couldn't start your subscription. Please try again.",
+    });
   };
 
-  const openUpgradeDowngradeModal = (nextPlan: PlanId) => {
-    setSelectedPlan(nextPlan);
-    setBillingAction("later");
-    setModalMode(
-      PLAN_ORDER.indexOf(nextPlan) > PLAN_ORDER.indexOf(currentPlan) ? "upgrade" : "downgrade",
+  const handleCancel = async () => {
+    const { ok, error } = await cancel();
+    setShowCancelModal(false);
+    setShowManageModal(false);
+    setPopup(
+      ok
+        ? {
+            type: "success",
+            title: "Subscription cancelled",
+            description:
+              "Your subscription will remain active until the end of the current billing period. You won't be billed again.",
+          }
+        : {
+            type: "warning",
+            title: "Couldn't cancel",
+            description:
+              error ?? "We couldn't cancel your subscription. Please try again.",
+          },
     );
   };
 
@@ -371,249 +443,125 @@ export default function DistributorSubscriptions() {
 
       {/* Page bg matches Figma: #F9FAFB */}
       <div className="space-y-4 bg-[#F9FAFB] p-4 md:p-6">
-        {!showPaymentView ? (
-          <>
-            {/* ── KPI Cards — each with its own icon tint from Figma ── */}
-            <section className="grid gap-4 xl:grid-cols-4">
-              <SummaryCard
-                title="Total product listed"
-                value={totalProducts || products.length}
-                meta={`Equipment: ${equipmentCount} | Consumables: ${consumablesCount}`}
-                icon={<FileCheck2 className="size-6 text-[#C026D3]" />}
-                iconBg={KPI_ICON_BG[0]}
-              />
-              <SummaryCard
-                title="Total verified products"
-                value={approvedProducts.length}
-                meta={`Equipment: ${approvedEquipmentCount} | Consumables: ${approvedConsumablesCount}`}
-                icon={<CheckCircle2 className="size-6 text-[#16A34A]" />}
-                iconBg={KPI_ICON_BG[1]}
-              />
-              <SummaryCard
-                title="Total quote request"
-                value={quotes.length}
-                meta={`Responded: ${respondedQuotes} | Un-responded: ${unrespondedQuotes}`}
-                icon={<MessagesSquare className="size-6 text-[#0669D9]" />}
-                iconBg={KPI_ICON_BG[2]}
-              />
-              <SummaryCard
-                title="Messages unlocked"
-                value={MOCK_MESSAGE_SUMMARY.total}
-                meta={`Read: ${MOCK_MESSAGE_SUMMARY.read} | Unread: ${MOCK_MESSAGE_SUMMARY.unread}`}
-                icon={<Mail className="size-6 text-[#0669D9]" />}
-                iconBg={KPI_ICON_BG[3]}
-              />
-            </section>
+        {/* Paystack return banner — shown after coming back from top-up. */}
+        <TopUpReturnBanner status={returnStatus} onDismiss={dismissReturnStatus} />
 
-            {/* ── Current Plan Bar — colours from Figma: #F6FBFF / #AAD3F3 ── */}
-            <nav
-              aria-label="Current subscription"
-              className="rounded-[12px] border border-[#DDE0E5] bg-white p-5"
-            >
-              <div className="grid gap-0 divide-x divide-[#DDE0E5] lg:grid-cols-3">
-                <div className="rounded-[20px] border border-[#AAD3F3] bg-[#F6FBFF] px-5 py-4">
-                  <p className="text-sm text-[#6B7280]">Current Plan</p>
-                  <p className="mt-2 text-lg font-medium text-[#111827]">Starter plan</p>
-                </div>
-                <div className="px-8 py-4">
-                  <p className="text-sm text-[#6B7280]">Fee</p>
-                  <p className="mt-2 text-xl font-semibold text-[#111827]">₦25,000</p>
-                </div>
-                <div className="px-8 py-4">
-                  <p className="text-sm text-[#6B7280]">Renewal date</p>
-                  <p className="mt-2 text-xl font-semibold text-[#111827]">30th May 2025</p>
-                </div>
-              </div>
-            </nav>
+        {/* ── KPI Cards ── */}
+        <section className="grid gap-4 xl:grid-cols-4">
+          <SummaryCard
+            title="Total product listed"
+            value={totalProducts || products.length}
+            meta={`Equipment: ${equipmentCount} | Consumables: ${consumablesCount}`}
+            icon={<FileCheck2 className="size-6 text-[#C026D3]" />}
+            iconBg={KPI_ICON_BG[0]}
+          />
+          <SummaryCard
+            title="Total verified products"
+            value={approvedProducts.length}
+            meta={`Equipment: ${approvedEquipmentCount} | Consumables: ${approvedConsumablesCount}`}
+            icon={<CheckCircle2 className="size-6 text-[#16A34A]" />}
+            iconBg={KPI_ICON_BG[1]}
+          />
+          <SummaryCard
+            title="Total quote request"
+            value={quotes.length}
+            meta={`Responded: ${respondedQuotes} | Un-responded: ${unrespondedQuotes}`}
+            icon={<MessagesSquare className="size-6 text-[#0669D9]" />}
+            iconBg={KPI_ICON_BG[2]}
+          />
+          <SummaryCard
+            title="Messages unlocked"
+            value={MOCK_MESSAGE_SUMMARY.total}
+            meta={`Read: ${MOCK_MESSAGE_SUMMARY.read} | Unread: ${MOCK_MESSAGE_SUMMARY.unread}`}
+            icon={<Mail className="size-6 text-[#0669D9]" />}
+            iconBg={KPI_ICON_BG[3]}
+          />
+        </section>
 
-            {/* ── "All available plans" header — Medium 500, 20px per Figma ── */}
-            <section className="rounded-[12px] border border-[#DDE0E5] bg-white p-5">
-              <h2 className="text-[20px] font-medium text-[#111827]">All available plans - 6</h2>
-            </section>
-
-            {/* ── Plan Cards — 5 tiers in xl:grid-cols-3 = 3+2 rows matching Figma ── */}
-            <section
-              className="rounded-[20px] border border-[#DDE0E5] p-5"
-              style={{ backgroundColor: "rgba(255,255,255,0.7)" }}
-            >
-              {/* Section header — Bold 700, 28px per Figma */}
-              <h2 className="text-[28px] font-bold text-[#111827]">Subscriptions</h2>
-              <p className="mt-2 text-[17px] font-semibold text-[#6B7280]">
-                Choose a plan that fits your business stage
+        {/* ── Current Plan Bar ── */}
+        <nav
+          aria-label="Current subscription"
+          className="rounded-[12px] border border-[#DDE0E5] bg-white p-5"
+        >
+          <div className="grid gap-0 divide-x divide-[#DDE0E5] lg:grid-cols-3">
+            <div className="rounded-[20px] border border-[#AAD3F3] bg-[#F6FBFF] px-5 py-4">
+              <p className="text-sm text-[#6B7280]">Current Plan</p>
+              <p className="mt-2 text-lg font-medium text-[#111827]">
+                {hasPaidSubscription
+                  ? currentPlan?.name ?? subscription?.planSnapshot?.name ?? "Active plan"
+                  : "Free"}
               </p>
+            </div>
+            <div className="px-8 py-4">
+              <p className="text-sm text-[#6B7280]">Fee</p>
+              <p className="mt-2 text-xl font-semibold text-[#111827]">
+                {hasPaidSubscription && subscription?.planSnapshot
+                  ? formatNaira(subscription.planSnapshot.price)
+                  : "₦0.00"}
+              </p>
+            </div>
+            <div className="px-8 py-4">
+              <p className="text-sm text-[#6B7280]">
+                {subscription?.cancelAtPeriodEnd ? "Ends on" : "Renewal date"}
+              </p>
+              <p className="mt-2 text-xl font-semibold text-[#111827]">
+                {hasPaidSubscription
+                  ? formatDate(subscription?.currentPeriodEnd ?? subscription?.nextBillingDate)
+                  : "—"}
+              </p>
+            </div>
+          </div>
+        </nav>
 
-              <div className="mt-6 grid gap-4 xl:grid-cols-3">
-                {PLAN_ORDER.map((planId) => (
-                  <PlanCard
-                    key={planId}
-                    planId={planId}
-                    currentPlan={currentPlan}
-                    onManage={() => {
-                      setManageSelectedPlan(null);
-                      setShowManageModal(true);
-                    }}
-                    onChoose={openUpgradeDowngradeModal}
-                  />
-                ))}
-              </div>
-            </section>
-          </>
-        ) : (
-          /* ── Payment View ── */
-          <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-            <div className="space-y-4">
-              <button
-                type="button"
-                onClick={() => setShowPaymentView(false)}
-                className="inline-flex items-center gap-2 text-[18px] text-[#4B5563]"
-              >
-                <ArrowLeft className="size-5" />
-                Go Back
-              </button>
-              <div className="rounded-[24px] border border-[#E8ECF4] bg-white p-5 shadow-sm">
-                <h2 className="text-[28px] font-semibold text-[#111827]">Payment</h2>
-                <p className="mt-2 text-sm text-[#6B7280]">
-                  Select preferred payment method to proceed
-                </p>
-                <div className="mt-6 space-y-4">
-                  <PaymentOption
-                    active={selectedPaymentMethod === "credit_card"}
-                    title="Credit card"
-                    subtitle="Visa / Mastercard"
-                    onClick={() => setSelectedPaymentMethod("credit_card")}
-                  >
-                    <p className="text-sm text-[#6B7280]">
-                      Card payment will be wired when the seller billing slice goes live.
-                    </p>
-                  </PaymentOption>
-                  <PaymentOption
-                    active={selectedPaymentMethod === "bank_transfer"}
-                    title="Bank transfer"
-                    subtitle="Make payment into the account details below and click the confirmation button."
-                    onClick={() => setSelectedPaymentMethod("bank_transfer")}
-                  >
-                    <div className="space-y-3 text-sm text-[#4B5563]">
-                      <p>Account number: 7694873992</p>
-                      <p>Account name: Samuel Smart</p>
-                      <p>Bank name: GTB bank</p>
-                      <p className="pt-2 text-[28px] font-semibold text-[#111827]">
-                        05:49{" "}
-                        <span className="text-sm font-normal text-[#6B7280]">
-                          (Make payment before time expires)
-                        </span>
-                      </p>
-                      <Button
-                        title="I have made payment"
-                        className="rounded-2xl"
-                        onClick={finishPaymentFlow}
-                      />
-                    </div>
-                  </PaymentOption>
-                  <PaymentOption
-                    active={selectedPaymentMethod === "wallet"}
-                    title="My wallet"
-                    subtitle="You can use your available wallet to make payment."
-                    onClick={() => setSelectedPaymentMethod("wallet")}
-                  >
-                    <div className="space-y-4 text-sm text-[#4B5563]">
-                      <p>Available wallet balance</p>
-                      <p className="text-[36px] font-semibold text-[#111827]">₦150,000</p>
-                      <Button
-                        title="Make payment"
-                        className="rounded-2xl"
-                        onClick={finishPaymentFlow}
-                      />
-                    </div>
-                  </PaymentOption>
-                </div>
-              </div>
+        {/* ── Plans ── */}
+        <section className="rounded-[12px] border border-[#DDE0E5] bg-white p-5">
+          <h2 className="text-[20px] font-medium text-[#111827]">
+            All available plans - {availablePlans.length}
+          </h2>
+        </section>
+
+        <section
+          className="rounded-[20px] border border-[#DDE0E5] p-5"
+          style={{ backgroundColor: "rgba(255,255,255,0.7)" }}
+        >
+          <h2 className="text-lg font-bold text-[#111827]">Subscriptions</h2>
+          <p className="mt-1 text-sm text-[#6B7280]">
+            Choose a plan that fits your business stage
+          </p>
+
+          {isLoading && availablePlans.length === 0 ? (
+            <div className="flex justify-center py-16">
+              <Spinner />
             </div>
-            <div className="rounded-[24px] border border-[#E8ECF4] bg-white p-5 shadow-sm">
-              <h2 className="text-[28px] font-semibold text-[#111827]">Payment summary</h2>
-              <div className="mt-16 space-y-5 text-[18px] text-[#4B5563]">
-                <div className="flex items-center justify-between">
-                  <span>Item&apos;s total</span>
-                  <span>{selectedPlanDetails.monthly.replace(" / month", "")}</span>
-                </div>
-                <div className="flex items-center justify-between text-[28px] font-semibold text-[#111827]">
-                  <span>Total</span>
-                  <span>{selectedPlanDetails.monthly.replace(" / month", "")}</span>
-                </div>
-              </div>
+          ) : availablePlans.length === 0 ? (
+            <p className="py-16 text-center text-[#6B7280]">
+              No subscription plans are available right now.
+            </p>
+          ) : (
+            <div className="mt-6 grid gap-4 xl:grid-cols-3">
+              {availablePlans.map((plan) => (
+                <PlanCard
+                  key={plan._id}
+                  plan={plan}
+                  isCurrent={
+                    hasPaidSubscription
+                      ? plan._id === currentPlanId
+                      : plan.price <= 0
+                  }
+                  subscribed={hasPaidSubscription}
+                  canAfford={availableBalance >= plan.price}
+                  isBusy={isMutating && pendingPlanId === plan._id}
+                  onSubscribe={() => handleSubscribe(plan)}
+                  onManage={() => setShowManageModal(true)}
+                  onTopUp={() => handleTopUp(plan)}
+                />
+              ))}
             </div>
-          </section>
-        )}
+          )}
+        </section>
       </div>
 
-      {/* ── Upgrade / Downgrade Confirmation Modal ── */}
-      <Dialog open={modalMode !== null} onOpenChange={() => setModalMode(null)}>
-        <DialogContent className="max-w-[500px] rounded-[28px] p-0">
-          <DialogHeader className="border-b border-[#EAEFF5] px-8 py-6">
-            <DialogTitle className="text-[20px] font-semibold text-[#111827]">
-              {modalMode === "upgrade"
-                ? "Upgrade Subscription Plan"
-                : "Downgrade Subscription Plan"}
-            </DialogTitle>
-            <DialogDescription className="mt-5 rounded-[20px] border border-[#86BEFF] bg-[#F3FAFF] px-6 py-8 text-center text-[18px] leading-8 text-[#4B5563]">
-              {modalMode === "upgrade"
-                ? "Are you sure you want to upgrade? This will remove premium privileges and take your account to the premium plan."
-                : "Are you sure you want to downgrade? This will remove basic plan privileges and take your account to the free plan."}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-5 px-8 py-7 text-sm text-[#4B5563]">
-            <label className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={billingAction === "now"}
-                onChange={() => setBillingAction("now")}
-                className="mt-1 size-5"
-              />
-              <span>
-                <span className="block text-[18px] font-medium text-[#111827]">
-                  {modalMode === "upgrade" ? "Upgrade now" : "Schedule downgrade"}
-                </span>
-                {modalMode === "upgrade"
-                  ? "This will automatically upgrade your subscription plan."
-                  : "This account will be downgraded at the end of your current plan - May 31st 2025."}
-              </span>
-            </label>
-            {modalMode === "upgrade" ? (
-              <label className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={billingAction === "later"}
-                  onChange={() => setBillingAction("later")}
-                  className="mt-1 size-5"
-                />
-                <span>
-                  <span className="block text-[18px] font-medium text-[#111827]">
-                    Upgrade later (Auto renew)
-                  </span>
-                  This account will be upgraded at the end of your current plan - May 31st 2025.
-                </span>
-              </label>
-            ) : null}
-            <div className="rounded-[24px] border border-[#56D67A] px-6 py-5 text-center">
-              <p className="text-sm text-[#4B5563]">Your new fee will be</p>
-              <p className="mt-3 text-[34px] font-semibold text-[#2BA84A]">
-                {selectedPlanDetails.monthly}
-              </p>
-              <p className="mt-2 text-sm text-[#6B7280]">{selectedPlanDetails.yearly}</p>
-            </div>
-            <Button
-              title={modalMode === "upgrade" ? "Continue" : "Schedule downgrade plan"}
-              className="rounded-2xl"
-              iconRight={<ArrowLeft className="size-4 rotate-180" />}
-              onClick={() => {
-                setShowPaymentView(true);
-                setModalMode(null);
-              }}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── Manage Subscription Modal (hosts Component 16 plan selector) ── */}
+      {/* ── Manage Subscription Modal — cancel is the only action ── */}
       <Dialog open={showManageModal} onOpenChange={() => setShowManageModal(false)}>
         <DialogContent className="max-w-[500px] rounded-[20px] bg-white p-8">
           <DialogHeader>
@@ -621,47 +569,49 @@ export default function DistributorSubscriptions() {
               Manage Subscription
             </DialogTitle>
           </DialogHeader>
-          <div className="mt-6 space-y-4">
-            <PlanSelectorDropdown
-              value={manageSelectedPlan}
-              onChange={(plan) => setManageSelectedPlan(plan)}
-            />
-            {manageSelectedPlan && (
-              <Button
-                title={`Switch to ${PLAN_DETAILS[manageSelectedPlan].name}`}
-                className="rounded-[12px]"
+          <div className="mt-6 space-y-5">
+            <div className="rounded-[20px] border border-[#AAD3F3] bg-[#F6FBFF] px-5 py-4">
+              <p className="text-sm text-[#6B7280]">Current Plan</p>
+              <p className="mt-1 text-lg font-medium text-[#111827]">
+                {currentPlan?.name ?? subscription?.planSnapshot?.name ?? "Active plan"}
+              </p>
+              {subscription?.planSnapshot ? (
+                <p className="mt-1 text-sm text-[#6B7280]">
+                  {formatNaira(subscription.planSnapshot.price)} /{" "}
+                  {intervalLabel(subscription.planSnapshot.interval)}
+                </p>
+              ) : null}
+              <p className="mt-3 text-sm text-[#6B7280]">
+                {subscription?.cancelAtPeriodEnd
+                  ? `Cancellation scheduled — access ends ${formatDate(subscription?.currentPeriodEnd)}.`
+                  : `Renews ${formatDate(subscription?.currentPeriodEnd ?? subscription?.nextBillingDate)}.`}
+              </p>
+            </div>
+
+            {!subscription?.cancelAtPeriodEnd ? (
+              <button
+                type="button"
                 onClick={() => {
-                  openUpgradeDowngradeModal(manageSelectedPlan);
                   setShowManageModal(false);
+                  setShowCancelModal(true);
                 }}
-              />
-            )}
-            {/* Cancel subscription entry point */}
-            <button
-              type="button"
-              onClick={() => {
-                setShowManageModal(false);
-                setShowCancelModal(true);
-              }}
-              className="w-full pt-2 text-center text-[16px] font-medium text-[#E33C13] underline"
-            >
-              Cancel Subscription
-            </button>
+                className="w-full pt-2 text-center text-[16px] font-medium text-[#E33C13] underline"
+              >
+                Cancel Subscription
+              </button>
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* ── Cancel Subscription Modal (Figma node 6312-68206) ── */}
-      <Dialog open={showCancelModal} onOpenChange={() => setShowCancelModal(false)}>
-        {/* 500×376px, white, rounded-[20px] */}
+      {/* ── Cancel Subscription Modal ── */}
+      <Dialog open={showCancelModal} onOpenChange={() => !isMutating && setShowCancelModal(false)}>
         <DialogContent className="max-w-[500px] rounded-[20px] bg-white p-0">
           <div className="px-10 pt-[34px]">
-            {/* Title — error red #E33C13, Medium 500, 20px, centered */}
             <h2 className="text-center text-[20px] font-medium leading-8 text-[#E33C13]">
               Cancel Subscription
             </h2>
 
-            {/* Warning box — #FFF7F0 bg, #FE6E00 border, 20px radius, 128px tall */}
             <div
               className="mt-6 flex items-center justify-center rounded-[20px] border px-4 py-4"
               style={{
@@ -671,44 +621,49 @@ export default function DistributorSubscriptions() {
               }}
             >
               <p className="text-center text-[16px] font-normal leading-6 text-[#111827]">
-                Are you sure you want to cancel current plan?
+                Are you sure you want to cancel your current plan?
                 <br />
-                This will remove current plan privileges and take your all rolling premium
-                features
+                Your plan stays active until the end of the billing period
+                {subscription?.currentPeriodEnd
+                  ? ` (${formatDate(subscription.currentPeriodEnd)})`
+                  : ""}
+                , then your premium features are removed and you won&apos;t be billed again.
               </p>
             </div>
           </div>
 
-          {/* Buttons — row, gap 20px, height 56px each */}
           <div className="flex items-center gap-5 px-10 pb-[34px] pt-6">
-            {/* "No don't cancel" — teal #0669D9, white text */}
             <button
               type="button"
               onClick={() => setShowCancelModal(false)}
-              className="flex h-14 flex-1 items-center justify-center rounded-[12px] bg-[#0669D9] text-[16px] font-normal text-white"
+              disabled={isMutating}
+              className="flex h-14 flex-1 items-center justify-center rounded-[12px] bg-[#0669D9] text-[16px] font-normal text-white disabled:opacity-60"
             >
               No don&apos;t cancel
             </button>
-            {/* "Yes Cancel" — no fill, border #4B5563, grey text */}
             <button
               type="button"
-              onClick={() => setShowCancelModal(false)}
-              className="flex h-14 flex-1 items-center justify-center rounded-[12px] border border-[#4B5563] text-[16px] font-normal text-[#4B5563]"
+              onClick={handleCancel}
+              disabled={isMutating}
+              className="flex h-14 flex-1 items-center justify-center rounded-[12px] border border-[#4B5563] text-[16px] font-normal text-[#4B5563] disabled:opacity-60"
             >
-              Yes Cancel
+              {isMutating ? "Cancelling…" : "Yes Cancel"}
             </button>
           </div>
         </DialogContent>
       </Dialog>
 
       <PopUp
-        open={showSuccessPopup}
-        type="success"
-        title="Subscription updated"
-        description="Your distributor subscription selection has been updated locally. Billing and plan enforcement will connect once the subscription slice is activated."
+        open={popup !== null}
+        type={popup?.type ?? "success"}
+        title={popup?.title ?? ""}
+        description={popup?.description ?? ""}
         primaryButtonText="Okay"
-        onClose={() => setShowSuccessPopup(false)}
+        onClose={() => setPopup(null)}
       />
+
+      {/* Wallet top-up panel — reuses the shared Paystack top-up flow. */}
+      <TopUpDrawer open={topUpOpen} panelProps={panelProps} />
     </div>
   );
 }

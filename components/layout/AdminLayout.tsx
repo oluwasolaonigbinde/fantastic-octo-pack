@@ -34,13 +34,13 @@ export const adminDashLinks: DashboardLink[] = [
     icon: <ClipboardList />,
   },
   {
-    name: "RFQs",
+    name: "Sourcing & Quoting",
     path: "rfqs-orders",
     icon: <FileText />,
   },
   {
     name: "Orders",
-    path: "rfqs-orders?view=orders",
+    path: "orders",
     icon: <ScrollText />,
   },
   {

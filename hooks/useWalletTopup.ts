@@ -68,8 +68,12 @@ export function useWalletTopup({ callbackPath }: { callbackPath: string }) {
     }
   }, [topup, dispatch, returnStatus]);
 
-  const openTopUp = () => {
-    setAmount("");
+  /**
+   * Open the top-up panel. Pass `prefillNaira` to pre-populate the amount field
+   * (e.g. the shortfall needed to afford a subscription); the user can still edit it.
+   */
+  const openTopUp = (prefillNaira?: number) => {
+    setAmount(prefillNaira && prefillNaira > 0 ? String(Math.ceil(prefillNaira)) : "");
     setAmountError("");
     setTopupError("");
     // Clear any lingering Paystack-return status so the redirect effect's

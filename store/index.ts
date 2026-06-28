@@ -9,6 +9,7 @@ import serviceRequestReducer from "@/store/slices/service-request-slice";
 import walletReducer from "@/store/slices/wallet-slice";
 import paymentReducer from "@/store/slices/payment-slice";
 import orderDisputeReducer from "@/store/slices/order-dispute-slice";
+import subscriptionReducer from "@/store/slices/subscription-slice";
 
 const reducer = {
   auth: authReducer,
@@ -21,6 +22,7 @@ const reducer = {
   wallet: walletReducer,
   payment: paymentReducer,
   orderDispute: orderDisputeReducer,
+  subscription: subscriptionReducer,
 };
 
 export type RootState = {
@@ -34,6 +36,7 @@ export type RootState = {
   wallet: ReturnType<typeof walletReducer>;
   payment: ReturnType<typeof paymentReducer>;
   orderDispute: ReturnType<typeof orderDisputeReducer>;
+  subscription: ReturnType<typeof subscriptionReducer>;
 };
 
 export const makeStore = (preloadedState?: Partial<RootState>) => {

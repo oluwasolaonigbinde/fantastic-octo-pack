@@ -1,13 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { Clock, Info, Wallet } from "lucide-react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { Check, Clock, Info, Loader2, Search, Wallet } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { withdrawFromWallet } from "@/store/slices/wallet-slice";
 import { fetchMyPayments } from "@/store/slices/payment-slice";
 import { useWallet } from "@/hooks/useWallet";
 import { useEscrowSummary } from "@/hooks/useEscrowSummary";
 import { useMyPayments } from "@/hooks/usePayments";
+import paymentService from "@/services/paymentService";
 import { formatKobo, koboToNaira, formatNaira } from "@/lib/wallet-format";
 import Header from "../../component/header";
 import { Button, Input } from "@/components/base";
@@ -18,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { PaymentIntent, PaymentStatus } from "@/types/payment";
+import type { Bank, PaymentIntent, PaymentStatus } from "@/types/payment";
 
 const formatDateTime = (iso: string) => {
   const d = new Date(iso);
@@ -42,7 +43,9 @@ const intentLabel: Record<PaymentIntent, string> = {
 const statusColor: Record<PaymentStatus, string> = {
   success: "text-[#13A83B]",
   failed: "text-[#E33C13]",
+  rejected: "text-[#E33C13]",
   abandoned: "text-[#E33C13]",
+  pending_approval: "text-[#F5A400]",
   pending: "text-[#F5A400]",
   refunded: "text-[#F5A400]",
 };
@@ -63,11 +66,84 @@ export default function DistributorPayments() {
   const [payoutOpen, setPayoutOpen] = useState(false);
   const [payoutAmount, setPayoutAmount] = useState("");
   const [payoutAccount, setPayoutAccount] = useState("");
-  const [payoutBankCode, setPayoutBankCode] = useState("");
   const [payoutBusy, setPayoutBusy] = useState(false);
+
+  // Bank selection
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [banksLoading, setBanksLoading] = useState(false);
+  const [selectedBank, setSelectedBank] = useState<Bank | null>(null);
+  const [bankSearch, setBankSearch] = useState("");
+  const [bankDropdownOpen, setBankDropdownOpen] = useState(false);
+  const bankBoxRef = useRef<HTMLDivElement>(null);
+
+  // Account resolution
+  const [resolvedName, setResolvedName] = useState("");
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState("");
+  const resolveReqRef = useRef(0);
 
   const [successOpen, setSuccessOpen] = useState(false);
   const [errorOpen, setErrorOpen] = useState(false);
+
+  // Close the bank dropdown when clicking outside of it.
+  useEffect(() => {
+    if (!bankDropdownOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (bankBoxRef.current && !bankBoxRef.current.contains(e.target as Node)) {
+        setBankDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [bankDropdownOpen]);
+
+  const filteredBanks = useMemo(() => {
+    const q = bankSearch.trim().toLowerCase();
+    if (!q) return banks;
+    return banks.filter((b) => b.name.toLowerCase().includes(q));
+  }, [banks, bankSearch]);
+
+  // Fetch the supported banks the first time the payout modal is opened.
+  const loadBanks = () => {
+    if (!token || banks.length > 0 || banksLoading) return;
+    setBanksLoading(true);
+    paymentService
+      .fetchBanks(token, { currency: "NGN", country: "nigeria" })
+      .then(setBanks)
+      .catch(() => setBanks([]))
+      .finally(() => setBanksLoading(false));
+  };
+
+  // Resolve the account name once a bank and a 10-digit account number exist.
+  // Called from the input/select handlers; stale responses are discarded.
+  const resolveAccount = (account: string, bank: Bank | null) => {
+    setResolvedName("");
+    setResolveError("");
+    if (!token || !bank || account.length !== 10) {
+      setResolving(false);
+      return;
+    }
+
+    const reqId = ++resolveReqRef.current;
+    setResolving(true);
+    paymentService
+      .resolveBankAccount(token, {
+        accountNumber: account,
+        bankCode: bank.code,
+      })
+      .then((name) => {
+        if (resolveReqRef.current === reqId) setResolvedName(name);
+      })
+      .catch((err) => {
+        if (resolveReqRef.current === reqId)
+          setResolveError(
+            err instanceof Error ? err.message : "Could not resolve account",
+          );
+      })
+      .finally(() => {
+        if (resolveReqRef.current === reqId) setResolving(false);
+      });
+  };
 
   const availableLabel = wallet
     ? formatKobo(wallet.availableBalance)
@@ -98,15 +174,28 @@ export default function DistributorPayments() {
     });
   }, [payments, filterApplied, filterRef, filterType, filterDate]);
 
+  const resetFilters = () => {
+    setFilterRef("");
+    setFilterType("");
+    setFilterDate("");
+    setFilterApplied(false);
+  };
+
   const openPayout = () => {
     setPayoutAmount("");
     setPayoutAccount("");
-    setPayoutBankCode("");
+    setSelectedBank(null);
+    setBankSearch("");
+    setBankDropdownOpen(false);
+    setResolvedName("");
+    setResolveError("");
     setPayoutOpen(true);
+    loadBanks();
   };
 
   const submitPayout = async () => {
-    if (!token || !payoutAmount || !payoutAccount || !payoutBankCode) return;
+    if (!token || !payoutAmount || !selectedBank || !resolvedName) return;
+    if (payoutAccount.length !== 10) return;
     const amountKobo = Math.round(parseFloat(payoutAmount) * 100);
     if (isNaN(amountKobo) || amountKobo <= 0) return;
 
@@ -118,7 +207,8 @@ export default function DistributorPayments() {
           payload: {
             amount: amountKobo,
             accountNumber: payoutAccount,
-            bankCode: payoutBankCode,
+            bankCode: selectedBank.code,
+            accountName: resolvedName,
           },
         })
       ).unwrap();
@@ -135,7 +225,12 @@ export default function DistributorPayments() {
   };
 
   const canSubmitPayout =
-    !!payoutAmount && !!payoutAccount && !!payoutBankCode && !payoutBusy;
+    !!payoutAmount &&
+    payoutAccount.length === 10 &&
+    !!selectedBank &&
+    !!resolvedName &&
+    !resolving &&
+    !payoutBusy;
 
   return (
     <div>
@@ -226,12 +321,21 @@ export default function DistributorPayments() {
                 className="h-10 rounded-lg border border-gray5 px-3 text-sm text-gray1 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
               />
             </div>
-            <Button
-              title="→ Filter"
-              size="sm"
-              className="w-full h-10"
-              onClick={() => setFilterApplied(true)}
-            />
+            <div className="flex gap-2">
+              <Button
+                title="→ Filter"
+                size="sm"
+                className="flex-1 h-10"
+                onClick={() => setFilterApplied(true)}
+              />
+              <Button
+                title="Reset"
+                variant="secondaryLight"
+                size="sm"
+                className="flex-1 h-10"
+                onClick={resetFilters}
+              />
+            </div>
           </div>
 
           {/* Table */}
@@ -252,7 +356,6 @@ export default function DistributorPayments() {
                     <th className="py-3 pr-5 font-medium">Description</th>
                     <th className="py-3 pr-5 font-medium">Transaction type</th>
                     <th className="py-3 pr-5 font-medium">Amount</th>
-                    <th className="py-3 pr-5 font-medium">Balance</th>
                     <th className="py-3 pr-5 font-medium whitespace-nowrap">Date &amp; Time</th>
                     <th className="py-3 font-medium">Status</th>
                   </tr>
@@ -270,7 +373,6 @@ export default function DistributorPayments() {
                       <td className="py-4 pr-5 font-medium text-gray1">
                         {formatNaira(koboToNaira(tx.amount))}
                       </td>
-                      <td className="py-4 pr-5 text-gray3">—</td>
                       <td className="py-4 pr-5 text-gray3 whitespace-nowrap">
                         {formatDateTime(tx.createdAt)}
                       </td>
@@ -279,7 +381,7 @@ export default function DistributorPayments() {
                           statusColor[tx.status] ?? "text-gray1"
                         }`}
                       >
-                        {tx.status}
+                        {tx.status.replace(/_/g, " ")}
                       </td>
                     </tr>
                   ))}
@@ -316,27 +418,113 @@ export default function DistributorPayments() {
               onValueChange={setPayoutAmount}
             />
 
+            {/* Searchable bank picker */}
+            <div className="space-y-1" ref={bankBoxRef}>
+              <label className="text-sm text-gray3">Select bank</label>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setBankDropdownOpen((o) => !o)}
+                  className="flex w-full h-12 items-center justify-between rounded-lg border border-gray5 px-3 text-sm focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                >
+                  <span className={selectedBank ? "text-gray1" : "text-gray3"}>
+                    {selectedBank
+                      ? selectedBank.name
+                      : banksLoading
+                        ? "Loading banks…"
+                        : "Choose a bank"}
+                  </span>
+                  <Search size={16} className="text-gray3 shrink-0" />
+                </button>
+
+                {bankDropdownOpen && (
+                  <div className="absolute z-50 mt-1 w-full rounded-lg border border-gray5 bg-white shadow-lg">
+                    <div className="p-2 border-b border-gray5">
+                      <div className="flex items-center gap-2 rounded-md border border-gray5 px-2">
+                        <Search size={14} className="text-gray3 shrink-0" />
+                        <input
+                          autoFocus
+                          placeholder="Search banks"
+                          value={bankSearch}
+                          onChange={(e) => setBankSearch(e.target.value)}
+                          className="h-9 w-full text-sm text-gray1 focus:outline-none bg-transparent"
+                        />
+                      </div>
+                    </div>
+                    <ul className="max-h-56 overflow-y-auto py-1">
+                      {banksLoading ? (
+                        <li className="px-3 py-2 text-sm text-gray3">
+                          Loading banks…
+                        </li>
+                      ) : filteredBanks.length === 0 ? (
+                        <li className="px-3 py-2 text-sm text-gray3">
+                          No banks found
+                        </li>
+                      ) : (
+                        filteredBanks.map((bank) => (
+                          <li key={`${bank.code}-${bank.name}`}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedBank(bank);
+                                setBankDropdownOpen(false);
+                                setBankSearch("");
+                                resolveAccount(payoutAccount, bank);
+                              }}
+                              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-gray1 hover:bg-gray-50"
+                            >
+                              {bank.name}
+                              {selectedBank?.code === bank.code && (
+                                <Check size={14} className="text-primary shrink-0" />
+                              )}
+                            </button>
+                          </li>
+                        ))
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Account number */}
             <div className="space-y-1">
               <label htmlFor="payoutAccount" className="text-sm text-gray3">
-                Withdraw to
+                Account number
               </label>
               <input
                 id="payoutAccount"
+                inputMode="numeric"
                 placeholder="Account number (10 digits)"
                 value={payoutAccount}
-                onChange={(e) => setPayoutAccount(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "").slice(0, 10);
+                  setPayoutAccount(v);
+                  resolveAccount(v, selectedBank);
+                }}
                 maxLength={10}
                 className="w-full h-12 rounded-lg border border-gray5 px-3 text-sm text-gray1 focus:outline-none focus:ring-1 focus:ring-primary bg-white"
               />
             </div>
 
-            <Input
-              id="payoutBankCode"
-              label="Bank code"
-              placeholder="e.g. 058 for Guaranty Trust"
-              value={payoutBankCode}
-              onValueChange={setPayoutBankCode}
-            />
+            {/* Resolution feedback */}
+            {resolving && (
+              <div className="flex items-center gap-2 text-sm text-gray3">
+                <Loader2 size={14} className="animate-spin" />
+                Verifying account…
+              </div>
+            )}
+            {!resolving && resolvedName && (
+              <div className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-3 py-2">
+                <Check size={16} className="text-success shrink-0" />
+                <span className="text-sm font-medium text-success capitalize">
+                  {resolvedName.toLowerCase()}
+                </span>
+              </div>
+            )}
+            {!resolving && resolveError && (
+              <p className="text-sm text-danger">{resolveError}</p>
+            )}
           </div>
 
           <div className="flex gap-3 pt-1">

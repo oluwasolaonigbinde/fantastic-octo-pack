@@ -39,43 +39,41 @@ export function DashboardLayout({
   const toggleSidebar = useToggleSidebar();
 
   return (
-    <div>
-      <div className="flex w-full">
-        <div className="lg:hidden">
-          <DashboardMobileSidebar
-            open={state === "expanded"}
-            onClose={toggleSidebar}
-            logo={logo}
-            links={links}
-            baseUrl={baseUrl}
-            background={background}
-            linkClass={linkClass}
-            textColor={textColor}
-            surfaceClassName={sidebarSurfaceClassName}
-            showBackToWebsite={showBackToWebsite}
-            showLogout={showLogout}
-          />
-        </div>
-        <div
-          className={`hidden w-[248px] shrink-0 self-stretch border-r lg:block ${
-            sidebarSurfaceClassName ?? ""
-          }`}
-        >
-          <DashboardSidebar
-            logo={logo}
-            links={links}
-            baseUrl={baseUrl}
-            background={background}
-            linkClass={linkClass}
-            textColor={textColor}
-            surfaceClassName={sidebarSurfaceClassName}
-            navClassName={sidebarNavClassName}
-            showBackToWebsite={showBackToWebsite}
-            showLogout={showLogout}
-          />
-        </div>
-        <div className={contentClassName}>{children}</div>
+    <div className="flex h-screen overflow-hidden">
+      <div className="lg:hidden">
+        <DashboardMobileSidebar
+          open={state === "expanded"}
+          onClose={toggleSidebar}
+          logo={logo}
+          links={links}
+          baseUrl={baseUrl}
+          background={background}
+          linkClass={linkClass}
+          textColor={textColor}
+          surfaceClassName={sidebarSurfaceClassName}
+          showBackToWebsite={showBackToWebsite}
+          showLogout={showLogout}
+        />
       </div>
+      <div
+        className={`hidden w-[248px] shrink-0 border-r lg:block ${
+          sidebarSurfaceClassName ?? ""
+        }`}
+      >
+        <DashboardSidebar
+          logo={logo}
+          links={links}
+          baseUrl={baseUrl}
+          background={background}
+          linkClass={linkClass}
+          textColor={textColor}
+          surfaceClassName={sidebarSurfaceClassName}
+          navClassName={sidebarNavClassName}
+          showBackToWebsite={showBackToWebsite}
+          showLogout={showLogout}
+        />
+      </div>
+      <div className={`flex-1 min-w-0 overflow-y-auto ${contentClassName}`}>{children}</div>
     </div>
   );
 }

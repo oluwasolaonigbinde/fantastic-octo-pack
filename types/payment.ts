@@ -1,7 +1,9 @@
 export type PaymentStatus =
+  | "pending_approval"
   | "pending"
   | "success"
   | "failed"
+  | "rejected"
   | "abandoned"
   | "refunded";
 
@@ -88,6 +90,36 @@ export interface MyPaymentsQuery {
   intent?: PaymentIntent;
   from?: string;
   to?: string;
+}
+
+/** A bank supported by the payment gateway (GET /payments/banks). */
+export interface Bank {
+  name: string;
+  code: string;
+  currency?: string;
+}
+
+export interface BanksQuery {
+  currency?: string;
+  country?: string;
+  perPage?: number;
+}
+
+export interface BanksResponse {
+  success: boolean;
+  message: string;
+  data: Bank[];
+}
+
+export interface ResolveAccountQuery {
+  accountNumber: string;
+  bankCode: string;
+}
+
+export interface ResolveAccountResponse {
+  success: boolean;
+  message: string;
+  data: { accountName: string };
 }
 
 export interface AllPaymentsQuery {

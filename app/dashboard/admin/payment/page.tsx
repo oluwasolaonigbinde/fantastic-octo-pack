@@ -26,25 +26,31 @@ import type {
 
 const PAGE_SIZE = 20;
 const PAYMENT_STATUSES: PaymentStatus[] = [
+  "pending_approval",
   "pending",
   "success",
   "failed",
+  "rejected",
   "abandoned",
   "refunded",
 ];
 
 const statusColor: Record<PaymentStatus, string> = {
+  pending_approval: "text-warning",
   pending: "text-warning",
   success: "text-success",
   failed: "text-danger",
+  rejected: "text-danger",
   abandoned: "text-gray3",
   refunded: "text-primary",
 };
 
 const statusLabel: Record<PaymentStatus, string> = {
+  pending_approval: "Pending approval",
   pending: "Pending",
   success: "Successful",
   failed: "Failed",
+  rejected: "Rejected",
   abandoned: "Abandoned",
   refunded: "Refunded",
 };

@@ -219,60 +219,73 @@ function RfqRatioCard({
   const rfqPercent = total ? 100 - quotePercent : 0;
   const quoteDegrees = total ? Math.round((quotesSent / total) * 360) : 0;
   const desktopGradientStart = 148;
-  const mobileQuotePercent = ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.quotesPercent;
-  const mobileRfqPercent = ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.rfqsPercent;
-  const mobileQuoteDegrees = Math.round((mobileQuotePercent / 100) * 360);
+  const mobileQuoteDegrees = Math.round(
+    (ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.quotesPercent / 100) * 360,
+  );
 
   return (
-    <div className="min-h-[361px] w-[319px] rounded-2xl border border-gray5 bg-white p-3 md:min-h-[428px] md:w-auto md:p-5">
+    <div className="flex min-h-[361px] w-full flex-col rounded-2xl border border-gray5 bg-white p-4 md:min-h-[428px] md:p-5">
       <h3 className="medium3 text-gray1">
-        <span className="md:hidden">RFQ Recentage Ratio</span>
+        <span className="md:hidden">RFQ Percentage Ratio</span>
         <span className="hidden md:inline">RFQs Percentage Ratio</span>
       </h3>
 
       <div className="mt-6 flex justify-center">
+        {/* Desktop donut */}
         <div
-          className="relative hidden size-52 rounded-full md:block"
+          className="relative hidden aspect-square w-44 max-w-full rounded-full md:block lg:w-52"
           style={{
             background: `conic-gradient(from ${desktopGradientStart}deg, #F6B90A 0deg ${quoteDegrees}deg, #0669D9 ${quoteDegrees}deg 360deg)`,
           }}
-        />
+        >
+          <div className="absolute inset-[26%] flex flex-col items-center justify-center rounded-full bg-white text-center">
+            <span className="text-xs text-gray3">Total</span>
+            <span className="text-lg font-semibold text-gray1">
+              {compactFormatter.format(total)}
+            </span>
+          </div>
+        </div>
+
+        {/* Mobile donut */}
         <div
-          className="relative size-40 rounded-full md:hidden"
+          className="relative aspect-square w-36 max-w-full rounded-full sm:w-40 md:hidden"
           style={{
             background: `conic-gradient(#F6B90A 0deg ${mobileQuoteDegrees}deg,#0669D9 ${mobileQuoteDegrees}deg 360deg)`,
           }}
         >
-          <span className="absolute left-[57%] top-[36%] text-xs font-semibold text-white">
-            {mobileQuotePercent}%
-          </span>
-          <span className="absolute left-[31%] top-[58%] text-xs font-semibold text-white">
-            {mobileRfqPercent}%
-          </span>
+          <div className="absolute inset-[26%] flex items-center justify-center rounded-full bg-white">
+            <span className="text-sm font-semibold text-gray1">{total}</span>
+          </div>
         </div>
       </div>
 
+      {/* Mobile legend */}
       <div className="mt-6 space-y-3 md:hidden">
-        <div className="flex items-center gap-3 text-sm text-gray2">
-          <span className="size-4 rounded bg-[#F6B90A]" />
-          <span>{ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.quotesLabel}</span>
+        <div className="flex items-start gap-3 text-sm text-gray2">
+          <span className="mt-0.5 size-4 shrink-0 rounded bg-[#F6B90A]" />
+          <span className="min-w-0 break-words">
+            {ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.quotesLabel}
+          </span>
         </div>
-        <div className="flex items-center gap-3 text-sm text-gray2">
-          <span className="size-4 rounded bg-primary" />
-          <span>{ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.rfqsLabel}</span>
+        <div className="flex items-start gap-3 text-sm text-gray2">
+          <span className="mt-0.5 size-4 shrink-0 rounded bg-primary" />
+          <span className="min-w-0 break-words">
+            {ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.rfqsLabel}
+          </span>
         </div>
       </div>
 
+      {/* Desktop legend */}
       <div className="mt-6 hidden space-y-3 md:block">
-        <div className="flex items-center gap-3 text-sm text-gray2">
-          <span className="size-6 rounded-lg bg-[#F6B90A]" />
-          <span>
+        <div className="flex items-start gap-3 text-sm text-gray2">
+          <span className="mt-0.5 size-6 shrink-0 rounded-lg bg-[#F6B90A]" />
+          <span className="min-w-0 break-words">
             {quotePercent}% - Quotes received ({compactFormatter.format(quotesSent)})
           </span>
         </div>
-        <div className="flex items-center gap-3 text-sm text-gray2">
-          <span className="size-6 rounded-lg bg-primary" />
-          <span>
+        <div className="flex items-start gap-3 text-sm text-gray2">
+          <span className="mt-0.5 size-6 shrink-0 rounded-lg bg-primary" />
+          <span className="min-w-0 break-words">
             {rfqPercent}% - Request For Quotes sent ({compactFormatter.format(rfqsSent)})
           </span>
         </div>
@@ -409,6 +422,7 @@ function StaticTableCard({
   hideActionOnMobile = false,
   mobileHiddenColumnIndexes = [],
   mobileClassName = "",
+  tableMinWidth = "min-w-[360px]",
 }: {
   title: string;
   actionLabel: string;
@@ -419,9 +433,10 @@ function StaticTableCard({
   hideActionOnMobile?: boolean;
   mobileHiddenColumnIndexes?: number[];
   mobileClassName?: string;
+  tableMinWidth?: string;
 }) {
   return (
-    <div className={`rounded-2xl border border-gray5 bg-white p-5 md:min-h-[428px] ${mobileClassName}`}>
+    <div className={`min-w-0 overflow-hidden rounded-2xl border border-gray5 bg-white p-5 md:min-h-[428px] ${mobileClassName}`}>
       <div className="flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
         <h3 className="medium3 text-gray1">{title}</h3>
         <Link href={actionHref} className={hideActionOnMobile ? "hidden md:block" : undefined}>
@@ -434,8 +449,8 @@ function StaticTableCard({
         </Link>
       </div>
 
-      <div className="mt-4 overflow-x-auto">
-        <Table className="min-w-full">
+      <div className="mt-4 max-w-full overflow-x-auto">
+        <Table className={tableMinWidth}>
           <TableHeader className="[&_tr]:bg-white">
             <TableRow>
               {columns.map((column, index) => (
@@ -572,13 +587,13 @@ export default function AdminDashboardPage() {
   const mobileRevenueMeta = ADMIN_DASHBOARD_FIGMA_FALLBACK.revenueBreakdownMobile.join("\n");
 
   return (
-    <div className="overflow-x-hidden">
+    <>
       <Header
         title="Admin Dashboard"
         description="Get insight into everything happening in your account"
       />
 
-      <div className="space-y-5 overflow-x-hidden px-5 pb-4 pt-7 md:p-4">
+      <div className="space-y-5 px-5 pb-4 pt-7 md:p-4">
         {error ? (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
             {error}
@@ -630,7 +645,7 @@ export default function AdminDashboardPage() {
           <OnboardingChart data={summary.onboardingAnalytics} />
         </div>
 
-        <section className="grid gap-5 xl:grid-cols-[2fr_1fr]">
+        <section className="grid gap-5 justify-items-center xl:grid-cols-[2fr_1fr] xl:justify-items-stretch">
           <div className="hidden xl:block">
             <RevenueChart
               monthly={summary.revenue.monthly}
@@ -655,7 +670,8 @@ export default function AdminDashboardPage() {
             columns={["Products' name", "RFQs count"]}
             rows={topProductRows}
             emptyText="No RFQs with stable product identifiers yet."
-            mobileClassName="min-h-[480px] w-[474px] md:min-h-0 md:w-auto"
+            mobileClassName="w-full"
+            tableMinWidth="min-w-[300px]"
           />
 
           <StaticTableCard
@@ -667,10 +683,11 @@ export default function AdminDashboardPage() {
             emptyText="No users onboarded yet."
             hideActionOnMobile
             mobileHiddenColumnIndexes={[2, 3]}
-            mobileClassName="min-h-[436px] w-[560px] md:min-h-0 md:w-auto"
+            mobileClassName="w-full"
+            tableMinWidth="min-w-[480px]"
           />
         </section>
       </div>
-    </div>
+    </>
   );
 }

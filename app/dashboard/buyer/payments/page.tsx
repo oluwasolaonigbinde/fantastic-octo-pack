@@ -59,7 +59,9 @@ const intentColor: Record<PaymentIntent, string> = {
 const statusColor: Record<PaymentStatus, string> = {
   success: "text-[#13A83B]",
   failed: "text-[#E33C13]",
+  rejected: "text-[#E33C13]",
   abandoned: "text-[#E33C13]",
+  pending_approval: "text-[#F5A400]",
   pending: "text-[#F5A400]",
   refunded: "text-[#017BED]",
 };
@@ -261,7 +263,7 @@ export default function BuyerPayments() {
 
             <button
               type="button"
-              onClick={openTopUp}
+              onClick={() => openTopUp()}
               className="order-1 flex h-[60px] w-full items-center justify-center gap-3 rounded-lg bg-[#0669D9] text-lg text-white md:order-none"
             >
               <span className="text-2xl leading-none">+</span>

@@ -119,7 +119,7 @@ export default function EngineerWallet() {
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
               <button
                 type="button"
-                onClick={openTopUp}
+                onClick={() => openTopUp()}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-primary bg-white px-5 text-sm font-semibold text-primary"
               >
                 <Plus className="size-4" aria-hidden />
