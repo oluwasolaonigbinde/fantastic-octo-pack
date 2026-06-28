@@ -160,8 +160,13 @@ function PlanFormModal({
   const [error, setError] = useState("");
 
   const availableToAdd = useMemo(
-    () => catalog.filter((c) => !rows.some((r) => r.key === c.key)),
-    [catalog, rows],
+    () =>
+      catalog.filter(
+        (c) =>
+          !rows.some((r) => r.key === c.key) &&
+          (!c.role || c.role === role),
+      ),
+    [catalog, rows, role],
   );
 
   const addFeature = () => {

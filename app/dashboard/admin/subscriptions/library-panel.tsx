@@ -22,6 +22,16 @@ const FEATURE_TYPE_BADGE: Record<string, string> = {
   metered: "bg-[#FFF5DB] text-[#B07A00]",
 };
 
+const ROLE_LABEL: Record<string, string> = {
+  distributor: "Distributor",
+  oem: "Manufacturer",
+  engineer: "Engineer",
+  agent: "Agent",
+  buyer: "Buyer",
+  admin: "Admin",
+  super_admin: "Super Admin",
+};
+
 const humanizeKey = (key: string) => {
   const spaced = key.replace(/_/g, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
@@ -131,9 +141,10 @@ export function LibraryPanel({ token }: { token?: string }) {
             <Table>
               <TableHeader className="[&_tr]:bg-[#F3F4F6]">
                 <TableRow>
-                  <TableHead className="w-[28%]">Feature name</TableHead>
-                  <TableHead className="w-[52%]">Feature description</TableHead>
-                  <TableHead className="w-[20%]">Value type</TableHead>
+                  <TableHead className="w-[24%]">Feature name</TableHead>
+                  <TableHead className="w-[42%]">Feature description</TableHead>
+                  <TableHead className="w-[18%]">Value type</TableHead>
+                  <TableHead className="w-[16%]">Role</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -153,6 +164,15 @@ export function LibraryPanel({ token }: { token?: string }) {
                       >
                         {humanizeKey(feature.type)}
                       </span>
+                    </TableCell>
+                    <TableCell className="py-4 align-top">
+                      {feature.role ? (
+                        <span className="inline-block rounded-md bg-[#FBEEE2] px-2 py-1 text-xs font-medium uppercase text-[#9A5B2A]">
+                          {ROLE_LABEL[feature.role] ?? feature.role}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray3">All roles</span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -180,6 +200,15 @@ export function LibraryPanel({ token }: { token?: string }) {
                 <p className="mt-2 text-sm text-gray2">
                   {feature.description ?? "—"}
                 </p>
+                <div className="mt-2">
+                  {feature.role ? (
+                    <span className="inline-block rounded-md bg-[#FBEEE2] px-2 py-1 text-xs font-medium uppercase text-[#9A5B2A]">
+                      {ROLE_LABEL[feature.role] ?? feature.role}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray3">All roles</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
