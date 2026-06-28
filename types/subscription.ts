@@ -120,6 +120,8 @@ export interface FeatureDefinition {
   description?: string;
   type: FeatureType;
   unit?: string;
+  /** Subscriber role this feature applies to; absent means the feature is universal. */
+  role?: SubscriptionRole;
   /** Free-tier value when the owner has no live subscription. */
   defaultNumericValue?: number;
   defaultBooleanValue?: boolean;
