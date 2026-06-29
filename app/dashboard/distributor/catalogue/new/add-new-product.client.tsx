@@ -59,6 +59,7 @@ type FieldErrorKey =
   | "condition"
   | "description"
   | "availability_status"
+  | "quantityAvailable"
   | "installation_time_value"
   | "installation_time_unit"
   | "delivery_time_value"
@@ -95,6 +96,7 @@ type WizardState = {
   condition: Condition;
   description: string;
   availability_status: AvailabilityStatus;
+  quantityAvailable: string;
   installation_time_value: string;
   installation_time_unit: DurationUnit;
   delivery_time_value: string;
@@ -234,6 +236,7 @@ const INITIAL_STATE: WizardState = {
   condition: "",
   description: "",
   availability_status: "",
+  quantityAvailable: "",
   installation_time_value: "",
   installation_time_unit: "days",
   delivery_time_value: "",
@@ -910,6 +913,13 @@ export default function AddNewProduct() {
         nextErrors.availability_status = "Select the availability status.";
       }
 
+      if (
+        form.quantityAvailable !== "" &&
+        (!isPositiveWholeNumber(form.quantityAvailable) || Number(form.quantityAvailable) < 0)
+      ) {
+        nextErrors.quantityAvailable = "Enter a valid whole number (0 or more).";
+      }
+
       if (!isPositiveWholeNumber(form.installation_time_value)) {
         nextErrors.installation_time_value = "Enter a valid installation time.";
       }
@@ -1013,6 +1023,11 @@ export default function AddNewProduct() {
     formData.append("condition", form.condition);
     formData.append("description", normalizeText(form.description));
     formData.append("availability_status", form.availability_status);
+
+    if (form.quantityAvailable !== "") {
+      formData.append("quantityAvailable", String(Number(form.quantityAvailable)));
+    }
+
     formData.append(
       "installation_time",
       formatDuration(form.installation_time_value, form.installation_time_unit) ?? "",
@@ -1284,6 +1299,18 @@ export default function AddNewProduct() {
                     className="!h-12 !min-h-12 !py-3"
                     onValueChange={(value) =>
                       setField("availability_status", value as AvailabilityStatus)
+                    }
+                  />
+
+                  <Input
+                    label="Quantity in stock"
+                    placeholder="Enter quantity"
+                    type="number"
+                    min={0}
+                    value={form.quantityAvailable}
+                    error={fieldErrors.quantityAvailable}
+                    onChange={(event) =>
+                      setField("quantityAvailable", event.target.value)
                     }
                   />
 

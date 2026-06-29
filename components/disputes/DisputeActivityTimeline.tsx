@@ -87,7 +87,7 @@ export function DisputeActivityTimeline({
   showHeader?: boolean;
 }) {
   return (
-    <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
+    <section className="flex max-h-[600px] flex-col rounded-2xl border border-[#DDE0E5] bg-white p-5">
       {showHeader ? (
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-[#111827]">Dispute ACTIVITY</h2>
@@ -98,7 +98,11 @@ export function DisputeActivityTimeline({
         </div>
       ) : null}
 
-      <div className={showHeader ? "mt-6 space-y-3" : "space-y-3"}>
+      <div
+        className={`min-h-0 flex-1 overflow-y-auto pr-1 ${
+          showHeader ? "mt-6 space-y-3" : "space-y-3"
+        }`}
+      >
         {events.map((event, index) => (
           <div key={event.id} className="flex gap-5">
             <div className="flex flex-col items-center">

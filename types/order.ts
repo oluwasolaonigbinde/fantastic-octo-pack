@@ -11,6 +11,7 @@ import type { UserRef, ProductRef } from "./rfq";
  * new code should use the real states below.
  */
 export type OrderStatus =
+  | "draft_pending_buyer"
   | "created_pending_payment"
   | "payment_initiated"
   | "payment_failed"
@@ -71,6 +72,29 @@ export interface Order {
   updatedAt: string;
 }
 
+/**
+ * Request body for POST /orders/on-behalf — a distributor drafts an order for a
+ * buyer from inside a conversation. The backend creates a `draft_pending_buyer`
+ * order and sends the buyer an `order_proposal` message. Only a single product
+ * is supported per call.
+ */
+export interface OnBehalfOrderPayload {
+  buyer: string;
+  product: string;
+  quantity: number;
+  notes?: string;
+}
+
+/**
+ * Request body for PATCH /orders/:id/draft — the buyer edits a draft order that
+ * was created on their behalf before paying (e.g. sets a delivery address).
+ */
+export interface DraftOrderUpdate {
+  quantity?: number;
+  notes?: string;
+  deliveryAddress?: string;
+}
+
 /** Payment rails supported on the order Make Payment screen. */
 export type OrderPaymentMethod = "wallet" | "paystack";
 
@@ -106,6 +130,7 @@ export interface EscrowSummary {
 }
 
 export const ORDER_STATUS_LABELS: Record<string, string> = {
+  draft_pending_buyer: "Draft — Awaiting Your Review",
   created_pending_payment: "Pending Payment",
   payment_initiated: "Payment Initiated",
   payment_failed: "Payment Failed",

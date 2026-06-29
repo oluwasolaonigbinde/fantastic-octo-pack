@@ -32,8 +32,10 @@ import {
 } from "@/constants/demoBuyerOrders";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import {
+  clearDraftSave,
   confirmOrderReceipt,
   fetchOrderDetail,
+  updateOrderDraft,
 } from "@/store/slices/order-slice";
 import { createOrderDispute } from "@/store/slices/order-dispute-slice";
 import { useWallet } from "@/hooks/useWallet";
@@ -47,6 +49,7 @@ type ModalKind =
   | "installation"
   | "dispute"
   | "disputeSuccess"
+  | "editDraft"
   | null;
 
 type PaymentOption = {
@@ -222,8 +225,8 @@ function DeliveryStepper({
   if (compact) {
     return (
       <div className="space-y-3">
-        {buyerMobileMilestones.map((milestone, index) => {
-          const active = index < Math.min(activeCount + 3, buyerMobileMilestones.length);
+        {buyerOrderMilestones.map((milestone, index) => {
+          const active = index < activeCount;
           return (
             <div key={milestone} className="flex items-center gap-3">
               <span
@@ -375,8 +378,16 @@ export default function BuyerOrderDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
-  const { currentOrder, isLoading, isError, message, isConfirming, confirmError } =
-    useAppSelector((state) => state.order);
+  const {
+    currentOrder,
+    isLoading,
+    isError,
+    message,
+    isConfirming,
+    confirmError,
+    isSavingDraft,
+    draftError,
+  } = useAppSelector((state) => state.order);
   const { data: authData } = useAppSelector((state) => state.auth);
   const [selectedPayment, setSelectedPayment] = useState(paymentMethods[0].label);
   const [modal, setModal] = useState<ModalKind>(null);
@@ -423,6 +434,12 @@ export default function BuyerOrderDetailPage() {
       ? "processing"
       : liveStatus;
   const requestedView = searchParams.get("view");
+  // A `draft_pending_buyer` order was created by a distributor on the buyer's
+  // behalf. The buyer reviews it (notably adding a delivery address) before
+  // paying. Delivery address is required before payment can proceed.
+  const isDraft = liveStatus === "draft_pending_buyer";
+  const needsDeliveryAddress =
+    isDraft && !liveOrder?.deliveryAddress?.trim();
   // The payment form only opens when explicitly requested AND still unpaid.
   const showPaymentForm = requestedView === "payment" && !paid;
   // Live orders: an unpaid order stays on the pre-payment ("ongoing") view;
@@ -514,9 +531,46 @@ export default function BuyerOrderDetailPage() {
     }
   }, [demoOrder, paid, requestedView, isPaid, orderId, router]);
 
+  // Open the draft editor when the buyer arrives from the chat "Confirm order"
+  // action (?view=edit) on a live draft order.
+  useEffect(() => {
+    if (!demoOrder && isDraft && requestedView === "edit") {
+      dispatch(clearDraftSave());
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setModal("editDraft");
+    }
+  }, [demoOrder, isDraft, requestedView, dispatch]);
+
   const handleSubmitPayment = () => {
     if (!selectedOption?.method || insufficientWallet) return;
+    // A draft order must carry a delivery address before it can be paid for.
+    if (needsDeliveryAddress) {
+      dispatch(clearDraftSave());
+      setModal("editDraft");
+      return;
+    }
     void pay(selectedOption.method);
+  };
+
+  // Persist edits to a draft order (PATCH /orders/:id/draft). On success the
+  // refreshed order flows back through Redux; we close the editor.
+  const handleSaveDraft = async (payload: {
+    quantity?: number;
+    notes?: string;
+    deliveryAddress?: string;
+  }) => {
+    const token = authData?.tokens?.accessToken;
+    if (!token || isSavingDraft) return;
+    const result = await dispatch(
+      updateOrderDraft({ token, orderId, payload }),
+    );
+    if (updateOrderDraft.fulfilled.match(result)) {
+      setModal(null);
+      // Drop ?view=edit so the editor doesn't immediately reopen.
+      if (requestedView === "edit") {
+        router.replace(`/dashboard/buyer/orders/${orderId}`);
+      }
+    }
   };
 
   // Buyer confirms receipt of a fulfilled order: POST /orders/:id/received,
@@ -577,6 +631,12 @@ export default function BuyerOrderDetailPage() {
   const closeModal = () => {
     if (modal === "payment") resetPayment();
     if (modal === "dispute") setDisputeError("");
+    if (modal === "editDraft") {
+      dispatch(clearDraftSave());
+      if (requestedView === "edit") {
+        router.replace(`/dashboard/buyer/orders/${orderId}`);
+      }
+    }
     setModal(null);
   };
 
@@ -765,15 +825,37 @@ export default function BuyerOrderDetailPage() {
                   buttons; the milestone stepper is the navigation. */}
               {!paid ? (
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                  {isDraft ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        dispatch(clearDraftSave());
+                        setModal("editDraft");
+                      }}
+                      className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#FF6B00] bg-[#FFF7F0] px-6 text-sm font-medium text-[#FF6B00]"
+                    >
+                      Confirm order details
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => navigateStage("payment")}
+                    onClick={() =>
+                      needsDeliveryAddress
+                        ? (dispatch(clearDraftSave()), setModal("editDraft"))
+                        : navigateStage("payment")
+                    }
                     className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#FF6B00] px-6 text-sm font-medium text-white"
                   >
                     <CreditCard size={16} />
                     Make payment
                   </button>
                 </div>
+              ) : null}
+              {needsDeliveryAddress ? (
+                <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-[#B45309]">
+                  <Info size={14} />
+                  Add a delivery address to continue to payment.
+                </p>
               ) : null}
             </section>
 
@@ -994,7 +1076,16 @@ export default function BuyerOrderDetailPage() {
               <X size={16} />
             </button>
 
-            {modal === "dispute" ? (
+            {modal === "editDraft" ? (
+              <DraftEditForm
+                initialQuantity={order.quantity}
+                initialNotes={liveOrder?.notes ?? ""}
+                initialDeliveryAddress={liveOrder?.deliveryAddress ?? ""}
+                saving={isSavingDraft}
+                error={draftError}
+                onSubmit={handleSaveDraft}
+              />
+            ) : modal === "dispute" ? (
               <DisputeForm
                 order={order}
                 supplierName={supplierName}
@@ -1060,6 +1151,109 @@ export default function BuyerOrderDetailPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function DraftEditForm({
+  initialQuantity,
+  initialNotes,
+  initialDeliveryAddress,
+  saving,
+  error,
+  onSubmit,
+}: {
+  initialQuantity: number;
+  initialNotes: string;
+  initialDeliveryAddress: string;
+  saving: boolean;
+  error: string;
+  onSubmit: (payload: {
+    quantity?: number;
+    notes?: string;
+    deliveryAddress?: string;
+  }) => void;
+}) {
+  const [quantity, setQuantity] = useState(initialQuantity || 1);
+  const [notes, setNotes] = useState(initialNotes);
+  const [deliveryAddress, setDeliveryAddress] = useState(initialDeliveryAddress);
+
+  const trimmedAddress = deliveryAddress.trim();
+  const canSubmit = trimmedAddress.length > 0 && quantity > 0 && !saving;
+
+  return (
+    <form
+      className="pt-2 text-left"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!canSubmit) return;
+        onSubmit({
+          quantity,
+          notes: notes.trim(),
+          deliveryAddress: trimmedAddress,
+        });
+      }}
+    >
+      <h2 className="text-center text-lg font-medium text-[#111827]">
+        Review your order
+      </h2>
+      <p className="mt-1 text-center text-sm text-[#6B7280]">
+        Confirm the details and add a delivery address before paying.
+      </p>
+
+      <label className="mt-5 block">
+        <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+          Delivery address
+        </span>
+        <textarea
+          value={deliveryAddress}
+          onChange={(event) => setDeliveryAddress(event.target.value)}
+          placeholder="Street, city, state"
+          className="h-20 w-full resize-none rounded-lg border border-[#DDE0E5] px-3 py-2 text-sm text-[#111827] outline-none placeholder:text-[#98A2B3] focus:border-primary"
+        />
+      </label>
+
+      <label className="mt-4 block">
+        <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+          Quantity
+        </span>
+        <input
+          type="number"
+          min={1}
+          value={quantity}
+          onChange={(event) =>
+            setQuantity(Math.max(1, Number(event.target.value) || 1))
+          }
+          className="h-11 w-full rounded-lg border border-[#DDE0E5] px-3 text-sm text-[#111827] outline-none focus:border-primary"
+        />
+      </label>
+
+      <label className="mt-4 block">
+        <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+          Note (optional)
+        </span>
+        <textarea
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          maxLength={300}
+          placeholder="Anything the supplier should know"
+          className="h-20 w-full resize-none rounded-lg border border-[#DDE0E5] px-3 py-2 text-sm text-[#111827] outline-none placeholder:text-[#98A2B3] focus:border-primary"
+        />
+      </label>
+
+      {error ? (
+        <p className="mt-4 rounded-lg border border-[#E33C13] bg-[#FFF5F3] px-4 py-3 text-sm text-[#E33C13]">
+          {error}
+        </p>
+      ) : null}
+
+      <button
+        type="submit"
+        disabled={!canSubmit}
+        className="mt-6 h-11 w-full rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60"
+      >
+        {saving ? "Saving…" : "Save order details"}
+      </button>
+    </form>
   );
 }
 

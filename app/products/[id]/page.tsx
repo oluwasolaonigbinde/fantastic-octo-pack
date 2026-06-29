@@ -96,7 +96,9 @@ function resolveDeliveryAddress(
 
 function buildOrderPaymentHref(role: string | undefined, orderId: string): string {
   if (role === "buyer") {
-    return `/dashboard/buyer/orders/${orderId}?view=payment`;
+    // Payment stays on the main website. The dashboard order page keeps its own
+    // "Make payment" entry point for orders left in a pending state.
+    return `/checkout/${orderId}`;
   }
 
   if (role === "distributor") {

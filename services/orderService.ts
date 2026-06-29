@@ -1,5 +1,7 @@
 import type {
+  DraftOrderUpdate,
   EscrowSummary,
+  OnBehalfOrderPayload,
   Order,
   OrderPaymentResult,
   PayOrderPayload,
@@ -35,6 +37,41 @@ export const createDirectOrder = async (
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(data),
+  });
+  return handleResponse(res);
+};
+
+/**
+ * POST /orders/on-behalf — a distributor drafts an order for a buyer from inside
+ * a conversation. The backend creates a `draft_pending_buyer` order (pricing it
+ * from the distributor's product) and sends the buyer an `order_proposal`
+ * message. Only one product is supported per call.
+ */
+export const createOrderOnBehalf = async (
+  token: string,
+  payload: OnBehalfOrderPayload
+): Promise<{ success: boolean; message: string; data: Order }> => {
+  const res = await fetch(apiUrl("/orders/on-behalf"), {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res);
+};
+
+/**
+ * PATCH /orders/:id/draft — the buyer edits a draft order created on their
+ * behalf (quantity, notes, delivery address) before paying.
+ */
+export const updateOrderDraft = async (
+  token: string,
+  orderId: string,
+  payload: DraftOrderUpdate
+): Promise<{ success: boolean; message: string; data: Order }> => {
+  const res = await fetch(apiUrl(`/orders/${orderId}/draft`), {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
   });
   return handleResponse(res);
 };
@@ -135,6 +172,8 @@ export const fetchEscrowSummary = async (
 
 const orderService = {
   createDirectOrder,
+  createOrderOnBehalf,
+  updateOrderDraft,
   fetchOrders,
   fetchOrderDetail,
   cancelOrder,

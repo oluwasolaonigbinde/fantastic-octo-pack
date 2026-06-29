@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { Button, Input } from "@/components/base";
 import { AuthBackButton } from "@/components/features/auth/AuthBackButton";
+import { PhoneInput } from "@/components/features/auth/PhoneInput";
 import authService, { AuthApiError } from "@/services/authService";
 import {
   clearPendingRegistrationContext,
@@ -24,10 +25,7 @@ type CompleteSignupFormData = {
 
 const isInternationalPhoneNumber = (value: string) => {
   const trimmed = value.trim();
-  if (!trimmed.startsWith("+")) {
-    return false;
-  }
-
+  if (!trimmed.startsWith("+")) return false;
   const digitsOnly = trimmed.replace(/\D/g, "");
   return /^\+[1-9]\d{7,14}$/.test(`+${digitsOnly}`);
 };
@@ -182,22 +180,22 @@ export default function CompleteSignupPage() {
           />
         ) : null}
 
-        <Input
+        <input
+          type="hidden"
           {...register("phoneNumber", {
             required: "Phone number is required",
-            validate: (value) =>
-              isInternationalPhoneNumber(value) ||
+            validate: (v) =>
+              isInternationalPhoneNumber(v) ||
               "Phone number must include a country code, for example +2348012345678",
           })}
+        />
+        <PhoneInput
           id="phoneNumber"
           label="Phone number"
-          autoComplete="tel"
-          placeholder="Enter your phone number"
-          error={
-            errors.phoneNumber && touchedFields.phoneNumber
-              ? errors.phoneNumber.message
-              : undefined
+          onChange={(val) =>
+            setValue("phoneNumber", val, { shouldValidate: true, shouldTouch: true })
           }
+          error={errors.phoneNumber ? errors.phoneNumber.message : undefined}
         />
 
         <Button

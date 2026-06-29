@@ -11,14 +11,13 @@ import {
 } from "react";
 import {
   ArrowRight,
+  CreditCard,
   EllipsisVertical,
   MessageCircleMore,
-  Plus,
+  Package,
   Search,
   Send,
   ShieldCheck,
-  Trash2,
-  Truck,
 } from "lucide-react";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -26,8 +25,11 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { DEFAULT_AVATAR_SRC } from "@/constants/avatar";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import messagingService from "@/services/messagingService";
+import orderService from "@/services/orderService";
 import productService from "@/services/productService";
-import type { Conversation, ConversationDetail } from "@/types/messaging";
+import type { Conversation, ConversationDetail, Message } from "@/types/messaging";
+import type { Order } from "@/types/order";
+import { ORDER_STATUS_LABELS } from "@/types/order";
 import type { Product } from "@/types/product";
 import { UserRole } from "@/types/user";
 
@@ -38,12 +40,26 @@ interface ActiveMessagingPanelProps {
 
 const POLL_INTERVAL_MS = 15000;
 
-type OrderDraftItem = {
-  id: string;
-  productId: string;
-  quantity: number;
-  note: string;
-};
+/** Order totals come back from the API in naira. */
+const formatNaira = (value: number) =>
+  new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    minimumFractionDigits: 2,
+  }).format(Number.isFinite(value) ? value : 0);
+
+/** Short, human-friendly order reference for the message cards. */
+const getOrderDisplayId = (orderId?: string) =>
+  orderId ? `#${orderId.slice(-8).toUpperCase()}` : "--";
+
+/** Statuses where the buyer has already paid — no Confirm/Pay actions remain. */
+const PAID_ORDER_STATUSES = new Set([
+  "paid",
+  "processing",
+  "fulfilled",
+  "completed",
+  "closed",
+]);
 
 const formatConversationTime = (value?: string | null) => {
   if (!value) return "";
@@ -87,28 +103,8 @@ const buildInitials = (name?: string | null) => {
   return `${tokens[0].slice(0, 1)}${tokens[1].slice(0, 1)}`.toUpperCase();
 };
 
-const formatCurrency = (value: number) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(value);
-
 const getProductPrice = (product?: Product) =>
   Number.isFinite(product?.pricePerUnit) ? Number(product?.pricePerUnit) : 0;
-
-const getAvailabilityLabel = (value?: Product["availability_status"]) => {
-  if (!value) return "Not specified";
-  return value
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-};
-
-const getConditionLabel = (value?: Product["condition"]) => {
-  if (!value) return "Not specified";
-  return value.charAt(0).toUpperCase() + value.slice(1);
-};
 
 const AvatarCircle = ({
   name,
@@ -152,60 +148,45 @@ function DistributorOrderModal({
   products,
   isLoadingProducts,
   productError,
+  buyerName,
+  isSubmitting,
+  submitError,
+  onSubmit,
 }: {
   open: boolean;
   onClose: () => void;
   products: Product[];
   isLoadingProducts: boolean;
   productError: string | null;
+  buyerName: string;
+  isSubmitting: boolean;
+  submitError: string | null;
+  onSubmit: (input: {
+    productId: string;
+    quantity: number;
+    notes: string;
+  }) => void;
 }) {
-  const [items, setItems] = useState<OrderDraftItem[]>([
-    { id: "item-1", productId: "", quantity: 1, note: "" },
-  ]);
-  const [orderNote, setOrderNote] = useState("");
+  const [productId, setProductId] = useState("");
+  const [quantity, setQuantity] = useState(1);
+  const [notes, setNotes] = useState("");
 
   const productsById = useMemo(
     () => new Map(products.map((product) => [product._id, product])),
     [products],
   );
 
-  const subtotal = items.reduce((total, item) => {
-    const product = productsById.get(item.productId);
-    return total + getProductPrice(product) * item.quantity;
-  }, 0);
-  const deliveryFee = 0;
-  const tax = 0;
-  const grandTotal = subtotal + deliveryFee + tax;
-
-  const setItemValue = <K extends keyof OrderDraftItem>(
-    itemId: string,
-    key: K,
-    value: OrderDraftItem[K],
-  ) => {
-    setItems((current) =>
-      current.map((item) => (item.id === itemId ? { ...item, [key]: value } : item)),
-    );
-  };
-
-  const addItem = () => {
-    setItems((current) => [
-      ...current,
-      { id: `item-${Date.now()}`, productId: "", quantity: 1, note: "" },
-    ]);
-  };
-
-  const removeItem = (itemId: string) => {
-    setItems((current) =>
-      current.length === 1 ? current : current.filter((item) => item.id !== itemId),
-    );
-  };
+  const selectedProduct = productsById.get(productId);
+  const unitPrice = getProductPrice(selectedProduct);
+  const grandTotal = unitPrice * quantity;
+  const canSubmit = Boolean(productId) && quantity > 0 && !isSubmitting;
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#101828]/45 px-4 py-6">
       <div
-        className="max-h-[92vh] w-full max-w-[1120px] overflow-hidden rounded-[16px] border border-[#E7ECF3] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]"
+        className="max-h-[92vh] w-full max-w-[860px] overflow-hidden rounded-[16px] border border-[#E7ECF3] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="create-order-title"
@@ -213,10 +194,11 @@ function DistributorOrderModal({
         <div className="flex items-start justify-between gap-4 border-b border-[#E7ECF3] px-5 py-4">
           <div>
             <h2 id="create-order-title" className="text-base font-semibold text-[#111827]">
-              Create New Order
+              Create Order for {buyerName}
             </h2>
             <p className="mt-1 text-xs text-[#667085]">
-              Product selection is wired to your catalogue. Final order creation is paused pending client confirmation.
+              Draft an order from your catalogue. {buyerName} reviews it in this
+              chat, adds a delivery address, and pays.
             </p>
           </div>
           <button
@@ -228,225 +210,82 @@ function DistributorOrderModal({
           </button>
         </div>
 
-        <div className="grid max-h-[calc(92vh-73px)] overflow-y-auto lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-6 p-5">
-            <section>
-              <div className="mb-4 flex items-center gap-2">
-                <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
-                  1
+        <div className="grid max-h-[calc(92vh-73px)] overflow-y-auto lg:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="space-y-5 p-5">
+            {productError ? (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {productError}
+              </p>
+            ) : null}
+
+            <label className="block">
+              <span className="mb-2 block text-xs font-medium text-[#475467]">
+                Product / Model
+              </span>
+              <select
+                value={productId}
+                disabled={isLoadingProducts || isSubmitting}
+                onChange={(event) => setProductId(event.target.value)}
+                className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none focus:border-primary disabled:bg-[#F2F4F7]"
+              >
+                <option value="">
+                  {isLoadingProducts ? "Loading products..." : "Select product"}
+                </option>
+                {products.map((product) => (
+                  <option key={product._id} value={product._id}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-2 block text-xs font-medium text-[#475467]">
+                  Quantity
                 </span>
-                <h3 className="text-sm font-semibold text-[#111827]">Order Information</h3>
-              </div>
+                <input
+                  type="number"
+                  min={1}
+                  value={quantity}
+                  disabled={isSubmitting}
+                  onChange={(event) =>
+                    setQuantity(Math.max(1, Number(event.target.value) || 1))
+                  }
+                  className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none focus:border-primary"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-medium text-[#475467]">
+                  Unit Price
+                </span>
+                <input
+                  value={formatNaira(unitPrice)}
+                  readOnly
+                  className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-[#F8FAFC] px-3 text-sm text-[#111827] outline-none"
+                />
+              </label>
+            </div>
 
-              <div className="grid gap-3 md:grid-cols-3">
-                <label className="block rounded-lg border border-[#DDE0E5] bg-white p-3">
-                  <span className="flex items-center gap-2 text-xs font-semibold text-[#111827]">
-                    <Truck size={14} className="text-primary" />
-                    Delivery
-                  </span>
-                  <select
-                    disabled
-                    className="mt-3 h-10 w-full rounded-lg border border-[#E7ECF3] bg-[#F8FAFC] px-3 text-xs text-[#667085]"
-                  >
-                    <option>Awaiting client options</option>
-                  </select>
-                </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-medium text-[#475467]">
+                Note for buyer (optional)
+              </span>
+              <textarea
+                value={notes}
+                disabled={isSubmitting}
+                onChange={(event) => setNotes(event.target.value)}
+                maxLength={300}
+                placeholder="Add any details about this order"
+                className="h-24 w-full resize-none rounded-lg border border-[#DDE0E5] px-3 py-2 text-sm text-[#111827] outline-none placeholder:text-[#98A2B3] focus:border-primary"
+              />
+            </label>
 
-                <label className="block rounded-lg border border-[#DDE0E5] bg-white p-3">
-                  <span className="flex items-center gap-2 text-xs font-semibold text-[#111827]">
-                    <ShieldCheck size={14} className="text-primary" />
-                    Warranty
-                  </span>
-                  <select
-                    disabled
-                    className="mt-3 h-10 w-full rounded-lg border border-[#E7ECF3] bg-[#F8FAFC] px-3 text-xs text-[#667085]"
-                  >
-                    <option>Awaiting client options</option>
-                  </select>
-                </label>
-
-                <label className="block rounded-lg border border-[#DDE0E5] bg-white p-3">
-                  <span className="text-xs font-semibold text-[#111827]">
-                    Additional Note
-                  </span>
-                  <textarea
-                    value={orderNote}
-                    onChange={(event) => setOrderNote(event.target.value)}
-                    maxLength={300}
-                    placeholder="Type order-level note here"
-                    className="mt-3 h-10 w-full resize-none rounded-lg border border-[#E7ECF3] px-3 py-2 text-xs text-[#111827] outline-none placeholder:text-[#98A2B3] focus:border-primary"
-                  />
-                </label>
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex size-7 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white">
-                    2
-                  </span>
-                  <h3 className="text-sm font-semibold text-[#111827]">Order Items</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={addItem}
-                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-primary px-4 text-sm font-medium text-primary"
-                >
-                  <Plus size={16} />
-                  Add Another Item
-                </button>
-              </div>
-
-              {productError ? (
-                <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {productError}
-                </p>
-              ) : null}
-
-              <div className="space-y-4">
-                {items.map((item, index) => {
-                  const selectedProduct = productsById.get(item.productId);
-                  const unitPrice = getProductPrice(selectedProduct);
-                  const total = unitPrice * item.quantity;
-
-                  return (
-                    <div
-                      key={item.id}
-                      className="rounded-xl border border-[#EEF2F7] bg-[#F8FAFC] p-4"
-                    >
-                      <div className="flex items-center justify-between gap-3 border-b border-[#E7ECF3] pb-3">
-                        <p className="text-sm font-semibold text-[#111827]">
-                          {index + 1}. Product Information
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => removeItem(item.id)}
-                          disabled={items.length === 1}
-                          className="inline-flex items-center gap-1 text-xs font-medium text-[#F04438] disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          <Trash2 size={14} />
-                          Remove Item
-                        </button>
-                      </div>
-
-                      <div className="mt-4 grid gap-4 md:grid-cols-3">
-                        <label className="block">
-                          <span className="mb-2 block text-xs font-medium text-[#475467]">
-                            Category
-                          </span>
-                          <input
-                            value={selectedProduct?.category ?? ""}
-                            readOnly
-                            placeholder="Select a product first"
-                            className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none"
-                          />
-                        </label>
-
-                        <label className="block">
-                          <span className="mb-2 block text-xs font-medium text-[#475467]">
-                            Product / Model
-                          </span>
-                          <select
-                            value={item.productId}
-                            disabled={isLoadingProducts}
-                            onChange={(event) =>
-                              setItemValue(item.id, "productId", event.target.value)
-                            }
-                            className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none focus:border-primary disabled:bg-[#F2F4F7]"
-                          >
-                            <option value="">
-                              {isLoadingProducts ? "Loading products..." : "Select product"}
-                            </option>
-                            {products.map((product) => (
-                              <option key={product._id} value={product._id}>
-                                {product.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-
-                        <label className="block">
-                          <span className="mb-2 block text-xs font-medium text-[#475467]">
-                            Condition
-                          </span>
-                          <input
-                            value={getConditionLabel(selectedProduct?.condition)}
-                            readOnly
-                            className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none"
-                          />
-                        </label>
-
-                        <label className="block">
-                          <span className="mb-2 block text-xs font-medium text-[#475467]">
-                            Availability
-                          </span>
-                          <input
-                            value={getAvailabilityLabel(selectedProduct?.availability_status)}
-                            readOnly
-                            className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none"
-                          />
-                        </label>
-
-                        <label className="block">
-                          <span className="mb-2 block text-xs font-medium text-[#475467]">
-                            Quantity
-                          </span>
-                          <input
-                            type="number"
-                            min={1}
-                            value={item.quantity}
-                            onChange={(event) =>
-                              setItemValue(
-                                item.id,
-                                "quantity",
-                                Math.max(1, Number(event.target.value) || 1),
-                              )
-                            }
-                            className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none focus:border-primary"
-                          />
-                        </label>
-
-                        <label className="block">
-                          <span className="mb-2 block text-xs font-medium text-[#475467]">
-                            Unit Price
-                          </span>
-                          <input
-                            value={formatCurrency(unitPrice)}
-                            readOnly
-                            className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none"
-                          />
-                        </label>
-                      </div>
-
-                      <div className="mt-4 grid gap-4 md:grid-cols-[1fr_180px]">
-                        <label className="block">
-                          <span className="mb-2 block text-xs font-medium text-[#475467]">
-                            Item Note
-                          </span>
-                          <input
-                            value={item.note}
-                            onChange={(event) =>
-                              setItemValue(item.id, "note", event.target.value)
-                            }
-                            placeholder="Optional item-specific note"
-                            className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none placeholder:text-[#98A2B3] focus:border-primary"
-                          />
-                        </label>
-                        <div>
-                          <span className="mb-2 block text-xs font-medium text-[#475467]">
-                            Total Price
-                          </span>
-                          <p className="flex h-11 items-center rounded-lg bg-[#EEF8FF] px-3 text-sm font-semibold text-primary">
-                            {formatCurrency(total)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
+            {submitError ? (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {submitError}
+              </p>
+            ) : null}
           </div>
 
           <aside className="border-t border-[#E7ECF3] bg-white p-5 lg:border-l lg:border-t-0">
@@ -455,21 +294,23 @@ function DistributorOrderModal({
                 <h3 className="text-sm font-semibold text-[#111827]">Order Summary</h3>
                 <div className="mt-4 space-y-3 text-sm">
                   <div className="flex justify-between gap-4 text-[#475467]">
-                    <span>Items ({items.length})</span>
-                    <span>{formatCurrency(subtotal)}</span>
+                    <span>Product</span>
+                    <span className="max-w-[150px] truncate text-right text-[#111827]">
+                      {selectedProduct?.name ?? "--"}
+                    </span>
                   </div>
                   <div className="flex justify-between gap-4 text-[#475467]">
-                    <span>Delivery Fee</span>
-                    <span>{formatCurrency(deliveryFee)}</span>
+                    <span>Quantity</span>
+                    <span className="text-[#111827]">{quantity}</span>
                   </div>
                   <div className="flex justify-between gap-4 text-[#475467]">
-                    <span>Tax (TBD)</span>
-                    <span>{formatCurrency(tax)}</span>
+                    <span>Unit price</span>
+                    <span className="text-[#111827]">{formatNaira(unitPrice)}</span>
                   </div>
                 </div>
                 <div className="mt-5 flex justify-between gap-4 rounded-lg bg-[#EAF6FF] px-3 py-3 text-sm font-semibold text-primary">
-                  <span>Grand Total (USD)</span>
-                  <span>{formatCurrency(grandTotal)}</span>
+                  <span>Estimated Total</span>
+                  <span>{formatNaira(grandTotal)}</span>
                 </div>
               </section>
 
@@ -479,7 +320,8 @@ function DistributorOrderModal({
                   <div>
                     <p className="text-sm font-semibold text-primary">Secure Transaction</p>
                     <p className="mt-1 text-xs text-[#667085]">
-                      Payment wiring is intentionally not connected yet.
+                      Funds are held in BAIY escrow until the buyer confirms
+                      delivery.
                     </p>
                   </div>
                 </div>
@@ -487,17 +329,163 @@ function DistributorOrderModal({
 
               <button
                 type="button"
-                disabled
-                className="inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white opacity-45"
-                title="Waiting for client confirmation before order creation is enabled"
+                disabled={!canSubmit}
+                onClick={() => onSubmit({ productId, quantity, notes: notes.trim() })}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-45"
               >
-                Review & Create Order
+                {isSubmitting ? "Sending to buyer…" : "Send Order to Buyer"}
                 <ArrowRight size={16} />
               </button>
             </div>
           </aside>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Renders an order system message (`order_proposal` / `order_created`) as a rich
+ * card. The message only carries the order id, so the card fetches the order to
+ * show its name, status and total. Buyers get Confirm/Pay actions on an unpaid
+ * proposal; everyone else gets a read-only "See details" link.
+ */
+function OrderMessageCard({
+  message,
+  token,
+  viewerRole,
+}: {
+  message: Message;
+  token: string;
+  viewerRole: UserRole | string | undefined;
+}) {
+  const router = useRouter();
+  const orderId = message.attachment?.order ?? "";
+  const [order, setOrder] = useState<Order | null>(null);
+  // Lazily seed the loading flag so the effect never has to setState
+  // synchronously (orderId/token are stable for a card's lifetime).
+  const [isLoading, setIsLoading] = useState(() => Boolean(orderId && token));
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!orderId || !token) return;
+
+    let active = true;
+
+    orderService
+      .fetchOrderDetail(token, orderId)
+      .then((response) => {
+        if (active) setOrder(response.data);
+      })
+      .catch((err) => {
+        if (active) {
+          setError(err instanceof Error ? err.message : "Unable to load order");
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [orderId, token]);
+
+  const isBuyer = viewerRole === UserRole.BUYER;
+  const isProposal = message.type === "order_proposal";
+  const status = order?.status ?? "";
+  const isPaid = PAID_ORDER_STATUSES.has(status);
+  const canAct = isBuyer && isProposal && !isPaid && Boolean(orderId);
+  const detailBase = isBuyer
+    ? "/dashboard/buyer/orders"
+    : "/dashboard/distributor/orders";
+
+  const heading = isProposal ? "Order generated" : "New order placed";
+  const productName = order?.productName || "Order item";
+  const statusLabel = ORDER_STATUS_LABELS[status] ?? (status || "Pending");
+
+  return (
+    <div className="w-full max-w-[420px] rounded-[18px] border border-[#D6EBFF] bg-[#F2F9FF] p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-semibold text-[#1B2432]">{heading}</p>
+        {orderId ? (
+          <button
+            type="button"
+            onClick={() => router.push(`${detailBase}/${orderId}`)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary"
+          >
+            See details
+            <ArrowRight size={13} />
+          </button>
+        ) : null}
+      </div>
+
+      {isLoading ? (
+        <p className="mt-3 text-sm text-[#667085]">Loading order…</p>
+      ) : error ? (
+        <p className="mt-3 text-sm text-[#9F1239]">{error}</p>
+      ) : (
+        <>
+          <div className="mt-3 flex items-center gap-3">
+            <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-lg bg-white text-primary">
+              <Package size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-[#1B2432]">
+                {productName}
+              </p>
+              <p className="mt-0.5 truncate text-xs text-[#667085]">
+                {order?.quantity ? `Qty ${order.quantity} · ` : ""}
+                {order ? formatNaira(order.totalPrice) : ""}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-white p-3">
+            <div>
+              <p className="text-[11px] text-[#8A94A6]">Order status</p>
+              <p className="mt-1 text-xs font-medium text-[#111827]">{statusLabel}</p>
+            </div>
+            <div>
+              <p className="text-[11px] text-[#8A94A6]">Invoice ID</p>
+              <p className="mt-1 text-xs font-medium text-[#111827]">
+                {getOrderDisplayId(orderId)}
+              </p>
+            </div>
+            <div className="col-span-2">
+              <p className="text-[11px] text-[#8A94A6]">Shipping address</p>
+              <p className="mt-1 text-xs font-medium text-[#111827]">
+                {order?.deliveryAddress?.trim() || "Not set — add during review"}
+              </p>
+            </div>
+          </div>
+
+          {canAct ? (
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => router.push(`${detailBase}/${orderId}?view=edit`)}
+                className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-[#FF6B00] px-4 text-sm font-semibold text-white"
+              >
+                Confirm order
+                <ArrowRight size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`${detailBase}/${orderId}?view=payment`)}
+                className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-lg border border-[#FF6B00] px-4 text-sm font-semibold text-[#FF6B00]"
+              >
+                <CreditCard size={15} />
+                Make payment
+              </button>
+            </div>
+          ) : isProposal && isBuyer && isPaid ? (
+            <p className="mt-3 text-xs font-medium text-[#16A34A]">
+              Payment completed for this order.
+            </p>
+          ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -524,6 +512,8 @@ export function ActiveMessagingPanel({
   const [orderProducts, setOrderProducts] = useState<Product[]>([]);
   const [isLoadingOrderProducts, setIsLoadingOrderProducts] = useState(false);
   const [orderProductError, setOrderProductError] = useState<string | null>(null);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [createOrderError, setCreateOrderError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [composeError, setComposeError] = useState<string | null>(null);
   const processedComposeKey = useRef<string | null>(null);
@@ -754,6 +744,44 @@ export function ActiveMessagingPanel({
     }
   };
 
+  // Distributor drafts an order for the buyer via POST /orders/on-behalf. The
+  // backend prices it, creates a `draft_pending_buyer` order, and posts an
+  // `order_proposal` message into this conversation — so we just refresh the
+  // thread to render the new order card.
+  const handleCreateOrder = async (input: {
+    productId: string;
+    quantity: number;
+    notes: string;
+  }) => {
+    const buyerId = activeConversation?.counterpart.id;
+    if (!token || !buyerId || isCreatingOrder) return;
+
+    setIsCreatingOrder(true);
+    setCreateOrderError(null);
+
+    try {
+      await orderService.createOrderOnBehalf(token, {
+        buyer: buyerId,
+        product: input.productId,
+        quantity: input.quantity,
+        notes: input.notes || undefined,
+      });
+      setIsCreateOrderOpen(false);
+      if (activeConversationId) {
+        await Promise.all([
+          loadConversation(activeConversationId),
+          loadConversations({ preserveActive: true }),
+        ]);
+      }
+    } catch (err) {
+      setCreateOrderError(
+        err instanceof Error ? err.message : "Unable to create order",
+      );
+    } finally {
+      setIsCreatingOrder(false);
+    }
+  };
+
   const showEmptyState = !activeConversationId || !activeConversation;
   const hasSearchMatches = filteredConversations.length > 0;
 
@@ -764,8 +792,8 @@ export function ActiveMessagingPanel({
       data-testid="active-messaging-panel"
     >
       <div className="overflow-hidden rounded-[24px] border border-[#E7ECF3] bg-white shadow-[0_18px_50px_rgba(15,23,42,0.05)]">
-        <div className="grid min-h-[620px] grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="border-b border-[#E7ECF3] md:border-b-0 md:border-r">
+        <div className="grid h-[calc(100vh-220px)] min-h-[540px] grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="flex min-h-0 flex-col border-b border-[#E7ECF3] md:border-b-0 md:border-r">
             <div className="border-b border-[#E7ECF3] p-4">
               <label
                 className="flex items-center gap-3 rounded-[18px] border border-[#E5E7EB] bg-white px-4 py-3"
@@ -783,7 +811,7 @@ export function ActiveMessagingPanel({
               </label>
             </div>
 
-            <div className="max-h-[620px] overflow-y-auto" data-testid="conversation-list">
+            <div className="min-h-0 flex-1 overflow-y-auto" data-testid="conversation-list">
               {filteredConversations.map((conversation) => {
                 const isActive = conversation.id === activeConversationId;
 
@@ -835,7 +863,7 @@ export function ActiveMessagingPanel({
             </div>
           </aside>
 
-          <div className="flex min-h-[620px] flex-col" data-testid="thread-view">
+          <div className="flex min-h-0 flex-col" data-testid="thread-view">
             {showEmptyState ? (
               <div className="flex flex-1 items-center justify-center p-6">
                 <div className="max-w-sm text-center text-[#667085]">
@@ -875,7 +903,7 @@ export function ActiveMessagingPanel({
                   </button>
                 </div>
 
-                <div className="flex-1 space-y-4 overflow-y-auto bg-white p-5">
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-white p-5">
                   {composeError ? (
                     <p className="rounded-lg border border-[#F8D7DA] bg-[#FFF5F5] px-3 py-2 text-sm text-[#9F1239]">
                       {composeError}
@@ -890,6 +918,10 @@ export function ActiveMessagingPanel({
 
                   {detail?.messages.map((message) => {
                     const isMine = message.senderId === authUser?._id;
+                    const isOrderCard =
+                      (message.type === "order_proposal" ||
+                        message.type === "order_created") &&
+                      Boolean(message.attachment?.order);
 
                     return (
                       <div
@@ -904,20 +936,28 @@ export function ActiveMessagingPanel({
                           />
                         ) : null}
 
-                        <div
-                          className={`max-w-[78%] rounded-[20px] px-4 py-3 text-sm leading-6 ${
-                            isMine ? "bg-[#0669D9] text-white" : "bg-[#EAF6FF] text-[#1B2432]"
-                          }`}
-                        >
-                          <p className="whitespace-pre-wrap break-words">{message.text}</p>
-                          <p
-                            className={`mt-2 text-right text-xs ${
-                              isMine ? "text-white/75" : "text-[#667085]"
+                        {isOrderCard && token ? (
+                          <OrderMessageCard
+                            message={message}
+                            token={token}
+                            viewerRole={authUser?.role}
+                          />
+                        ) : (
+                          <div
+                            className={`max-w-[78%] rounded-[20px] px-4 py-3 text-sm leading-6 ${
+                              isMine ? "bg-[#0669D9] text-white" : "bg-[#EAF6FF] text-[#1B2432]"
                             }`}
                           >
-                            {formatMessageTime(message.createdAt)}
-                          </p>
-                        </div>
+                            <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                            <p
+                              className={`mt-2 text-right text-xs ${
+                                isMine ? "text-white/75" : "text-[#667085]"
+                              }`}
+                            >
+                              {formatMessageTime(message.createdAt)}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -959,7 +999,10 @@ export function ActiveMessagingPanel({
                   {canCreateOrder ? (
                     <button
                       type="button"
-                      onClick={() => setIsCreateOrderOpen(true)}
+                      onClick={() => {
+                        setCreateOrderError(null);
+                        setIsCreateOrderOpen(true);
+                      }}
                       className="mt-3 inline-flex h-11 min-w-[180px] items-center justify-center rounded-lg bg-primary px-5 text-sm font-semibold text-white transition hover:bg-primary-dark"
                     >
                       Create Order
@@ -978,6 +1021,10 @@ export function ActiveMessagingPanel({
           products={orderProducts}
           isLoadingProducts={isLoadingOrderProducts}
           productError={orderProductError}
+          buyerName={activeConversation?.counterpart.displayName ?? "buyer"}
+          isSubmitting={isCreatingOrder}
+          submitError={createOrderError}
+          onSubmit={handleCreateOrder}
         />
       ) : null}
     </section>

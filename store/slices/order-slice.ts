@@ -1,5 +1,6 @@
 import orderService from "@/services/orderService";
 import type {
+  DraftOrderUpdate,
   EscrowSummary,
   Order,
   OrderPaymentResult,
@@ -17,6 +18,8 @@ interface OrderSliceState {
   isPaying: boolean;
   isConfirming: boolean;
   confirmError: string;
+  isSavingDraft: boolean;
+  draftError: string;
   isFulfilling: boolean;
   fulfillError: string;
   isLoading: boolean;
@@ -35,6 +38,8 @@ const initialState: OrderSliceState = {
   isPaying: false,
   isConfirming: false,
   confirmError: "",
+  isSavingDraft: false,
+  draftError: "",
   isFulfilling: false,
   fulfillError: "",
   isLoading: false,
@@ -81,6 +86,27 @@ export const fetchOrderDetail = createAsyncThunk(
     } catch (error) {
       return thunkAPI.rejectWithValue(
         error instanceof Error ? error.message : "Failed to fetch order detail"
+      );
+    }
+  }
+);
+
+export const updateOrderDraft = createAsyncThunk(
+  "order/updateDraft",
+  async (
+    {
+      token,
+      orderId,
+      payload,
+    }: { token: string; orderId: string; payload: DraftOrderUpdate },
+    thunkAPI
+  ) => {
+    try {
+      const res = await orderService.updateOrderDraft(token, orderId, payload);
+      return res.data;
+    } catch (error) {
+      return thunkAPI.rejectWithValue(
+        error instanceof Error ? error.message : "Failed to update draft order"
       );
     }
   }
@@ -175,6 +201,10 @@ const orderSlice = createSlice({
       state.isConfirming = false;
       state.confirmError = "";
     },
+    clearDraftSave: (state) => {
+      state.isSavingDraft = false;
+      state.draftError = "";
+    },
     clearFulfill: (state) => {
       state.isFulfilling = false;
       state.fulfillError = "";
@@ -211,6 +241,18 @@ const orderSlice = createSlice({
         state.isLoading = false;
         state.isError = true;
         state.message = action.payload as string;
+      })
+      .addCase(updateOrderDraft.pending, (state) => {
+        state.isSavingDraft = true;
+        state.draftError = "";
+      })
+      .addCase(updateOrderDraft.fulfilled, (state, action) => {
+        state.isSavingDraft = false;
+        state.currentOrder = action.payload;
+      })
+      .addCase(updateOrderDraft.rejected, (state, action) => {
+        state.isSavingDraft = false;
+        state.draftError = action.payload as string;
       })
       .addCase(payOrder.pending, (state) => {
         state.isPaying = true;
@@ -277,6 +319,7 @@ export const {
   clearCurrentOrder,
   clearOrderPayment,
   clearConfirmReceipt,
+  clearDraftSave,
   clearFulfill,
 } = orderSlice.actions;
 export default orderSlice.reducer;
