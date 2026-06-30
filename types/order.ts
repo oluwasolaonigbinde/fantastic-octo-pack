@@ -32,6 +32,25 @@ export interface OrderLineItem {
   notes?: string;
 }
 
+/**
+ * Immutable snapshot of the delivery address, copied from the buyer's address
+ * book at order time (the API no longer returns a plain string here).
+ */
+export interface DeliveryAddressSnapshot {
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  phone?: string | null;
+}
+
+/**
+ * Logistics stages a distributor advances a paid order through
+ * (POST /orders/:id/fulfillment). `installed` is only valid when the order
+ * `requiresInstallation`.
+ */
+export type FulfillmentStage = "received" | "delivered" | "installed";
+
 export interface Order {
   _id: string;
   buyer: string | UserRef;
@@ -47,13 +66,23 @@ export interface Order {
   quantity?: number;
   items?: OrderLineItem[];
   totalPrice: number;
-  deliveryAddress?: string;
+  /** Immutable snapshot copied from the buyer's address book (object, not a string). */
+  deliveryAddress?: DeliveryAddressSnapshot | null;
+  /** Id of the source profile address the snapshot was copied from. */
+  deliveryAddressId?: string | null;
+  /** Whether installation is required before completion (snapshot from the product). */
+  requiresInstallation?: boolean | null;
   notes?: string;
   /** Gateway reference, populated once payment is initiated. */
   paymentReference?: string;
-  /** When the distributor marked the order fulfilled (delivered). */
+  /** Logistics stage timestamps — presence indicates the stage is complete. */
+  receivedByDistributorAt?: string | null;
+  deliveredAt?: string | null;
+  installedAt?: string | null;
+  receivedByBuyerAt?: string | null;
+  /** @deprecated Legacy alias for `deliveredAt`; not returned by the live API. */
   fulfilledAt?: string;
-  /** When the buyer confirmed receipt (or the auto-receive job did). */
+  /** @deprecated Legacy alias for `receivedByBuyerAt`; not returned by the live API. */
   receivedAt?: string;
   autoReceived?: boolean;
   /** Platform fee withheld on release, in kobo. */
@@ -129,6 +158,184 @@ export interface EscrowSummary {
   orderCount: number;
 }
 
+/**
+ * Render a delivery-address snapshot as a single line. Tolerates the legacy
+ * string shape and missing values, returning "" when nothing is set.
+ */
+export function formatDeliveryAddress(
+  value: Order["deliveryAddress"] | string | null | undefined,
+): string {
+  if (!value) {
+    return "";
+  }
+  if (typeof value === "string") {
+    return value.trim();
+  }
+  return [value.address, value.city, value.state, value.country]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+/**
+ * Order statuses that mean escrow has been funded (the order is paid for).
+ * Besides the money-in states, the backend advances `status` through the
+ * fulfillment stages (`received → delivered → installed`); reaching any of those
+ * also implies the order was paid.
+ */
+export const PAID_ORDER_STATUSES = [
+  "paid",
+  "processing",
+  "fulfilled",
+  "completed",
+  "received",
+  "delivered",
+  "installed",
+  "shipped",
+];
+
+/** True when the order's status means payment/escrow has been funded. */
+export function isPaidOrderStatus(status?: string | null): boolean {
+  return Boolean(status) && PAID_ORDER_STATUSES.includes(status as string);
+}
+
+/**
+ * How far a paid order has progressed through the logistics stages. A stage is
+ * complete when EITHER its per-stage timestamp is present OR the order's status
+ * has reached (or passed) that stage — the backend drives progress through
+ * `status` (`received → delivered → installed`), with the timestamps as a
+ * fallback. A `completed` order has every stage behind it.
+ */
+export interface FulfillmentProgress {
+  received: boolean;
+  delivered: boolean;
+  installed: boolean;
+}
+
+// How far each status string implies the order has progressed: 1 = received,
+// 2 = delivered, 3 = the final stage reached (installed / fully fulfilled).
+const FULFILLMENT_STATUS_RANK: Record<string, number> = {
+  received: 1,
+  shipped: 1,
+  delivered: 2,
+  installed: 3,
+  fulfilled: 3,
+  completed: 3,
+};
+
+export function getFulfillmentProgress(
+  order: Pick<
+    Order,
+    | "status"
+    | "receivedByDistributorAt"
+    | "deliveredAt"
+    | "installedAt"
+  >,
+): FulfillmentProgress {
+  const isCompleted = order.status === "completed";
+  const rank = FULFILLMENT_STATUS_RANK[order.status ?? ""] ?? 0;
+  return {
+    received: Boolean(order.receivedByDistributorAt) || rank >= 1 || isCompleted,
+    delivered: Boolean(order.deliveredAt) || rank >= 2 || isCompleted,
+    installed: Boolean(order.installedAt) || rank >= 3 || isCompleted,
+  };
+}
+
+/**
+ * The next fulfillment stage a distributor should advance a paid order to,
+ * derived from the order's status and per-stage timestamps. Returns `null` when
+ * the order has reached its final required stage (awaiting buyer confirmation).
+ */
+export function getNextFulfillmentStage(
+  order: Pick<
+    Order,
+    | "status"
+    | "receivedByDistributorAt"
+    | "deliveredAt"
+    | "installedAt"
+    | "requiresInstallation"
+  >,
+): FulfillmentStage | null {
+  const progress = getFulfillmentProgress(order);
+  if (!progress.received) {
+    return "received";
+  }
+  if (!progress.delivered) {
+    return "delivered";
+  }
+  if (order.requiresInstallation && !progress.installed) {
+    return "installed";
+  }
+  return null;
+}
+
+/**
+ * True when the distributor has finished every required fulfillment stage but
+ * the buyer hasn't confirmed receipt yet — it's the buyer who confirms delivery,
+ * so the order sits in this "delivery in process" state until they do.
+ */
+export function isAwaitingBuyerConfirmation(
+  order: Pick<
+    Order,
+    | "status"
+    | "receivedByDistributorAt"
+    | "deliveredAt"
+    | "installedAt"
+    | "requiresInstallation"
+  >,
+): boolean {
+  if (order.status === "completed") return false;
+  if (!isPaidOrderStatus(order.status)) return false;
+  return getNextFulfillmentStage(order) === null;
+}
+
+/**
+ * Canonical order progress milestones, shared by every progress bar (buyer +
+ * distributor, desktop + mobile) so they stay in lockstep. The fulfillment
+ * stages map 1:1 to `Received → Delivered → Installed`. The `Installed`
+ * milestone is only present when the order requires installation.
+ */
+export function getOrderMilestones(
+  requiresInstallation?: boolean | null,
+): string[] {
+  return requiresInstallation
+    ? ["Create order", "Payment", "Received", "Delivered", "Installed", "Completed"]
+    : ["Create order", "Payment", "Received", "Delivered", "Completed"];
+}
+
+/**
+ * How many canonical milestones are complete, derived from the order's status
+ * and per-stage timestamps. The logistics stages advance ONE AT A TIME, driven
+ * by their per-stage timestamps, so the stepper never jumps ahead of the
+ * distributor's actions (marking "received" lights only "Received", not
+ * "Delivered"). A `completed` order has every stage behind it, so it lights them
+ * all even if an individual timestamp is missing.
+ */
+export function getActiveMilestoneCount(
+  order: Pick<
+    Order,
+    | "status"
+    | "receivedByDistributorAt"
+    | "deliveredAt"
+    | "installedAt"
+    | "requiresInstallation"
+  >,
+  requiresInstallation = Boolean(order.requiresInstallation),
+): number {
+  const isCompleted = order.status === "completed";
+  const progress = getFulfillmentProgress(order);
+
+  let count = 1; // Create order.
+  // Payment lights once the order is paid — or once any fulfillment progress
+  // exists, since you can't be received/delivered without having paid.
+  if (isPaidOrderStatus(order.status) || progress.received) count += 1; // Payment.
+  if (progress.received) count += 1; // Received.
+  if (progress.delivered) count += 1; // Delivered.
+  if (requiresInstallation && progress.installed) count += 1; // Installed.
+  if (isCompleted) count += 1; // Completed.
+  return count;
+}
+
 export const ORDER_STATUS_LABELS: Record<string, string> = {
   draft_pending_buyer: "Draft — Awaiting Your Review",
   created_pending_payment: "Pending Payment",
@@ -140,6 +347,8 @@ export const ORDER_STATUS_LABELS: Record<string, string> = {
   completed: "Completed",
   closed: "Refunded",
   cancelled_pre_payment: "Cancelled",
+  received: "Received",
+  installed: "Installed",
   shipped: "Shipped",
   delivered: "Delivered",
 };

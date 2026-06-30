@@ -387,7 +387,7 @@ export default function PublicNavBar() {
                 />
                 <AvatarFallback>
                   <span className="text-sm font-semibold text-[#0669D9]">
-                    {authUser?.firstName?.charAt(0) || "G"}
+                    {mounted && authUser?.firstName?.charAt(0) || "G"}
                   </span>
                 </AvatarFallback>
               </Avatar>

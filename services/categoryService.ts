@@ -1,10 +1,15 @@
-import { CategoryListResponse, CategoryResponse, UpdateCategory } from "@/types/categories";
+import {
+  CategoryListResponse,
+  CategoryResponse,
+  CreateCategory,
+  UpdateCategory,
+} from "@/types/categories";
 import { apiUrl } from "@/utils/api-base-url";
 
 // Create category
 const createCategory = async (
   token: string,
-  categoryData: { name: string; description: string }
+  categoryData: CreateCategory
 ): Promise<CategoryResponse> => {
   const response = await fetch(apiUrl("/categories"), {
     method: "POST",

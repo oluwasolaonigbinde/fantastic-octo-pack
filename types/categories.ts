@@ -1,11 +1,15 @@
 export interface UpdateCategory {
   name?: string;
   description?: string;
+  /** Admin-defined subcategory names under this category. */
+  subcategories?: string[];
 }
 
 export interface CreateCategory {
   name: string;
   description: string;
+  /** Admin-defined subcategory names under this category. */
+  subcategories?: string[];
 }
 
 export interface CategoryListRequest {
@@ -17,6 +21,8 @@ export interface Category {
   _id: string;
   name: string;
   description: string;
+  /** Admin-defined subcategory names under this category. */
+  subcategories?: string[];
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;

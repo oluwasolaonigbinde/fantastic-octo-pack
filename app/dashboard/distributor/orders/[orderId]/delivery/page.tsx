@@ -13,18 +13,77 @@ import {
 
 import Header from "../../../../component/header";
 import { Skeleton } from "@/components/base";
+import DeliveryStepper from "@/components/orders/DeliveryStepper";
 import {
-  distributorDemoMilestones,
   distributorDemoOrders,
   distributorDemoOrderMeta,
   getOrderStatusTone,
 } from "@/constants/demoDistributorOrders";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { fetchOrderDetail, fulfillOrder } from "@/store/slices/order-slice";
-import type { Order } from "@/types/order";
+import type { FulfillmentStage, Order } from "@/types/order";
+import {
+  formatDeliveryAddress,
+  getActiveMilestoneCount,
+  getNextFulfillmentStage,
+  getOrderMilestones,
+  isAwaitingBuyerConfirmation,
+} from "@/types/order";
 import type { UserRef } from "@/types/rfq";
 
-type ModalKind = "receive" | "deliver" | "success" | null;
+type ModalKind = "action" | "success" | null;
+
+/** Per-stage copy for the distributor fulfillment action. `delivered` copy
+ * varies on whether the product still needs an installation step afterwards. */
+const buildStageCopy = (
+  stage: FulfillmentStage,
+  requiresInstallation: boolean,
+) => {
+  switch (stage) {
+    case "received":
+      return {
+        panelHelper:
+          "Confirm you've received this order to begin the delivery process.",
+        panelButton: "Mark as Received",
+        modalTitle: "Mark order as received",
+        modalBody:
+          "Confirm you've received this order and are preparing it for delivery. The buyer will be notified.",
+        confirmLabel: "Mark as Received",
+        showUpload: false,
+        successBody:
+          "Order marked as received. You can now prepare it for delivery.",
+      };
+    case "delivered":
+      return {
+        panelHelper: requiresInstallation
+          ? "Mark the order as delivered to the buyer. You'll confirm installation next."
+          : "Mark the order as delivered to the buyer to complete fulfillment.",
+        panelButton: "Mark as Delivered",
+        modalTitle: "Mark order as delivered",
+        modalBody:
+          "Upload images of the packed product and confirm it has been delivered to the buyer.",
+        confirmLabel: "Mark as Delivered",
+        showUpload: true,
+        successBody: requiresInstallation
+          ? "Order marked as delivered. Confirm installation once it's complete."
+          : "Order marked as delivered. The buyer has been notified to confirm receipt.",
+      };
+    case "installed":
+    default:
+      return {
+        panelHelper:
+          "Confirm installation is complete to finish fulfillment.",
+        panelButton: "Confirm Installation",
+        modalTitle: "Confirm installation",
+        modalBody:
+          "Confirm the product has been installed at the buyer's location. The buyer will be notified to confirm and release escrow.",
+        confirmLabel: "Confirm Installation",
+        showUpload: false,
+        successBody:
+          "Installation confirmed. Awaiting buyer confirmation to release escrow.",
+      };
+  }
+};
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-NG", {
@@ -48,34 +107,6 @@ const getPersonName = (person: string | UserRef | undefined, fallback: string) =
     return name || person.email || fallback;
   }
   return fallback;
-};
-
-/** How many of the 5 milestones are complete for a backend status. */
-const milestoneFromStatus = (status: string | undefined): number => {
-  switch (status) {
-    case "paid":
-    case "processing":
-      return 2; // Create order + Payment — awaiting distributor delivery
-    case "fulfilled":
-      return 4; // + Delivery + Installation — awaiting buyer confirmation
-    case "completed":
-      return 5;
-    default:
-      return 1;
-  }
-};
-
-const productStatusFromStatus = (status: string | undefined): string => {
-  switch (status) {
-    case "fulfilled":
-      return "Delivery completed";
-    case "completed":
-      return "Order completed";
-    case "paid":
-    case "processing":
-    default:
-      return "Awaiting your delivery";
-  }
 };
 
 function OrderStat({
@@ -147,9 +178,7 @@ export default function DistributorDeliveryStatusPage() {
   const [modal, setModal] = useState<ModalKind>(null);
   const [evidence, setEvidence] = useState<File[]>([]);
   const [actionError, setActionError] = useState("");
-  // Installation is a UI-only step for now — the backend has no installation
-  // state, so confirming it just advances the distributor's local view.
-  const [installationConfirmed, setInstallationConfirmed] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
   const orderId = params.orderId as string;
   const demoOrder = distributorDemoOrders.find((item) => item.id === orderId);
@@ -195,9 +224,6 @@ export default function DistributorDeliveryStatusPage() {
   // Live orders drive the flow off the real backend status; demo orders fall
   // back to the "awaiting delivery" view so the walkthrough still works.
   const liveStatus = demoOrder ? "processing" : status;
-  const activeMilestoneCount = milestoneFromStatus(liveStatus);
-  const isFulfilled = liveStatus === "fulfilled" || liveStatus === "completed";
-  const productStatusText = productStatusFromStatus(liveStatus);
   const hasActiveDispute = Boolean(order?.activeDisputeId);
 
   const buyerName =
@@ -212,13 +238,75 @@ export default function DistributorDeliveryStatusPage() {
       ? order.buyer.phoneNumber || distributorDemoOrderMeta.buyer.phone
       : distributorDemoOrderMeta.buyer.phone;
   const deliveryAddressText =
-    order?.deliveryAddress?.trim() || distributorDemoOrderMeta.deliveryAddress;
+    formatDeliveryAddress(order?.deliveryAddress) ||
+    distributorDemoOrderMeta.deliveryAddress;
 
-  // The actual "send it out" action: POST /orders/:id/fulfill. Evidence images
-  // are display-only — the backend doesn't accept them yet.
-  const handleStartDelivery = async () => {
+  // Whether this product needs an installation step after delivery (snapshot
+  // from the product at order time). Demo orders include it for the walkthrough.
+  const requiresInstallation = demoOrder
+    ? true
+    : Boolean(order?.requiresInstallation);
+
+  // The next logistics stage the distributor should advance to. Demo orders
+  // always start at "received" so the walkthrough still works.
+  const nextStage: FulfillmentStage | null = order
+    ? getNextFulfillmentStage(order)
+    : demoOrder
+      ? "received"
+      : null;
+  const stageCopy = nextStage
+    ? buildStageCopy(nextStage, requiresInstallation)
+    : null;
+
+  // Product status reflects how far the distributor has advanced the order. Once
+  // every stage is done (`nextStage === null`) the order waits on the buyer.
+  const isFulfilled = liveStatus === "completed" || (!demoOrder && !nextStage);
+  const productStatusText =
+    liveStatus === "completed"
+      ? "Order completed"
+      : !demoOrder && !nextStage
+        ? "Awaiting buyer confirmation"
+        : nextStage === "delivered"
+          ? "Received — ready to deliver"
+          : nextStage === "installed"
+            ? "Delivered — ready to install"
+            : "Awaiting your delivery";
+
+  // Installation-dependent progress milestones (shared with the buyer view, so
+  // both steppers read identically). While the buyer hasn't confirmed receipt,
+  // the final logistics step shows as "Delivery in progress" and stays pending —
+  // it's the buyer who confirms delivery.
+  const awaitingBuyerConfirmation =
+    !demoOrder && !!order && isAwaitingBuyerConfirmation(order);
+  const baseMilestones = getOrderMilestones(requiresInstallation);
+  const inProgressIndex = requiresInstallation
+    ? baseMilestones.indexOf("Installed")
+    : baseMilestones.indexOf("Delivered");
+  const milestones = awaitingBuyerConfirmation
+    ? baseMilestones.map((label, index) =>
+        index === inProgressIndex
+          ? requiresInstallation
+            ? "Installation in progress"
+            : "Delivery in progress"
+          : label,
+      )
+    : baseMilestones;
+  const activeMilestoneCount = demoOrder
+    ? 2 // Create + Payment — awaiting delivery in the walkthrough.
+    : awaitingBuyerConfirmation
+      ? inProgressIndex // steps before the in-progress one are complete; it stays pending.
+      : order
+        ? getActiveMilestoneCount(order, requiresInstallation)
+        : 1;
+
+  // POST /orders/:id/fulfillment — advance the order one logistics stage. The
+  // evidence images are display-only; the backend doesn't accept them yet.
+  const handleAdvanceStage = async () => {
     setActionError("");
     if (demoOrder) {
+      setSuccessMessage(
+        stageCopy?.successBody ?? "Delivery updated (demo).",
+      );
       setModal("success");
       return;
     }
@@ -228,13 +316,24 @@ export default function DistributorDeliveryStatusPage() {
       setActionError("Your session has expired. Please sign in again to continue.");
       return;
     }
-    const result = await dispatch(fulfillOrder({ token, orderId }));
+    if (!nextStage || !stageCopy) {
+      setActionError("This order has already reached its final delivery stage.");
+      return;
+    }
+    const result = await dispatch(
+      fulfillOrder({ token, orderId, stage: nextStage }),
+    );
     if (fulfillOrder.fulfilled.match(result)) {
+      setSuccessMessage(stageCopy.successBody);
       setModal("success");
+      setEvidence([]);
+      // Refresh the order so the stepper advances and the next stage's action
+      // becomes available immediately (and can be repeated for the next step).
+      void dispatch(fetchOrderDetail({ token, orderId }));
     } else {
       setActionError(
         (result.payload as string) ||
-          "Could not start delivery. Please try again.",
+          "Could not update delivery status. Please try again.",
       );
     }
   };
@@ -290,36 +389,19 @@ export default function DistributorDeliveryStatusPage() {
         </section>
 
         <section className="rounded-2xl border border-[#DDE0E5] bg-white p-6">
-          <h2 className="text-lg font-medium text-[#111827]">Delivery status</h2>
-          <div className="mt-10 grid grid-cols-5 gap-0">
-            {distributorDemoMilestones.map((milestone, index) => {
-              const isActive = index < activeMilestoneCount;
-              return (
-                <div key={milestone} className="relative flex flex-col items-center gap-4">
-                  {index < distributorDemoMilestones.length - 1 ? (
-                    <span
-                      className={`absolute left-1/2 top-[10px] h-px w-full ${
-                        index < activeMilestoneCount - 1 ? "bg-[#16A34A]" : "bg-[#DDE0E5]"
-                      }`}
-                    />
-                  ) : null}
-                  <span
-                    className={`relative z-[1] flex size-5 items-center justify-center rounded-sm ${
-                      isActive ? "bg-[#16A34A] text-white" : "bg-[#DDE0E5] text-white"
-                    }`}
-                  >
-                    <Check size={13} />
-                  </span>
-                  <span
-                    className={`text-center text-sm ${
-                      isActive ? "text-[#16A34A]" : "text-[#4B5563]"
-                    }`}
-                  >
-                    {milestone}
-                  </span>
-                </div>
-              );
-            })}
+          <h2 className="text-lg font-medium text-[#111827]">Order status</h2>
+          <div className="hidden md:block">
+            <DeliveryStepper
+              activeCount={activeMilestoneCount}
+              milestones={milestones}
+            />
+          </div>
+          <div className="mt-6 md:hidden">
+            <DeliveryStepper
+              activeCount={activeMilestoneCount}
+              milestones={milestones}
+              compact
+            />
           </div>
           {hasActiveDispute ? (
             <div className="mt-6 flex items-start gap-2 rounded-xl border border-[#FACC15] bg-[#FFFBEB] px-4 py-3">
@@ -348,30 +430,27 @@ export default function DistributorDeliveryStatusPage() {
               tracking status is updated.
             </p>
 
-            {!isFulfilled ? (
+            {hasActiveDispute ? (
+              <div className="mt-8 rounded-xl bg-[#FFFBEB] p-5">
+                <p className="flex items-center gap-2 text-sm font-medium text-[#B45309]">
+                  <Info size={18} />
+                  Delivery updates are paused while this order is under dispute.
+                </p>
+              </div>
+            ) : stageCopy ? (
               <>
                 <p className="mt-8 text-sm text-[#111827]">
-                  Receive the order to continue updating its delivery status.
+                  {stageCopy.panelHelper}
                 </p>
                 <button
                   type="button"
-                  onClick={() => setModal("receive")}
+                  onClick={() => {
+                    setActionError("");
+                    setModal("action");
+                  }}
                   className="mt-5 h-14 w-full max-w-[300px] rounded-xl bg-primary text-sm font-medium text-white transition hover:bg-primary-dark"
                 >
-                  Receive Order
-                </button>
-              </>
-            ) : liveStatus !== "completed" && !installationConfirmed ? (
-              <>
-                <p className="mt-8 text-sm text-[#111827]">
-                  Confirm installation to continue updating delivery status.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setInstallationConfirmed(true)}
-                  className="mt-5 h-14 w-full max-w-[300px] rounded-xl bg-primary text-sm font-medium text-white transition hover:bg-primary-dark"
-                >
-                  Confirm installation
+                  {stageCopy.panelButton}
                 </button>
               </>
             ) : (
@@ -380,7 +459,7 @@ export default function DistributorDeliveryStatusPage() {
                   <CheckCircle2 size={18} />
                   {liveStatus === "completed"
                     ? "Order completed. Escrow has been released to your balance."
-                    : "Installation confirmed. Awaiting buyer confirmation to release escrow."}
+                    : "All delivery steps complete. Awaiting buyer confirmation to release escrow."}
                 </p>
               </div>
             )}
@@ -452,30 +531,10 @@ export default function DistributorDeliveryStatusPage() {
               <X size={16} />
             </button>
 
-            {modal === "receive" ? (
+            {modal === "action" && stageCopy ? (
               <div className="mt-1">
                 <h2 className="text-lg font-semibold text-[#111827]">
-                  Update tracking details
-                </h2>
-                <p className="mt-2 text-sm text-[#6B7280]">
-                  When delivery status is updated, the buyer gets notified and the
-                  tracking status is updated.
-                </p>
-                <p className="mt-6 text-sm text-[#111827]">
-                  Receive order to continue updating delivery status.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setModal("deliver")}
-                  className="mt-5 h-12 w-full rounded-xl bg-primary text-sm font-medium text-white"
-                >
-                  Receive Order
-                </button>
-              </div>
-            ) : modal === "deliver" ? (
-              <div className="mt-1">
-                <h2 className="text-lg font-semibold text-[#111827]">
-                  Update tracking details
+                  {stageCopy.modalTitle}
                 </h2>
                 <p className="mt-2 text-sm text-[#6B7280]">
                   When delivery status is updated, the buyer gets notified and the
@@ -483,30 +542,35 @@ export default function DistributorDeliveryStatusPage() {
                 </p>
 
                 <p className="mt-6 text-sm text-[#111827]">
-                  Upload images of packed product ready for delivery
+                  {stageCopy.modalBody}
                 </p>
-                <label className="mt-2 flex h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[#DDE0E5] text-xs text-[#6B7280]">
-                  <Upload size={20} className="text-[#FF6B00]" />
-                  <span>
-                    <span className="text-[#FF6B00]">Click here</span> to upload file
-                  </span>
-                  <span className="text-[10px] text-[#9CA3AF]">
-                    Allowed format - DOCX, PNG, PDF
-                  </span>
-                  <input
-                    type="file"
-                    multiple
-                    accept=".docx,.png,.pdf,.jpg,.jpeg"
-                    className="sr-only"
-                    onChange={(event) =>
-                      setEvidence(Array.from(event.target.files ?? []))
-                    }
-                  />
-                </label>
-                {evidence.length ? (
-                  <p className="mt-2 text-xs text-[#16A34A]">
-                    {evidence.length} file{evidence.length > 1 ? "s" : ""} selected
-                  </p>
+
+                {stageCopy.showUpload ? (
+                  <>
+                    <label className="mt-3 flex h-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-[#DDE0E5] text-xs text-[#6B7280]">
+                      <Upload size={20} className="text-[#FF6B00]" />
+                      <span>
+                        <span className="text-[#FF6B00]">Click here</span> to upload file
+                      </span>
+                      <span className="text-[10px] text-[#9CA3AF]">
+                        Allowed format - DOCX, PNG, PDF
+                      </span>
+                      <input
+                        type="file"
+                        multiple
+                        accept=".docx,.png,.pdf,.jpg,.jpeg"
+                        className="sr-only"
+                        onChange={(event) =>
+                          setEvidence(Array.from(event.target.files ?? []))
+                        }
+                      />
+                    </label>
+                    {evidence.length ? (
+                      <p className="mt-2 text-xs text-[#16A34A]">
+                        {evidence.length} file{evidence.length > 1 ? "s" : ""} selected
+                      </p>
+                    ) : null}
+                  </>
                 ) : null}
 
                 {actionError ? (
@@ -517,21 +581,22 @@ export default function DistributorDeliveryStatusPage() {
 
                 <button
                   type="button"
-                  onClick={() => void handleStartDelivery()}
+                  onClick={() => void handleAdvanceStage()}
                   disabled={isFulfilling}
                   className="mt-5 h-12 w-full rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60"
                 >
-                  {isFulfilling ? "Starting delivery…" : "Start Delivery"}
+                  {isFulfilling ? "Updating…" : stageCopy.confirmLabel}
                 </button>
               </div>
             ) : (
               <div className="pt-2 text-center">
                 <CheckCircle2 size={44} className="mx-auto text-[#16A34A]" />
                 <h2 className="mt-4 text-lg font-medium text-[#111827]">
-                  Congratulations
+                  Delivery status updated
                 </h2>
                 <p className="mt-2 text-sm text-[#6B7280]">
-                  Order has been sent out for delivery. The buyer has been notified.
+                  {successMessage ||
+                    "The delivery status has been updated and the buyer notified."}
                 </p>
                 <button
                   type="button"
@@ -540,7 +605,7 @@ export default function DistributorDeliveryStatusPage() {
                     setEvidence([]);
                     if (demoOrder) {
                       setNotice(
-                        "Delivery started (demo). No backend status was changed for this sample order.",
+                        "Delivery updated (demo). No backend status was changed for this sample order.",
                       );
                     }
                   }}

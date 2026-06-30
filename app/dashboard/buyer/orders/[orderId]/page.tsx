@@ -17,11 +17,10 @@ import {
 
 import Header from "../../../component/header";
 import { Skeleton } from "@/components/base";
+import DeliveryStepper from "@/components/orders/DeliveryStepper";
 import {
   buyerDemoOrderMeta,
   buyerDemoOrders,
-  buyerMobileMilestones,
-  buyerOrderMilestones,
   getBuyerOrderStatusTone,
   getOrderDisplayId,
   getOrderProductImage,
@@ -42,6 +41,13 @@ import { useWallet } from "@/hooks/useWallet";
 import { useOrderPayment } from "@/hooks/useOrderPayment";
 import { koboToNaira } from "@/lib/wallet-format";
 import type { Order, OrderPaymentMethod } from "@/types/order";
+import {
+  formatDeliveryAddress,
+  getActiveMilestoneCount,
+  getOrderMilestones,
+  isAwaitingBuyerConfirmation,
+  isPaidOrderStatus,
+} from "@/types/order";
 
 type ModalKind =
   | "payment"
@@ -93,77 +99,26 @@ const formatDate = (value: string) => {
   return new Intl.DateTimeFormat("en-GB").format(parsed);
 };
 
+// Demo-walkthrough stage → completed-milestone count, on the canonical
+// (installation) scale: Create, Payment, Received, Delivered, Installed, Completed.
 const milestoneCountByStage: Record<BuyerOrderStage, number> = {
   ongoing: 1,
   payment: 2,
-  delivery: 3,
-  installation: 4,
-  completed: 5,
+  delivery: 4, // Received + Delivered done, delivery tracking in progress.
+  installation: 5, // Installed done, awaiting buyer confirmation.
+  completed: 6,
 };
 
 /**
  * True once the order has been paid for (escrow funded). The live API has no
- * `paymentStatus` field — payment is encoded in `status`. The money-in states
- * are paid → processing → fulfilled → completed.
+ * `paymentStatus` field — payment is encoded in `status`, which the backend
+ * advances through the money-in / fulfillment states (paid → processing →
+ * received → delivered → installed → completed). See `isPaidOrderStatus`.
  */
-const PAID_STATUSES = ["paid", "processing", "fulfilled", "completed"];
 const isOrderPaid = (paymentStatus?: string, status?: string) => {
   // `paymentStatus` is legacy/demo only; kept for back-compat.
   if (paymentStatus && paymentStatus.toLowerCase() === "paid") return true;
-  return PAID_STATUSES.includes(status ?? "");
-};
-
-/**
- * How many of the 5 visual milestones are complete for a backend status.
- * (Create order, Payment, Delivery, Installation, Completed.) The backend has
- * no installation step, so a fulfilled order fills through Installation and the
- * buyer's "Confirm receipt" moves it to Completed.
- */
-const milestoneFromStatus = (status: string): number => {
-  switch (status) {
-    case "paid":
-    case "processing":
-      return 2; // Create order + Payment — awaiting supplier delivery
-    case "fulfilled":
-      return 4; // + Delivery + Installation — awaiting buyer confirmation
-    case "completed":
-      return 5; // + Completed
-    default:
-      return 1; // Create order only (pending / cancelled / failed)
-  }
-};
-
-/**
- * Which tracking section to render for a paid order's backend status.
- * Only ever called once an order is paid, so an unknown status defaults to the
- * delivery tracker rather than the pre-payment ("ongoing") view.
- */
-const sectionFromStatus = (status: string): BuyerOrderStage => {
-  switch (status) {
-    case "fulfilled":
-      // Distributor delivered — buyer confirms receipt from the installation card.
-      return "installation";
-    case "completed":
-      return "completed";
-    case "paid":
-    case "processing":
-    default:
-      return "delivery";
-  }
-};
-
-/** Human-readable product status shown on the tracking card per backend status. */
-const productStatusFromStatus = (status: string): string => {
-  switch (status) {
-    case "fulfilled":
-      return "Delivered — awaiting your confirmation";
-    case "completed":
-      return "Completed";
-    case "paid":
-    case "processing":
-    default:
-      return "Awaiting Suppliers Delivery";
-  }
+  return isPaidOrderStatus(status);
 };
 
 function DetailStat({
@@ -205,73 +160,12 @@ function ProductVisual({ image, name }: { image?: string; name: string }) {
     <div className="flex h-[145px] items-center justify-center overflow-hidden rounded-xl border border-[#E9EEF5] bg-[#F8FAFC] md:h-[150px]">
       {image ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={image} alt={name} className="h-full w-full object-cover" />
+        <img src={image} alt={name} className="h-full w-full object-contain" />
       ) : (
         <div className="relative h-20 w-36 rounded-full bg-gradient-to-br from-[#DCE7EF] via-white to-[#B8C8D6] shadow-inner">
           <div className="absolute left-5 top-5 h-7 w-24 rounded-full bg-white/80 shadow" />
         </div>
       )}
-    </div>
-  );
-}
-
-function DeliveryStepper({
-  activeCount,
-  compact = false,
-}: {
-  activeCount: number;
-  compact?: boolean;
-}) {
-  if (compact) {
-    return (
-      <div className="space-y-3">
-        {buyerOrderMilestones.map((milestone, index) => {
-          const active = index < activeCount;
-          return (
-            <div key={milestone} className="flex items-center gap-3">
-              <span
-                className={`flex size-4 items-center justify-center rounded-sm ${
-                  active ? "bg-[#16A34A] text-white" : "bg-[#DDE0E5] text-white"
-                }`}
-              >
-                <Check size={11} />
-              </span>
-              <span className={`text-xs ${active ? "text-[#16A34A]" : "text-[#4B5563]"}`}>
-                {milestone}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-10 grid grid-cols-5 gap-0">
-      {buyerOrderMilestones.map((milestone, index) => {
-        const active = index < activeCount;
-        return (
-          <div key={milestone} className="relative flex flex-col items-center gap-4">
-            {index < buyerOrderMilestones.length - 1 ? (
-              <span
-                className={`absolute left-1/2 top-[10px] h-px w-full ${
-                  index < activeCount - 1 ? "bg-[#16A34A]" : "bg-[#DDE0E5]"
-                }`}
-              />
-            ) : null}
-            <span
-              className={`relative z-[1] flex size-5 items-center justify-center rounded-sm ${
-                active ? "bg-[#16A34A] text-white" : "bg-[#DDE0E5] text-white"
-              }`}
-            >
-              <Check size={13} />
-            </span>
-            <span className={`text-center text-sm ${active ? "text-[#16A34A]" : "text-[#4B5563]"}`}>
-              {milestone}
-            </span>
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -427,41 +321,72 @@ export default function BuyerOrderDetailPage() {
 
   const liveStatus = order?.status ?? "";
   const paid = isOrderPaid(liveOrder?.paymentStatus, liveStatus);
-  // If the backend marks payment done but hasn't advanced status yet, treat the
-  // order as at least "processing" so the UI leaves the payment step.
-  const effectiveStatus =
-    paid && (liveStatus === "created_pending_payment" || liveStatus === "not_paid")
-      ? "processing"
-      : liveStatus;
   const requestedView = searchParams.get("view");
   // A `draft_pending_buyer` order was created by a distributor on the buyer's
   // behalf. The buyer reviews it (notably adding a delivery address) before
   // paying. Delivery address is required before payment can proceed.
   const isDraft = liveStatus === "draft_pending_buyer";
   const needsDeliveryAddress =
-    isDraft && !liveOrder?.deliveryAddress?.trim();
+    isDraft && !formatDeliveryAddress(liveOrder?.deliveryAddress);
   // The payment form only opens when explicitly requested AND still unpaid.
   const showPaymentForm = requestedView === "payment" && !paid;
-  // Live orders: an unpaid order stays on the pre-payment ("ongoing") view;
-  // a paid order is ALWAYS in the tracking flow and never returns to ongoing.
+  // Installation-dependent progress milestones (shared with the distributor view).
+  const requiresInstallation = demoOrder
+    ? true
+    : Boolean(liveOrder?.requiresInstallation);
+  // The distributor has finished every required fulfillment stage but the buyer
+  // hasn't confirmed receipt yet. Because it's the buyer who confirms delivery,
+  // the final logistics step is shown as in-progress ("Delivery in progress") and
+  // stays pending until they confirm — it doesn't read as a completed "Delivered".
+  const awaitingBuyerConfirmation =
+    !demoOrder && paid && !!liveOrder && isAwaitingBuyerConfirmation(liveOrder);
+  // Live orders: an unpaid order stays on the pre-payment ("ongoing") view; a
+  // paid order is ALWAYS in the tracking flow and lives entirely in the "delivery"
+  // part — including the confirm-receipt step, which only differs by whether the
+  // distributor has finished delivering (`awaitingBuyerConfirmation`).
   const stage: BuyerOrderStage = showPaymentForm
     ? "payment"
     : demoOrder
       ? stageFromQuery(requestedView, liveStatus)
-      : paid
-        ? sectionFromStatus(effectiveStatus)
-        : "ongoing";
+      : !paid
+        ? "ongoing"
+        : liveStatus === "completed"
+          ? "completed"
+          : "delivery";
+  const baseMilestones = getOrderMilestones(requiresInstallation);
+  const inProgressIndex = requiresInstallation
+    ? baseMilestones.indexOf("Installed")
+    : baseMilestones.indexOf("Delivered");
+  const milestones = awaitingBuyerConfirmation
+    ? baseMilestones.map((label, index) =>
+        index === inProgressIndex
+          ? requiresInstallation
+            ? "Installation in progress"
+            : "Delivery in progress"
+          : label,
+      )
+    : baseMilestones;
   const activeMilestoneCount = demoOrder
     ? milestoneCountByStage[stage]
-    : paid
-      ? Math.max(2, milestoneFromStatus(effectiveStatus))
-      : 1;
-  const productStatusText = productStatusFromStatus(effectiveStatus);
-  // Buyer can confirm receipt (and the supplier has uploaded evidence) only once
-  // the distributor has fulfilled the order (stage "installation"). A freshly-paid
-  // order is still awaiting the supplier's delivery, so it shows neither — only
-  // the option to raise a dispute.
-  const deliveryUnderway = stage === "installation";
+    : awaitingBuyerConfirmation
+      ? inProgressIndex // steps before the in-progress one are complete; it stays pending.
+      : paid && liveOrder
+        ? Math.max(2, getActiveMilestoneCount(liveOrder, requiresInstallation))
+        : 1;
+  // The distributor has delivered, but it's the buyer who confirms it — so it
+  // stays "in progress" until they do.
+  const productStatusText =
+    stage === "completed"
+      ? "Completed"
+      : awaitingBuyerConfirmation
+        ? "Delivery in progress — confirm receipt"
+        : "Awaiting Suppliers Delivery";
+  // The confirm-receipt UI (and supplier evidence) shows on the delivery part
+  // once the distributor has finished delivering. Demo orders keep their
+  // walkthrough's dedicated "installation" stage.
+  const deliveryUnderway = demoOrder
+    ? stage === "installation"
+    : awaitingBuyerConfirmation;
   const hasActiveDispute = Boolean(liveOrder?.activeDisputeId);
   // Only the live order can carry a real deadline; the API doesn't return one
   // today, so this is usually undefined and CountdownTimer falls back to a
@@ -500,7 +425,8 @@ export default function BuyerOrderDetailPage() {
       ? liveOrder.buyer.email
       : buyerDemoOrderMeta.deliveryAddress.email;
   const deliveryAddressText =
-    liveOrder?.deliveryAddress?.trim() || buyerDemoOrderMeta.deliveryAddress.address;
+    formatDeliveryAddress(liveOrder?.deliveryAddress) ||
+    buyerDemoOrderMeta.deliveryAddress.address;
 
   const navigateStage = (nextStage: BuyerOrderStage) => {
     router.push(`/dashboard/buyer/orders/${orderId}?view=${nextStage}`);
@@ -806,6 +732,10 @@ export default function BuyerOrderDetailPage() {
                       <Check size={15} />
                       Delivered
                     </span>
+                  ) : awaitingBuyerConfirmation ? (
+                    <span className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#FF6B00] px-5 text-sm font-medium text-white">
+                      Delivery in progress
+                    </span>
                   ) : paid ? (
                     <span className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#FF6B00] px-5 text-sm font-medium text-white">
                       Processing
@@ -863,10 +793,17 @@ export default function BuyerOrderDetailPage() {
               <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5 md:p-6">
                 <h2 className="text-lg font-medium text-[#111827]">Delivery status</h2>
                 <div className="hidden md:block">
-                  <DeliveryStepper activeCount={activeMilestoneCount} />
+                  <DeliveryStepper
+                    activeCount={activeMilestoneCount}
+                    milestones={milestones}
+                  />
                 </div>
                 <div className="mt-5 md:hidden">
-                  <DeliveryStepper activeCount={activeMilestoneCount} compact />
+                  <DeliveryStepper
+                    activeCount={activeMilestoneCount}
+                    milestones={milestones}
+                    compact
+                  />
                 </div>
                 {hasActiveDispute ? <DisputeBanner /> : null}
               </section>
@@ -982,7 +919,7 @@ export default function BuyerOrderDetailPage() {
                         <p className="text-[15px] text-[#6B7280]">Product Status</p>
                         <p
                           className={`text-[15px] font-semibold ${
-                            effectiveStatus === "fulfilled"
+                            awaitingBuyerConfirmation
                               ? "text-[#1F9D8B]"
                               : "text-[#4B5563]"
                           }`}
@@ -1003,7 +940,7 @@ export default function BuyerOrderDetailPage() {
                         </div>
                       </div>
 
-                      {stage === "installation" ? (
+                      {deliveryUnderway ? (
                         <div className="rounded-xl bg-[#DFF5F5] p-4">
                           <p className="text-xs text-[#6B7280]">Expected by:</p>
                           <p className="mt-1 text-sm text-[#111827]">
@@ -1015,9 +952,11 @@ export default function BuyerOrderDetailPage() {
 
                     <p className="flex items-start gap-2 text-sm leading-5 text-[#0669D9]">
                       <Info size={18} className="mt-0.5 shrink-0" />
-                      {stage === "installation"
+                      {demoOrder && stage === "installation"
                         ? "Please confirm installation is carried out within specified time to avoid buyer's dispute."
-                        : "Order auto cancels if supplier doesn't confirm before timer ends"}
+                        : deliveryUnderway
+                          ? "Confirm you've received this order to release escrow to the supplier."
+                          : "Order auto cancels if supplier doesn't confirm before timer ends"}
                     </p>
                   </div>
 
@@ -1080,7 +1019,9 @@ export default function BuyerOrderDetailPage() {
               <DraftEditForm
                 initialQuantity={order.quantity}
                 initialNotes={liveOrder?.notes ?? ""}
-                initialDeliveryAddress={liveOrder?.deliveryAddress ?? ""}
+                initialDeliveryAddress={formatDeliveryAddress(
+                  liveOrder?.deliveryAddress,
+                )}
                 saving={isSavingDraft}
                 error={draftError}
                 onSubmit={handleSaveDraft}

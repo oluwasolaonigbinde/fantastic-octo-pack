@@ -15,6 +15,7 @@ import { koboToNaira } from "@/lib/wallet-format";
 import { getOrderProductImage, getPersonName } from "@/constants/demoBuyerOrders";
 import { buildMessagingComposeHref } from "@/utils/messagingRoutes";
 import type { Order, OrderPaymentMethod } from "@/types/order";
+import { isPaidOrderStatus } from "@/types/order";
 
 type PaymentOption = {
   label: string;
@@ -31,12 +32,10 @@ const paymentMethods: PaymentOption[] = [
   { label: "Bank wallet", method: null },
 ];
 
-/**
- * The money-in states (escrow funded). The live API has no `paymentStatus`
- * field — payment is encoded in `status`.
- */
-const PAID_STATUSES = ["paid", "processing", "fulfilled", "completed"];
-const isOrderPaid = (status?: string) => PAID_STATUSES.includes(status ?? "");
+// Escrow-funded states. The live API has no `paymentStatus` field — payment is
+// encoded in `status` (see `isPaidOrderStatus`, which also treats the
+// fulfillment stages received/delivered/installed as paid).
+const isOrderPaid = (status?: string) => isPaidOrderStatus(status);
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-NG", {

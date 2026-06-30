@@ -225,6 +225,22 @@ export const getOrderStatusTone = (status: string | undefined) => {
         className: "bg-[#FEE2E2] text-[#DC2626]",
         textClassName: "text-[#DC2626]",
       };
+    case "received":
+      return {
+        label: "Order received",
+        className: "bg-[#DBEAFE] text-[#0669D9]",
+        textClassName: "text-[#0669D9]",
+      };
+    // The distributor has delivered (or installed), but it's the buyer who
+    // confirms receipt — so it stays "Delivery in progress" until they do.
+    case "delivered":
+    case "installed":
+    case "fulfilled":
+      return {
+        label: "Delivery in progress",
+        className: "bg-[#FFEDD5] text-[#EA580C]",
+        textClassName: "text-[#EA580C]",
+      };
     case "completed":
       return {
         label: "Completed",

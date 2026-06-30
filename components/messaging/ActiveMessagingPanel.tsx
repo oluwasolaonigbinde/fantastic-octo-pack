@@ -29,7 +29,7 @@ import orderService from "@/services/orderService";
 import productService from "@/services/productService";
 import type { Conversation, ConversationDetail, Message } from "@/types/messaging";
 import type { Order } from "@/types/order";
-import { ORDER_STATUS_LABELS } from "@/types/order";
+import { ORDER_STATUS_LABELS, formatDeliveryAddress } from "@/types/order";
 import type { Product } from "@/types/product";
 import { UserRole } from "@/types/user";
 
@@ -455,7 +455,8 @@ function OrderMessageCard({
             <div className="col-span-2">
               <p className="text-[11px] text-[#8A94A6]">Shipping address</p>
               <p className="mt-1 text-xs font-medium text-[#111827]">
-                {order?.deliveryAddress?.trim() || "Not set — add during review"}
+                {formatDeliveryAddress(order?.deliveryAddress) ||
+                  "Not set — add during review"}
               </p>
             </div>
           </div>

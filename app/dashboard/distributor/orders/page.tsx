@@ -415,7 +415,7 @@ export default function DistributorOrdersPage() {
               </p>
               <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr_1fr_1fr]">
                 <FilterInput label="Order ID" placeholder="Enter order ID" />
-                <FilterInput label="Delivery status" placeholder="Select status" />
+                <FilterInput label="Order status" placeholder="Select status" />
                 <FilterInput label="Date created" placeholder="DD/MM/YY" type="date" />
                 <button
                   type="button"
@@ -452,7 +452,7 @@ export default function DistributorOrdersPage() {
                         <th className="py-3 pr-4 font-medium">Unit price</th>
                         <th className="py-3 pr-4 font-medium">Total price</th>
                         <th className="py-3 pr-4 font-medium">Date</th>
-                        <th className="py-3 pr-4 font-medium">Delivery status</th>
+                        <th className="py-3 pr-4 font-medium">Order status</th>
                         <th className="py-3 font-medium">Action</th>
                       </tr>
                     </thead>

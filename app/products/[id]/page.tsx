@@ -39,6 +39,8 @@ import {
 import { buildMessagingComposeHref } from "@/utils/messagingRoutes";
 import productService from "@/services/productService";
 import orderService from "@/services/orderService";
+import addressService from "@/services/addressService";
+import type { AddAddressPayload, UserAddress } from "@/types/address";
 
 const DEFAULT_WARRANTY_ITEMS = [
   "Cover first 1-year repair/replacement of defect.",
@@ -175,6 +177,9 @@ export default function ProductDetailsPage() {
   const [isInquiryOpen, setIsInquiryOpen] = useState(false);
   const [orderQuantity, setOrderQuantity] = useState(1);
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [addresses, setAddresses] = useState<UserAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [isSavingAddress, setIsSavingAddress] = useState(false);
   const processedResumeKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -297,6 +302,72 @@ export default function ProductDetailsPage() {
     [id, product?.name, sellerId],
   );
 
+  const applyAddressList = useCallback(
+    (list: UserAddress[], preferId?: string) => {
+      setAddresses(list);
+      setSelectedAddressId((current) => {
+        const preferred = preferId && list.some((a) => a._id === preferId)
+          ? preferId
+          : "";
+        const stillValid = list.some((a) => a._id === current) ? current : "";
+        return (
+          preferred ||
+          stillValid ||
+          list.find((a) => a.isDefault)?._id ||
+          list[0]?._id ||
+          ""
+        );
+      });
+    },
+    [],
+  );
+
+  const loadAddresses = useCallback(async () => {
+    const token = authData?.tokens?.accessToken;
+    if (!token) {
+      return;
+    }
+
+    try {
+      const result = await addressService.fetchAddresses(token);
+      if (result.success) {
+        applyAddressList(result.data ?? []);
+      }
+    } catch {
+      // The dialog still works with the profile fallback address.
+    }
+  }, [applyAddressList, authData?.tokens?.accessToken]);
+
+  const handleAddAddress = useCallback(
+    async (payload: AddAddressPayload) => {
+      const token = authData?.tokens?.accessToken;
+      if (!token) {
+        return;
+      }
+
+      setIsSavingAddress(true);
+      try {
+        const result = await addressService.addAddress(token, payload);
+        if (result.success) {
+          const list = result.data ?? [];
+          // Select the address we just added (match on its fields).
+          const added = [...list]
+            .reverse()
+            .find(
+              (a) =>
+                a.address === payload.address &&
+                a.city === payload.city &&
+                a.state === payload.state,
+            );
+          applyAddressList(list, added?._id);
+        }
+      } finally {
+        setIsSavingAddress(false);
+      }
+    },
+    [applyAddressList, authData?.tokens?.accessToken],
+  );
+
   const handleSendInquiry = useCallback(() => {
     setIsInquiryOpen(true);
   }, []);
@@ -315,9 +386,11 @@ export default function ProductDetailsPage() {
     setOrderQuantity(1);
     setDeliveryAddress((currentAddress) => currentAddress || defaultDeliveryAddress);
     setIsConfirmOrderOpen(true);
+    void loadAddresses();
   }, [
     authData,
     defaultDeliveryAddress,
+    loadAddresses,
     persistPendingAuthIntent,
     product,
     router,
@@ -332,8 +405,6 @@ export default function ProductDetailsPage() {
     setIsOrdering(true);
 
     try {
-      const finalDeliveryAddress =
-        deliveryAddress.trim() || defaultDeliveryAddress;
       const result = await orderService.createDirectOrder(
         authData.tokens.accessToken,
         {
@@ -342,7 +413,8 @@ export default function ProductDetailsPage() {
           quantity: orderQuantity,
           seller: sellerId,
           totalPrice: (product.pricePerUnit || 0) * orderQuantity,
-          deliveryAddress: finalDeliveryAddress,
+          // Omit to let the backend fall back to the buyer's default address.
+          addressId: selectedAddressId || undefined,
         },
       );
 
@@ -357,11 +429,10 @@ export default function ProductDetailsPage() {
     }
   }, [
     authData,
-    defaultDeliveryAddress,
-    deliveryAddress,
     orderQuantity,
     product,
     router,
+    selectedAddressId,
     sellerId,
   ]);
 
@@ -438,10 +509,20 @@ export default function ProductDetailsPage() {
       setOrderQuantity(1);
       setDeliveryAddress((currentAddress) => currentAddress || defaultDeliveryAddress);
       setIsConfirmOrderOpen(true);
+      void loadAddresses();
     }, 0);
 
     return () => window.clearTimeout(openConfirmTimer);
-  }, [authData, defaultDeliveryAddress, id, product, router, searchParams, sellerId]);
+  }, [
+    authData,
+    defaultDeliveryAddress,
+    id,
+    loadAddresses,
+    product,
+    router,
+    searchParams,
+    sellerId,
+  ]);
 
   if (isLoading && !product) {
     return (
@@ -721,14 +802,17 @@ export default function ProductDetailsPage() {
         sellerName={sellerName}
         unitPrice={product.pricePerUnit || 0}
         quantity={orderQuantity}
-        deliveryAddress={deliveryAddress || defaultDeliveryAddress}
         isSubmitting={isOrdering}
+        addresses={addresses}
+        selectedAddressId={selectedAddressId}
+        isSavingAddress={isSavingAddress}
         onClose={() => setIsConfirmOrderOpen(false)}
         onIncrement={() => setOrderQuantity((quantity) => quantity + 1)}
         onDecrement={() =>
           setOrderQuantity((quantity) => Math.max(1, quantity - 1))
         }
-        onEditAddress={(address) => setDeliveryAddress(address)}
+        onSelectAddress={(addressId) => setSelectedAddressId(addressId)}
+        onAddAddress={handleAddAddress}
         onMakePayment={handleMakePayment}
       />
 

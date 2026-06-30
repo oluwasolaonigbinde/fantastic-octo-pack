@@ -4,12 +4,7 @@ import Image from "next/image";
 import { ChevronDown, ChevronRight, Edit3, Info, Minus, Plus, X } from "lucide-react";
 import { useState } from "react";
 
-interface Address {
-  id: string;
-  label: string;
-  detail: string;
-  isDefault?: boolean;
-}
+import type { AddAddressPayload, UserAddress } from "@/types/address";
 
 interface ConfirmOrderModalProps {
   isOpen: boolean;
@@ -18,13 +13,19 @@ interface ConfirmOrderModalProps {
   sellerName: string;
   unitPrice: number;
   quantity: number;
-  deliveryAddress: string;
   isSubmitting?: boolean;
-  addresses?: Address[];
+  /** The buyer's saved address book (GET /auth/addresses). */
+  addresses?: UserAddress[];
+  /** `_id` of the currently selected saved address, or "" to use the default. */
+  selectedAddressId?: string;
+  /** True while a new address is being persisted (POST /auth/addresses). */
+  isSavingAddress?: boolean;
   onClose: () => void;
   onIncrement: () => void;
   onDecrement: () => void;
-  onEditAddress?: (address: string) => void;
+  onSelectAddress?: (addressId: string) => void;
+  /** Persist a new address to the buyer's address book, then resolve. */
+  onAddAddress?: (payload: AddAddressPayload) => Promise<void>;
   onMakePayment: () => void;
 }
 
@@ -50,6 +51,13 @@ function formatCurrency(value: number): string {
     .replace(/^NGN\s?/, "₦");
 }
 
+function formatAddress(addr: UserAddress): string {
+  return [addr.address, addr.city, addr.state, addr.country]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
 export default function ConfirmOrderModal({
   isOpen,
   productName,
@@ -57,58 +65,50 @@ export default function ConfirmOrderModal({
   sellerName,
   unitPrice,
   quantity,
-  deliveryAddress,
   isSubmitting = false,
   addresses = [],
+  selectedAddressId = "",
+  isSavingAddress = false,
   onClose,
   onIncrement,
   onDecrement,
-  onEditAddress,
+  onSelectAddress,
+  onAddAddress,
   onMakePayment,
 }: ConfirmOrderModalProps) {
-  const defaultAddressList: Address[] = addresses.length > 0
-    ? addresses
-    : deliveryAddress
-    ? [{ id: "default", label: "Current Address", detail: deliveryAddress, isDefault: true }]
-    : [];
-
   const [editView, setEditView] = useState<EditView | null>(null);
-  const [localAddresses, setLocalAddresses] = useState<Address[]>(defaultAddressList);
-  const [selectedAddressId, setSelectedAddressId] = useState(
-    defaultAddressList.find((a) => a.isDefault)?.id ?? defaultAddressList[0]?.id ?? ""
-  );
   const [newState, setNewState] = useState("");
   const [newCity, setNewCity] = useState("");
   const [newAddress, setNewAddress] = useState("");
+  const [addError, setAddError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const total = unitPrice * quantity;
 
-  function handleSaveAddress() {
-    if (!newState || !newCity || !newAddress) return;
-    const fullAddress = `${newAddress}, ${newCity}, ${newState}`;
-    const newEntry: Address = {
-      id: `addr-${Date.now()}`,
-      label: `${newCity}, ${newState}`,
-      detail: fullAddress,
-    };
-    const updated = [...localAddresses, newEntry];
-    setLocalAddresses(updated);
-    setSelectedAddressId(newEntry.id);
-    onEditAddress?.(fullAddress);
-    setEditView(null);
-    setNewState("");
-    setNewCity("");
-    setNewAddress("");
-  }
+  const selectedAddress = addresses.find((a) => a._id === selectedAddressId);
+  const summaryAddress = selectedAddress ? formatAddress(selectedAddress) : "";
+  const hasAddress = Boolean(summaryAddress);
 
-  function handleConfirmAddress() {
-    const selected = localAddresses.find((a) => a.id === selectedAddressId);
-    if (selected) {
-      onEditAddress?.(selected.detail);
+  async function handleSaveAddress() {
+    if (!newState || !newCity || !newAddress.trim() || !onAddAddress) return;
+    setAddError(null);
+    try {
+      await onAddAddress({
+        address: newAddress.trim(),
+        city: newCity,
+        state: newState,
+        country: "Nigeria",
+      });
+      setNewState("");
+      setNewCity("");
+      setNewAddress("");
+      setEditView("list");
+    } catch (error) {
+      setAddError(
+        error instanceof Error ? error.message : "Could not save address",
+      );
     }
-    setEditView(null);
   }
 
   return (
@@ -227,16 +227,18 @@ export default function ConfirmOrderModal({
                       Delivery Address
                     </p>
                     <p className="mt-0.5 break-words text-sm leading-6 text-[#6B7280]">
-                      {deliveryAddress}
+                      {hasAddress
+                        ? summaryAddress
+                        : "No delivery address yet — add one to continue."}
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setEditView("list")}
+                    onClick={() => setEditView(hasAddress ? "list" : "add")}
                     className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-[#017BED] bg-[#EAF9FF] px-3 text-sm font-semibold text-[#4B5563]"
                   >
-                    Edit Address
-                    <Edit3 size={16} />
+                    {hasAddress ? "Edit Address" : "Add Address"}
+                    {hasAddress ? <Edit3 size={16} /> : <Plus size={16} />}
                   </button>
                 </div>
               </div>
@@ -289,46 +291,54 @@ export default function ConfirmOrderModal({
                     </button>
                   </div>
 
-                  <div className="space-y-3">
-                    {localAddresses.map((addr) => (
-                      <label
-                        key={addr.id}
-                        className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
-                          selectedAddressId === addr.id
-                            ? "border-[#017BED] bg-[#F5FAFF]"
-                            : "border-[#DDE0E5] bg-[#F9FAFB]"
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="address"
-                          value={addr.id}
-                          checked={selectedAddressId === addr.id}
-                          onChange={() => setSelectedAddressId(addr.id)}
-                          className="mt-0.5 accent-[#017BED]"
-                        />
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-[#111827]">
-                            {addr.label}
-                          </p>
-                          <p className="mt-0.5 text-sm text-[#6B7280]">
-                            {addr.detail}
-                          </p>
-                          {addr.isDefault && (
-                            <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#EAF9FF] px-2.5 py-0.5 text-xs font-medium text-[#017BED]">
-                              <Info size={11} />
-                              Default address
-                            </span>
-                          )}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                  {addresses.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-[#DDE0E5] bg-[#F9FAFB] p-4 text-sm text-[#6B7280]">
+                      You have no saved addresses yet. Add one to continue — it
+                      will be saved to your account for future orders.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {addresses.map((addr) => (
+                        <label
+                          key={addr._id}
+                          className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
+                            selectedAddressId === addr._id
+                              ? "border-[#017BED] bg-[#F5FAFF]"
+                              : "border-[#DDE0E5] bg-[#F9FAFB]"
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="address"
+                            value={addr._id}
+                            checked={selectedAddressId === addr._id}
+                            onChange={() => onSelectAddress?.(addr._id)}
+                            className="mt-0.5 accent-[#017BED]"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-[#111827]">
+                              {addr.city}, {addr.state}
+                            </p>
+                            <p className="mt-0.5 text-sm text-[#6B7280]">
+                              {formatAddress(addr)}
+                            </p>
+                            {addr.isDefault && (
+                              <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#EAF9FF] px-2.5 py-0.5 text-xs font-medium text-[#017BED]">
+                                <Info size={11} />
+                                Default address
+                              </span>
+                            )}
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  )}
 
                   <button
                     type="button"
-                    onClick={handleConfirmAddress}
-                    className="flex h-[52px] w-full items-center justify-center rounded-xl bg-[#0669D9] text-sm font-medium text-white transition hover:bg-[#0553AE]"
+                    onClick={() => setEditView(null)}
+                    disabled={addresses.length === 0}
+                    className="flex h-[52px] w-full items-center justify-center rounded-xl bg-[#0669D9] text-sm font-medium text-white transition hover:bg-[#0553AE] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     Confirm Address
                   </button>
@@ -341,12 +351,6 @@ export default function ConfirmOrderModal({
                     <h3 className="text-xl font-bold text-[#111827]">
                       Add New Address
                     </h3>
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-[#DDE0E5] bg-white px-3 py-2 text-sm font-medium text-[#4B5563]"
-                    >
-                      Enter Manually
-                    </button>
                   </div>
 
                   {/* breadcrumb */}
@@ -434,13 +438,19 @@ export default function ConfirmOrderModal({
                     />
                   </div>
 
+                  {addError && (
+                    <p className="text-sm font-medium text-[#DC2626]">{addError}</p>
+                  )}
+
                   <button
                     type="button"
                     onClick={handleSaveAddress}
-                    disabled={!newState || !newCity || !newAddress}
+                    disabled={
+                      !newState || !newCity || !newAddress.trim() || isSavingAddress
+                    }
                     className="flex h-[52px] w-full items-center justify-center rounded-xl bg-[#0669D9] text-sm font-medium text-white transition hover:bg-[#0553AE] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Save
+                    {isSavingAddress ? "Saving..." : "Save"}
                   </button>
                 </div>
               )}

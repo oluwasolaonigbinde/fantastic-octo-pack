@@ -11,6 +11,7 @@ import { apiUrl } from "@/utils/api-base-url";
 
 export interface FetchProductsParams {
   category?: string;
+  sub_category?: string;
   createdBy?: string;
   assignedOem?: string;
   status?: ProductStatus;
@@ -97,6 +98,8 @@ const fetchWithFilter = async (
   const queryParams = new URLSearchParams();
   if (filters) {
     if (filters.category) queryParams.append("category", filters.category);
+    if (filters.sub_category)
+      queryParams.append("sub_category", filters.sub_category);
     if (filters.createdBy) queryParams.append("createdBy", filters.createdBy);
     if (filters.assignedOem) queryParams.append("assignedOem", filters.assignedOem);
     if (filters.status) queryParams.append("status", filters.status);
@@ -279,6 +282,71 @@ const reviewProductVisibility = async (
   return await response.json();
 };
 
+// Feature or unfeature a product (admin) — PATCH /products/{id}/feature
+const featureProduct = async (
+  token: string,
+  productId: string,
+  featured: boolean
+): Promise<ProductResponse> => {
+  const response = await fetch(apiUrl(`/products/${productId}/feature`), {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ featured }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "Updating featured status failed");
+  }
+
+  return await response.json();
+};
+
+export interface FetchRecommendedParams {
+  category?: string;
+  sub_category?: string;
+  country?: string;
+  search?: string;
+  sort?: string;
+  page?: number;
+  limit?: number;
+}
+
+// List recommended products — GET /products/recommended
+const fetchRecommended = async (
+  params: FetchRecommendedParams = {}
+): Promise<ProductListResponse> => {
+  const queryParams = new URLSearchParams();
+  if (params.category) queryParams.append("category", params.category);
+  if (params.sub_category) queryParams.append("sub_category", params.sub_category);
+  if (params.country) queryParams.append("country", params.country);
+  if (params.search) queryParams.append("search", params.search);
+  if (params.sort) queryParams.append("sort", params.sort);
+  if (typeof params.page === "number") queryParams.append("page", String(params.page));
+  if (typeof params.limit === "number")
+    queryParams.append("limit", String(params.limit));
+
+  const query = queryParams.toString();
+  const response = await fetch(
+    `${apiUrl("/products/recommended")}${query ? `?${query}` : ""}`,
+    {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "Fetching recommended products failed");
+  }
+
+  return await response.json();
+};
+
 // Delete a product
 const deleteProduct = async (productId: string, token: string) => {
   const response = await fetch(apiUrl(`/products/${productId}`), {
@@ -321,6 +389,8 @@ const productService = {
   submitProduct,
   reviewProduct,
   reviewProductVisibility,
+  featureProduct,
+  fetchRecommended,
   deleteProduct,
 };
 

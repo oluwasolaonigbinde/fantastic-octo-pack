@@ -2,6 +2,7 @@ import orderService from "@/services/orderService";
 import type {
   DraftOrderUpdate,
   EscrowSummary,
+  FulfillmentStage,
   Order,
   OrderPaymentResult,
   PayOrderPayload,
@@ -152,13 +153,20 @@ export const confirmOrderReceipt = createAsyncThunk(
 
 export const fulfillOrder = createAsyncThunk(
   "order/fulfill",
-  async ({ token, orderId }: { token: string; orderId: string }, thunkAPI) => {
+  async (
+    {
+      token,
+      orderId,
+      stage,
+    }: { token: string; orderId: string; stage: FulfillmentStage },
+    thunkAPI
+  ) => {
     try {
-      const res = await orderService.fulfillOrder(token, orderId);
+      const res = await orderService.advanceFulfillment(token, orderId, stage);
       return res.data;
     } catch (error) {
       return thunkAPI.rejectWithValue(
-        error instanceof Error ? error.message : "Failed to mark order fulfilled"
+        error instanceof Error ? error.message : "Failed to advance fulfillment"
       );
     }
   }
