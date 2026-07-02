@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -21,8 +21,13 @@ import {
 import Header from "../../component/header";
 import { Button, SummaryCard } from "@/components/base";
 import { ProtectedRoute } from "@/components/dashboard/protected-routes";
-import { useAppSelector } from "@/hooks/useAppSelector";
-import { serviceDisputeService } from "@/services/serviceDisputeService";
+import {
+  useAddServiceDisputeCommentMutation,
+  useRequestServiceDisputeEvidenceMutation,
+  useResolveServiceDisputeMutation,
+  useServiceDisputeQuery,
+  useServiceDisputesQuery,
+} from "@/hooks/queries/service-disputes";
 import { ServiceRequestData } from "@/types/service-request";
 import {
   ServiceDisputeData,
@@ -369,105 +374,51 @@ function DisputeNoteCard({
 export default function AdminDisputesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const selectedDisputeId = searchParams.get("disputeId");
-
-  const [disputes, setDisputes] = useState<ServiceDisputeData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const [statusFilter, setStatusFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [dateInputValue, setDateInputValue] = useState("");
-  const [selectedDispute, setSelectedDispute] = useState<ServiceDisputeData | null>(
-    null,
-  );
-  const [selectedLoading, setSelectedLoading] = useState(false);
-  const [selectedError, setSelectedError] = useState("");
-
   const [commentDraft, setCommentDraft] = useState("");
-  const [commentBusy, setCommentBusy] = useState(false);
-  const [resolveBusy, setResolveBusy] = useState(false);
-  const [requestEvidenceBusy, setRequestEvidenceBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
 
-  const loadDisputes = useCallback(async () => {
-    if (!token) {
-      return;
-    }
+  const disputesQuery = useServiceDisputesQuery(true);
+  const disputes = useMemo(
+    () => disputesQuery.data ?? [],
+    [disputesQuery.data],
+  );
+  const loading = disputesQuery.isPending;
+  const error = disputesQuery.isError
+    ? disputesQuery.error instanceof Error
+      ? disputesQuery.error.message
+      : "Failed to load dispute records."
+    : "";
 
-    setLoading(true);
-    setError("");
+  const selectedDisputeQuery = useServiceDisputeQuery(
+    selectedDisputeId ?? undefined,
+    true,
+  );
+  const selectedDispute = selectedDisputeQuery.data ?? null;
+  const selectedLoading = Boolean(selectedDisputeId) && selectedDisputeQuery.isPending;
+  const selectedError =
+    actionError ||
+    (selectedDisputeQuery.isError
+      ? selectedDisputeQuery.error instanceof Error
+        ? selectedDisputeQuery.error.message
+        : "Failed to load dispute detail."
+      : "");
 
-    try {
-      const nextDisputes = await serviceDisputeService.fetchServiceDisputes(
-        token,
-        true,
-      );
-      setDisputes(nextDisputes);
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Failed to load dispute records.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+  const addCommentMutation = useAddServiceDisputeCommentMutation();
+  const resolveMutation = useResolveServiceDisputeMutation();
+  const requestEvidenceMutation = useRequestServiceDisputeEvidenceMutation();
 
-  useEffect(() => {
-    queueMicrotask(() => {
-      void loadDisputes();
-    });
-  }, [loadDisputes]);
+  const commentBusy = addCommentMutation.isPending;
+  const resolveBusy = resolveMutation.isPending;
+  const requestEvidenceBusy = requestEvidenceMutation.isPending;
 
-  useEffect(() => {
-    if (!token || !selectedDisputeId) {
-      queueMicrotask(() => {
-        setSelectedDispute(null);
-        setSelectedError("");
-        setSelectedLoading(false);
-      });
-      return;
-    }
-
-    let isMounted = true;
-
-    const loadSelectedDispute = async () => {
-      setSelectedLoading(true);
-      setSelectedError("");
-
-      try {
-        const nextDispute = await serviceDisputeService.fetchServiceDisputeById(
-          token,
-          selectedDisputeId,
-          true,
-        );
-
-        if (isMounted) {
-          setSelectedDispute(nextDispute);
-        }
-      } catch (nextError) {
-        if (isMounted) {
-          setSelectedError(
-            nextError instanceof Error
-              ? nextError.message
-              : "Failed to load dispute detail.",
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setSelectedLoading(false);
-        }
-      }
-    };
-
-    void loadSelectedDispute();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedDisputeId, token]);
+  const loadDisputes = () => {
+    void disputesQuery.refetch();
+  };
 
   const filteredDisputes = useMemo(() => {
     return disputes.filter((dispute) => {
@@ -509,90 +460,67 @@ export default function AdminDisputesPage() {
   }, [disputes, filteredDisputes]);
 
   const handleAddComment = async () => {
-    if (!token || !selectedDispute || !commentDraft.trim()) {
+    if (!selectedDispute || !commentDraft.trim()) {
       return;
     }
 
-    setCommentBusy(true);
-    setSelectedError("");
+    setActionError("");
 
     try {
-      const updatedDispute = await serviceDisputeService.addServiceDisputeComment(
-        token,
-        selectedDispute._id,
-        commentDraft.trim(),
-      );
-
-      setSelectedDispute(updatedDispute);
+      await addCommentMutation.mutateAsync({
+        disputeId: selectedDispute._id,
+        text: commentDraft.trim(),
+      });
       setCommentDraft("");
-      await loadDisputes();
     } catch (nextError) {
-      setSelectedError(
+      setActionError(
         nextError instanceof Error
           ? nextError.message
           : "Failed to add dispute comment.",
       );
-    } finally {
-      setCommentBusy(false);
     }
   };
 
   const handleRequestEvidence = async () => {
-    if (!token || !selectedDispute) {
+    if (!selectedDispute) {
       return;
     }
 
-    setRequestEvidenceBusy(true);
-    setSelectedError("");
+    setActionError("");
 
     try {
-      const response = await serviceDisputeService.requestServiceDisputeEvidence(
-        token,
-        selectedDispute._id,
-      );
-
-      setSelectedDispute(response.data.dispute);
-      await loadDisputes();
+      await requestEvidenceMutation.mutateAsync({
+        disputeId: selectedDispute._id,
+      });
     } catch (nextError) {
-      setSelectedError(
+      setActionError(
         nextError instanceof Error
           ? nextError.message
           : "Failed to request more evidence.",
       );
-    } finally {
-      setRequestEvidenceBusy(false);
     }
   };
 
   const handleResolve = async (
     outcome: ServiceDisputeResolutionOutcome,
   ) => {
-    if (!token || !selectedDispute) {
+    if (!selectedDispute) {
       return;
     }
 
-    setResolveBusy(true);
-    setSelectedError("");
+    setActionError("");
 
     try {
-      const response = await serviceDisputeService.resolveServiceDispute(
-        token,
-        selectedDispute._id,
-        {
-          resolutionOutcome: outcome,
-        },
-      );
-
-      setSelectedDispute(response.data.dispute);
-      await loadDisputes();
+      await resolveMutation.mutateAsync({
+        disputeId: selectedDispute._id,
+        payload: { resolutionOutcome: outcome },
+      });
     } catch (nextError) {
-      setSelectedError(
+      setActionError(
         nextError instanceof Error
           ? nextError.message
           : "Failed to resolve the dispute.",
       );
-    } finally {
-      setResolveBusy(false);
     }
   };
 
@@ -634,7 +562,7 @@ export default function AdminDisputesPage() {
 
   const handleCloseDisputeDetail = () => {
     setCommentDraft("");
-    setSelectedError("");
+    setActionError("");
     router.push("/dashboard/admin/disputes");
   };
 

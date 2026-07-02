@@ -2,7 +2,6 @@
 
 import {
   FormEvent,
-  useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
@@ -22,12 +21,21 @@ import {
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { useQueryClient } from "@tanstack/react-query";
+
 import { DEFAULT_AVATAR_SRC } from "@/constants/avatar";
 import { useAppSelector } from "@/hooks/useAppSelector";
-import messagingService from "@/services/messagingService";
+import { useMyProductsQuery } from "@/hooks/queries/products";
+import {
+  useCreateOrderOnBehalfMutation,
+  useSendMessageMutation,
+  useStartConversationMutation,
+  useThreadQuery,
+  useThreadsQuery,
+} from "@/hooks/queries/messaging";
+import { queryKeys } from "@/lib/query-keys";
 import orderService from "@/services/orderService";
-import productService from "@/services/productService";
-import type { Conversation, ConversationDetail, Message } from "@/types/messaging";
+import type { Conversation, Message } from "@/types/messaging";
 import type { Order } from "@/types/order";
 import { ORDER_STATUS_LABELS, formatDeliveryAddress } from "@/types/order";
 import type { Product } from "@/types/product";
@@ -37,8 +45,6 @@ interface ActiveMessagingPanelProps {
   emptyTitle?: string;
   emptyDescription?: string;
 }
-
-const POLL_INTERVAL_MS = 15000;
 
 /** Order totals come back from the API in naira. */
 const formatNaira = (value: number) =>
@@ -498,30 +504,44 @@ export function ActiveMessagingPanel({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const qc = useQueryClient();
   const authUser = useAppSelector((state) => state.auth.data);
   const token = authUser?.tokens?.accessToken;
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [draft, setDraft] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [isLoadingList, setIsLoadingList] = useState(false);
-  const [isLoadingThread, setIsLoadingThread] = useState(false);
-  const [isSending, setIsSending] = useState(false);
   const [isCreateOrderOpen, setIsCreateOrderOpen] = useState(false);
-  const [orderProducts, setOrderProducts] = useState<Product[]>([]);
-  const [isLoadingOrderProducts, setIsLoadingOrderProducts] = useState(false);
-  const [orderProductError, setOrderProductError] = useState<string | null>(null);
-  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [createOrderError, setCreateOrderError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [composeError, setComposeError] = useState<string | null>(null);
   const processedComposeKey = useRef<string | null>(null);
   const shouldFocusComposer = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
+
+  const THREADS_LIMIT = 20;
+  const threadsQuery = useThreadsQuery(THREADS_LIMIT);
+  const conversations = useMemo(
+    () => threadsQuery.data ?? [],
+    [threadsQuery.data],
+  );
+  const isLoadingList = threadsQuery.isLoading;
+
+  const threadQuery = useThreadQuery(activeConversationId ?? undefined);
+  const detail = threadQuery.data ?? null;
+  const isLoadingThread = threadQuery.isLoading && Boolean(activeConversationId);
+
+  const sendMessageMutation = useSendMessageMutation();
+  const startConversationMutation = useStartConversationMutation();
+  const createOrderMutation = useCreateOrderOnBehalfMutation();
+
+  const isSending = sendMessageMutation.isPending;
+  const isCreatingOrder = createOrderMutation.isPending;
+
+  const activeError =
+    threadsQuery.error ?? threadQuery.error ?? sendMessageMutation.error;
+  const error = activeError instanceof Error ? activeError.message : null;
 
   const activeConversation = useMemo(
     () =>
@@ -534,6 +554,18 @@ export function ActiveMessagingPanel({
   const canCreateOrder =
     authUser?.role === UserRole.DISTRIBUTOR &&
     activeConversation?.counterpart.role === UserRole.BUYER;
+
+  const myProductsQuery = useMyProductsQuery(authUser?._id, {
+    enabled: isCreateOrderOpen && Boolean(canCreateOrder),
+  });
+  const orderProducts: Product[] = myProductsQuery.data?.products ?? [];
+  const isLoadingOrderProducts = myProductsQuery.isLoading && isCreateOrderOpen;
+  const orderProductError =
+    myProductsQuery.error instanceof Error
+      ? myProductsQuery.error.message
+      : myProductsQuery.error
+        ? "Unable to load catalogue products"
+        : null;
 
   const filteredConversations = useMemo(() => {
     const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
@@ -555,113 +587,17 @@ export function ActiveMessagingPanel({
     });
   }, [conversations, deferredSearchQuery]);
 
-  const loadConversations = useCallback(
-    async (options?: { preserveActive?: boolean }) => {
-      if (!token) return;
-
-      setIsLoadingList(true);
-      setError(null);
-
-      try {
-        const nextConversations = await messagingService.listConversations(token, {
-          limit: 20,
-        });
-
-        setConversations((current) => {
-          if (nextConversations.length === 0 && current.length > 0) {
-            return current;
-          }
-
-          return nextConversations;
-        });
-        setActiveConversationId((current) => {
-          if (options?.preserveActive && current) return current;
-          if (current && nextConversations.some((conversation) => conversation.id === current)) {
-            return current;
-          }
-          if (current && nextConversations.length === 0) {
-            return current;
-          }
-          return nextConversations[0]?.id ?? null;
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unable to load conversations");
-      } finally {
-        setIsLoadingList(false);
-      }
-    },
-    [token],
-  );
-
-  const loadConversation = useCallback(
-    async (conversationId: string) => {
-      if (!token) return;
-
-      setIsLoadingThread(true);
-      setError(null);
-
-      try {
-        const nextDetail = await messagingService.getConversation(token, conversationId);
-        setDetail(nextDetail);
-      } catch (err) {
-        setDetail(null);
-        setError(err instanceof Error ? err.message : "Unable to load conversation");
-      } finally {
-        setIsLoadingThread(false);
-      }
-    },
-    [token],
-  );
-
+  // Pick the first conversation once the list loads, and recover if the active
+  // one disappears from the list (the queries poll in the background).
   useEffect(() => {
-    void loadConversations();
-  }, [loadConversations]);
+    if (conversations.length === 0) return;
 
-  useEffect(() => {
-    if (!isCreateOrderOpen || !token || !authUser?._id || !canCreateOrder) {
-      return;
-    }
-
-    setIsLoadingOrderProducts(true);
-    setOrderProductError(null);
-
-    void productService
-      .fetchMyProducts(authUser._id, token)
-      .then((response) => {
-        setOrderProducts(response.data.docs ?? []);
-      })
-      .catch((err) => {
-        setOrderProducts([]);
-        setOrderProductError(
-          err instanceof Error ? err.message : "Unable to load catalogue products",
-        );
-      })
-      .finally(() => {
-        setIsLoadingOrderProducts(false);
-      });
-  }, [authUser?._id, canCreateOrder, isCreateOrderOpen, token]);
-
-  useEffect(() => {
-    if (!token) return;
-
-    const intervalId = window.setInterval(() => {
-      void loadConversations({ preserveActive: true });
-      if (activeConversationId) {
-        void loadConversation(activeConversationId);
-      }
-    }, POLL_INTERVAL_MS);
-
-    return () => window.clearInterval(intervalId);
-  }, [activeConversationId, loadConversation, loadConversations, token]);
-
-  useEffect(() => {
-    if (!activeConversationId) {
-      setDetail(null);
-      return;
-    }
-
-    void loadConversation(activeConversationId);
-  }, [activeConversationId, loadConversation]);
+    setActiveConversationId((current) => {
+      if (!current) return conversations[0]?.id ?? null;
+      if (conversations.some((c) => c.id === current)) return current;
+      return conversations[0]?.id ?? current;
+    });
+  }, [conversations]);
 
   useEffect(() => {
     if (!shouldFocusComposer.current || !activeConversation) {
@@ -691,19 +627,26 @@ export function ActiveMessagingPanel({
     processedComposeKey.current = composeKey;
     setComposeError(null);
 
-    void messagingService
-      .startConversation(token, { receiverId })
-      .then((conversation) => {
-        setConversations((current) => {
-          const withoutDuplicate = current.filter((item) => item.id !== conversation.id);
-          return [conversation, ...withoutDuplicate];
-        });
+    startConversationMutation.mutate(receiverId, {
+      onSuccess: (conversation) => {
+        // Seed the freshly started conversation into the cached list so it shows
+        // immediately; the background invalidation reconciles it afterwards.
+        qc.setQueryData<Conversation[]>(
+          queryKeys.messaging.threads(authUser?._id ?? "anonymous", THREADS_LIMIT),
+          (current = []) => {
+            const withoutDuplicate = current.filter(
+              (item) => item.id !== conversation.id,
+            );
+            return [conversation, ...withoutDuplicate];
+          },
+        );
         setComposeError(null);
         shouldFocusComposer.current = true;
         setActiveConversationId(conversation.id);
-      })
-      .catch((err) => {
-        const fallbackConversationId = activeConversationId ?? conversations[0]?.id ?? null;
+      },
+      onError: (err) => {
+        const fallbackConversationId =
+          activeConversationId ?? conversations[0]?.id ?? null;
         setActiveConversationId(fallbackConversationId);
         setComposeError(
           fallbackConversationId
@@ -713,8 +656,19 @@ export function ActiveMessagingPanel({
               : "Conversation could not be started.",
         );
         router.replace(pathname, { scroll: false });
-      });
-  }, [activeConversationId, conversations, pathname, router, searchParams, token]);
+      },
+    });
+  }, [
+    activeConversationId,
+    authUser?._id,
+    conversations,
+    pathname,
+    qc,
+    router,
+    searchParams,
+    startConversationMutation,
+    token,
+  ]);
 
   const handleSend = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -724,62 +678,47 @@ export function ActiveMessagingPanel({
       return;
     }
 
-    setIsSending(true);
-    setError(null);
-
     try {
-      await messagingService.sendMessage(token, {
+      await sendMessageMutation.mutateAsync({
         conversationId: activeConversationId,
         text,
       });
       setDraft("");
-      await Promise.all([
-        loadConversation(activeConversationId),
-        loadConversations({ preserveActive: true }),
-      ]);
       inputRef.current?.focus();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to send message");
-    } finally {
-      setIsSending(false);
+    } catch {
+      // Error surfaced via `sendMessageMutation.error` (see `error`).
     }
   };
 
   // Distributor drafts an order for the buyer via POST /orders/on-behalf. The
   // backend prices it, creates a `draft_pending_buyer` order, and posts an
-  // `order_proposal` message into this conversation — so we just refresh the
-  // thread to render the new order card.
+  // `order_proposal` message into this conversation — the mutation invalidates
+  // the thread so the new order card renders.
   const handleCreateOrder = async (input: {
     productId: string;
     quantity: number;
     notes: string;
   }) => {
     const buyerId = activeConversation?.counterpart.id;
-    if (!token || !buyerId || isCreatingOrder) return;
+    if (!token || !buyerId || !activeConversationId || isCreatingOrder) return;
 
-    setIsCreatingOrder(true);
     setCreateOrderError(null);
 
     try {
-      await orderService.createOrderOnBehalf(token, {
-        buyer: buyerId,
-        product: input.productId,
-        quantity: input.quantity,
-        notes: input.notes || undefined,
+      await createOrderMutation.mutateAsync({
+        conversationId: activeConversationId,
+        payload: {
+          buyer: buyerId,
+          product: input.productId,
+          quantity: input.quantity,
+          notes: input.notes || undefined,
+        },
       });
       setIsCreateOrderOpen(false);
-      if (activeConversationId) {
-        await Promise.all([
-          loadConversation(activeConversationId),
-          loadConversations({ preserveActive: true }),
-        ]);
-      }
     } catch (err) {
       setCreateOrderError(
         err instanceof Error ? err.message : "Unable to create order",
       );
-    } finally {
-      setIsCreatingOrder(false);
     }
   };
 

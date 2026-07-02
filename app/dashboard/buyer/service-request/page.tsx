@@ -4,7 +4,6 @@ import { useState } from "react";
 
 import Header from "../../component/header";
 import { ProtectedRoute } from "@/components/dashboard/protected-routes";
-import { useFetchBuyerServiceRequests } from "@/hooks/useBuyerServiceRequests";
 import { UserRole } from "@/types/user";
 
 import {
@@ -15,7 +14,6 @@ import {
 } from "../_components/buyer-service-requests-content";
 
 export default function BuyerServiceRequestPage() {
-  useFetchBuyerServiceRequests();
   const [requestIdFilter, setRequestIdFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");

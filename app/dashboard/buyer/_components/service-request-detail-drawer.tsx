@@ -4,12 +4,17 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, FileText, SquareCheck, Upload } from "lucide-react";
 
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/base";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { serviceDisputeService } from "@/services/serviceDisputeService";
 import {
-  buyerMarkCompleted,
-  fetchServiceRequests,
-} from "@/store/slices/service-request-slice";
+  useAddServiceDisputeCommentMutation,
+  useAddServiceDisputeEvidenceMutation,
+  useCreateServiceDisputeMutation,
+  useServiceDisputeQuery,
+} from "@/hooks/queries/service-disputes";
+import { useQueryClient } from "@tanstack/react-query";
+
+import { useBuyerMarkCompletedMutation } from "@/hooks/queries/service-requests";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { queryKeys } from "@/lib/query-keys";
 import {
   ServiceDisputeData,
   ServiceDisputeStatus,
@@ -240,26 +245,31 @@ export default function ServiceRequestDetailDrawer({
   onClose,
   request,
 }: ServiceRequestDetailDrawerProps) {
-  const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
+  const markCompletedMutation = useBuyerMarkCompletedMutation();
 
   const [markingCompleted, setMarkingCompleted] = useState(false);
   const [drawerError, setDrawerError] = useState("");
 
   const [dispute, setDispute] = useState<ServiceDisputeData | null>(null);
-  const [disputeLoading, setDisputeLoading] = useState(false);
   const [disputeError, setDisputeError] = useState("");
 
   const [isRaiseDisputeOpen, setIsRaiseDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
   const [disputeDescription, setDisputeDescription] = useState("");
   const [disputeFile, setDisputeFile] = useState<File | null>(null);
-  const [creatingDispute, setCreatingDispute] = useState(false);
 
   const [commentDraft, setCommentDraft] = useState("");
-  const [commentBusy, setCommentBusy] = useState(false);
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
-  const [evidenceBusy, setEvidenceBusy] = useState(false);
+
+  const createDisputeMutation = useCreateServiceDisputeMutation();
+  const addCommentMutation = useAddServiceDisputeCommentMutation();
+  const addEvidenceMutation = useAddServiceDisputeEvidenceMutation();
+
+  const creatingDispute = createDisputeMutation.isPending;
+  const commentBusy = addCommentMutation.isPending;
+  const evidenceBusy = addEvidenceMutation.isPending;
 
   const isInProgress = request.status === ServiceRequestStatus.IN_PROGRESS;
   const isCompleted = request.status === ServiceRequestStatus.COMPLETED;
@@ -296,6 +306,13 @@ export default function ServiceRequestDetailDrawer({
     ],
   );
 
+  const activeDisputeQuery = useServiceDisputeQuery(
+    request.activeDisputeId,
+    false,
+    { enabled: open && Boolean(request.activeDisputeId) },
+  );
+  const disputeLoading = activeDisputeQuery.isPending && open && Boolean(request.activeDisputeId);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -303,55 +320,34 @@ export default function ServiceRequestDetailDrawer({
 
     setDrawerError("");
 
-    if (!token || !request.activeDisputeId) {
+    if (!request.activeDisputeId) {
       setDispute(null);
       setDisputeError("");
       return;
     }
 
-    let isMounted = true;
-
-    const loadDispute = async () => {
-      setDisputeLoading(true);
+    if (activeDisputeQuery.data) {
+      setDispute(activeDisputeQuery.data);
       setDisputeError("");
-
-      try {
-        const nextDispute = await serviceDisputeService.fetchServiceDisputeById(
-          token,
-          request.activeDisputeId!,
-        );
-
-        if (isMounted) {
-          setDispute(nextDispute);
-        }
-      } catch (error) {
-        if (isMounted) {
-          setDisputeError(
-            error instanceof Error
-              ? error.message
-              : "Failed to load the active dispute.",
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setDisputeLoading(false);
-        }
-      }
-    };
-
-    void loadDispute();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [open, request.activeDisputeId, token]);
+    } else if (activeDisputeQuery.isError) {
+      setDisputeError(
+        activeDisputeQuery.error instanceof Error
+          ? activeDisputeQuery.error.message
+          : "Failed to load the active dispute.",
+      );
+    }
+  }, [
+    open,
+    request.activeDisputeId,
+    activeDisputeQuery.data,
+    activeDisputeQuery.isError,
+    activeDisputeQuery.error,
+  ]);
 
   const refreshRequests = async () => {
-    if (!token) {
-      return;
-    }
-
-    await dispatch(fetchServiceRequests({ token })).unwrap();
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.serviceRequests.all,
+    });
   };
 
   const handleMarkCompleted = async () => {
@@ -364,12 +360,12 @@ export default function ServiceRequestDetailDrawer({
     setMarkingCompleted(true);
 
     try {
-      await dispatch(buyerMarkCompleted({ token, id: request._id })).unwrap();
+      await markCompletedMutation.mutateAsync(request._id);
       onClose();
     } catch (error) {
       setDrawerError(
-        typeof error === "string"
-          ? error
+        error instanceof Error
+          ? error.message
           : "Failed to mark this request as completed. Try again.",
       );
     } finally {
@@ -388,7 +384,6 @@ export default function ServiceRequestDetailDrawer({
       return;
     }
 
-    setCreatingDispute(true);
     setDrawerError("");
 
     try {
@@ -406,11 +401,10 @@ export default function ServiceRequestDetailDrawer({
               description: disputeDescription.trim(),
             };
 
-      const result = await serviceDisputeService.createServiceDispute(
-        token,
-        request._id,
+      const result = await createDisputeMutation.mutateAsync({
+        serviceRequestId: request._id,
         payload,
-      );
+      });
 
       setDispute(result.data.dispute);
       setIsRaiseDisputeOpen(false);
@@ -424,8 +418,6 @@ export default function ServiceRequestDetailDrawer({
           ? error.message
           : "Failed to create the dispute. Try again.",
       );
-    } finally {
-      setCreatingDispute(false);
     }
   };
 
@@ -439,15 +431,13 @@ export default function ServiceRequestDetailDrawer({
       return;
     }
 
-    setCommentBusy(true);
     setDrawerError("");
 
     try {
-      const updatedDispute = await serviceDisputeService.addServiceDisputeComment(
-        token,
-        dispute._id,
-        commentDraft.trim(),
-      );
+      const updatedDispute = await addCommentMutation.mutateAsync({
+        disputeId: dispute._id,
+        text: commentDraft.trim(),
+      });
 
       setDispute(updatedDispute);
       setCommentDraft("");
@@ -457,8 +447,6 @@ export default function ServiceRequestDetailDrawer({
           ? error.message
           : "Failed to add the dispute comment.",
       );
-    } finally {
-      setCommentBusy(false);
     }
   };
 
@@ -473,15 +461,13 @@ export default function ServiceRequestDetailDrawer({
       return;
     }
 
-    setEvidenceBusy(true);
     setDrawerError("");
 
     try {
-      const updatedDispute = await serviceDisputeService.addServiceDisputeEvidence(
-        token,
-        dispute._id,
-        evidenceFile,
-      );
+      const updatedDispute = await addEvidenceMutation.mutateAsync({
+        disputeId: dispute._id,
+        file: evidenceFile,
+      });
 
       setDispute(updatedDispute);
       setEvidenceFile(null);
@@ -491,8 +477,6 @@ export default function ServiceRequestDetailDrawer({
           ? error.message
           : "Failed to upload dispute evidence.",
       );
-    } finally {
-      setEvidenceBusy(false);
     }
   };
 

@@ -1,22 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
-
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchMyWallet } from "@/store/slices/wallet-slice";
+import { useWalletQuery } from "@/hooks/queries/wallet";
 
 /** Loads and exposes the authenticated user's wallet. */
 export function useWallet() {
-  const dispatch = useAppDispatch();
-  const token = useAppSelector((s) => s.auth.data?.tokens?.accessToken);
-  const { wallet, isLoading, isError, message } = useAppSelector(
-    (s) => s.wallet
-  );
+  const { data: wallet, isLoading, isError, error } = useWalletQuery();
 
-  useEffect(() => {
-    if (!token) return;
-    void dispatch(fetchMyWallet(token));
-  }, [dispatch, token]);
-
-  return { wallet, isLoading, isError, message };
+  return {
+    wallet: wallet ?? null,
+    isLoading,
+    isError,
+    message: error instanceof Error ? error.message : "",
+  };
 }

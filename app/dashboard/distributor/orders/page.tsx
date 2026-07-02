@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Eye,
@@ -24,9 +24,8 @@ import {
   toDistributorDisputeRow,
   type BuyerDisputeRow,
 } from "@/lib/order-dispute-presenter";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useOrdersQuery } from "@/hooks/queries/orders";
 import { useOrderDisputes } from "@/hooks/useOrderDisputes";
-import { fetchOrders } from "@/store/slices/order-slice";
 import type { Order } from "@/types/order";
 
 type ActiveTab = "orders" | "disputes";
@@ -263,18 +262,10 @@ function MobileDisputeList({
 }
 
 export default function DistributorOrdersPage() {
-  const dispatch = useAppDispatch();
   const router = useRouter();
-  const { orders, isLoading } = useAppSelector((state) => state.order);
-  const { data: authData } = useAppSelector((state) => state.auth);
+  const { data: orders, isLoading } = useOrdersQuery();
   const { disputes } = useOrderDisputes();
   const [activeTab, setActiveTab] = useState<ActiveTab>("orders");
-
-  useEffect(() => {
-    if (authData?.tokens?.accessToken && !orders) {
-      dispatch(fetchOrders(authData.tokens.accessToken));
-    }
-  }, [dispatch, authData?.tokens?.accessToken, orders]);
 
   const orderList = useMemo(() => (Array.isArray(orders) ? orders : []), [orders]);
   const displayOrders = orderList.length > 0 ? orderList.map(toOrderRow) : distributorDemoOrders;

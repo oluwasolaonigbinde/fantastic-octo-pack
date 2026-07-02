@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -22,8 +22,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchOemListingRequests } from "@/store/slices/product-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { useOemListingRequestsQuery } from "@/hooks/queries/products";
 
 import {
   buildCategoryBreakdown,
@@ -37,27 +37,18 @@ import {
 const PAGE_SIZE = 10;
 
 export default function OemListingRequests() {
-  const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { oemListingRequests, isLoading } = useAppSelector((state) => state.product);
+  const { data: oemListing, isLoading } = useOemListingRequestsQuery(
+    { assignedOem: authData?._id, populate: "createdBy" },
+    { enabled: Boolean(authData?._id && authData?.tokens?.accessToken) },
+  );
+  const oemListingRequests = oemListing?.requests ?? null;
 
   const [currentPage, setCurrentPage] = useState(1);
   const [distributorName, setDistributorName] = useState("");
   const [productName, setProductName] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-
-  useEffect(() => {
-    if (authData?._id && authData?.tokens?.accessToken) {
-      dispatch(
-        fetchOemListingRequests({
-          assignedOem: authData._id,
-          token: authData.tokens.accessToken,
-          populate: "createdBy",
-        }),
-      );
-    }
-  }, [dispatch, authData?._id, authData?.tokens?.accessToken]);
 
   const products = useMemo(() => oemListingRequests ?? [], [oemListingRequests]);
   const approvedProducts = useMemo(

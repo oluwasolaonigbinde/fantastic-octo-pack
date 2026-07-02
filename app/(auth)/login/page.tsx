@@ -14,6 +14,7 @@ import { useAppDispatch } from "@/hooks/useAppSelector";
 import { setUser } from "@/store/slices/auth-slice";
 import type { UserData } from "@/types/user";
 import type { PendingRegistrationContext, PublicAuthEnvelope, RegistrationRole } from "@/types/auth";
+import { setAuthPersistence } from "@/utils/authSession";
 import { loginSchema, type LoginFormData } from "./login.schema";
 import {
   clearPendingAuthIntent,
@@ -95,6 +96,11 @@ export default function LoginPage() {
     setIsLoading(true);
     setErrorMessage("");
     setInfoMessage("");
+
+    // Record the "Remember me" choice before the session is written so it lands
+    // in the correct storage: localStorage (persist across restarts) when
+    // checked, sessionStorage (drops on browser close) when unchecked.
+    setAuthPersistence(rememberMe);
 
     try {
       const result = await authService.login(values);

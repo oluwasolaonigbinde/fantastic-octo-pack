@@ -5,8 +5,8 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
 
-import productService from "@/services/productService";
-import { userService } from "@/services/userService";
+import { useProductsQuery } from "@/hooks/queries/products";
+import { useUsersQuery } from "@/hooks/queries/users";
 import type { Product, ProductImage } from "@/types/product";
 import type { PublicProfileData } from "@/types/user";
 import { UserRole } from "@/types/user";
@@ -122,30 +122,76 @@ export default function SearchAutocomplete({
 }) {
   const router = useRouter();
   const [query, setQuery] = useState(initialValue);
-  const [productSuggestions, setProductSuggestions] = useState<Product[]>([]);
-  const [profileSuggestions, setProfileSuggestions] = useState<{
-    distributors: PublicProfileData[];
-    oems: PublicProfileData[];
-    engineers: PublicProfileData[];
-  }>({
-    distributors: [],
-    oems: [],
-    engineers: [],
-  });
-  const [failedGroups, setFailedGroups] = useState<SearchGroupKey[]>([]);
+  const [debouncedTerm, setDebouncedTerm] = useState("");
   const [isOpen, setIsOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [hasFetched, setHasFetched] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [lastFetchedQuery, setLastFetchedQuery] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const keyboardSelectedRef = useRef(false);
   const isFirstRenderRef = useRef(true);
-  const requestIdRef = useRef(0);
 
   const scopeIsUniversal = scope === "public-universal";
   const trimmed = query.trim();
   const isTooShort = trimmed.length > 0 && trimmed.length < MIN_QUERY_LENGTH;
+
+  const searchEnabled = debouncedTerm.length >= MIN_QUERY_LENGTH;
+
+  // Reads are keyed on the debounced term; React Query dedupes and cancels
+  // stale requests when the term changes, so no manual request-id tracking.
+  const productsQuery = useProductsQuery(
+    scopeIsUniversal
+      ? { search: debouncedTerm, status: "approved", limit: UNIVERSAL_GROUP_LIMIT }
+      : { search: debouncedTerm, limit: PRODUCT_SCOPE_LIMIT },
+    { enabled: searchEnabled },
+  );
+  const distributorsQuery = useUsersQuery(
+    { page: 1, limit: UNIVERSAL_GROUP_LIMIT, roles: [UserRole.DISTRIBUTOR], search: debouncedTerm },
+    { enabled: searchEnabled && scopeIsUniversal },
+  );
+  const oemsQuery = useUsersQuery(
+    { page: 1, limit: UNIVERSAL_GROUP_LIMIT, roles: [UserRole.OEM], search: debouncedTerm },
+    { enabled: searchEnabled && scopeIsUniversal },
+  );
+  const engineersQuery = useUsersQuery(
+    { page: 1, limit: UNIVERSAL_GROUP_LIMIT, roles: [UserRole.ENGINEER], search: debouncedTerm },
+    { enabled: searchEnabled && scopeIsUniversal },
+  );
+
+  const productSuggestions: Product[] = productsQuery.data?.products ?? [];
+  const profileSuggestions = useMemo(
+    () => ({
+      distributors: distributorsQuery.data?.profiles ?? [],
+      oems: oemsQuery.data?.profiles ?? [],
+      engineers: engineersQuery.data?.profiles ?? [],
+    }),
+    [distributorsQuery.data, oemsQuery.data, engineersQuery.data],
+  );
+
+  const failedGroups = useMemo<SearchGroupKey[]>(() => {
+    const groups: SearchGroupKey[] = [];
+    if (productsQuery.isError) groups.push("products");
+    if (scopeIsUniversal) {
+      if (distributorsQuery.isError) groups.push("distributors");
+      if (oemsQuery.isError) groups.push("oems");
+      if (engineersQuery.isError) groups.push("engineers");
+    }
+    return groups;
+  }, [
+    productsQuery.isError,
+    distributorsQuery.isError,
+    oemsQuery.isError,
+    engineersQuery.isError,
+    scopeIsUniversal,
+  ]);
+
+  const isLoading = scopeIsUniversal
+    ? productsQuery.isFetching ||
+      distributorsQuery.isFetching ||
+      oemsQuery.isFetching ||
+      engineersQuery.isFetching
+    : productsQuery.isFetching;
+
+  // A settled fetch exists for the current term once the queries stop fetching.
+  const hasFetched = searchEnabled && debouncedTerm === trimmed && !isLoading;
 
   const universalSections = useMemo<SearchSection[]>(() => {
     if (!scopeIsUniversal) return [];
@@ -189,118 +235,6 @@ export default function SearchAutocomplete({
     [productScopeItems, scopeIsUniversal, universalSections],
   );
 
-  const resetResults = useCallback(() => {
-    setProductSuggestions([]);
-    setProfileSuggestions({
-      distributors: [],
-      oems: [],
-      engineers: [],
-    });
-    setFailedGroups([]);
-    setHasFetched(false);
-    setLastFetchedQuery("");
-    setActiveIndex(-1);
-    keyboardSelectedRef.current = false;
-  }, []);
-
-  const fetchSuggestions = useCallback(
-    async (term: string) => {
-      const currentId = ++requestIdRef.current;
-      setIsLoading(true);
-      setIsOpen(true);
-
-      if (scopeIsUniversal) {
-        const results = await Promise.allSettled([
-          productService.fetchWithFilter({
-            search: term,
-            status: "approved",
-            limit: UNIVERSAL_GROUP_LIMIT,
-          }),
-          userService.getPublicProfiles(1, UNIVERSAL_GROUP_LIMIT, [UserRole.DISTRIBUTOR], term),
-          userService.getPublicProfiles(1, UNIVERSAL_GROUP_LIMIT, [UserRole.OEM], term),
-          userService.getPublicProfiles(1, UNIVERSAL_GROUP_LIMIT, [UserRole.ENGINEER], term),
-        ]);
-
-        if (requestIdRef.current !== currentId) return;
-
-        const nextFailedGroups: SearchGroupKey[] = [];
-
-        const nextProducts =
-          results[0].status === "fulfilled"
-            ? results[0].value.data?.docs ?? []
-            : (() => {
-                nextFailedGroups.push("products");
-                return [];
-              })();
-
-        const nextDistributors =
-          results[1].status === "fulfilled"
-            ? results[1].value.data?.docs ?? []
-            : (() => {
-                nextFailedGroups.push("distributors");
-                return [];
-              })();
-
-        const nextOems =
-          results[2].status === "fulfilled"
-            ? results[2].value.data?.docs ?? []
-            : (() => {
-                nextFailedGroups.push("oems");
-                return [];
-              })();
-
-        const nextEngineers =
-          results[3].status === "fulfilled"
-            ? results[3].value.data?.docs ?? []
-            : (() => {
-                nextFailedGroups.push("engineers");
-                return [];
-              })();
-
-        setProductSuggestions(nextProducts);
-        setProfileSuggestions({
-          distributors: nextDistributors,
-          oems: nextOems,
-          engineers: nextEngineers,
-        });
-        setFailedGroups(nextFailedGroups);
-        setHasFetched(true);
-        setLastFetchedQuery(term);
-        setActiveIndex(-1);
-        keyboardSelectedRef.current = false;
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        const response = await productService.fetchWithFilter({
-          search: term,
-          limit: PRODUCT_SCOPE_LIMIT,
-        });
-
-        if (requestIdRef.current !== currentId) return;
-
-        setProductSuggestions(response.data?.docs ?? []);
-        setFailedGroups([]);
-        setHasFetched(true);
-        setLastFetchedQuery(term);
-        setActiveIndex(-1);
-        keyboardSelectedRef.current = false;
-      } catch {
-        if (requestIdRef.current !== currentId) return;
-        setProductSuggestions([]);
-        setFailedGroups(["products"]);
-        setHasFetched(true);
-        setLastFetchedQuery(term);
-      } finally {
-        if (requestIdRef.current === currentId) {
-          setIsLoading(false);
-        }
-      }
-    },
-    [scopeIsUniversal],
-  );
-
   useEffect(() => {
     if (isFirstRenderRef.current) {
       isFirstRenderRef.current = false;
@@ -309,19 +243,22 @@ export default function SearchAutocomplete({
 
     if (trimmed.length < MIN_QUERY_LENGTH) {
       setIsOpen(false);
-      setIsLoading(false);
-      resetResults();
+      setDebouncedTerm("");
+      setActiveIndex(-1);
+      keyboardSelectedRef.current = false;
       return;
     }
 
-    resetResults();
+    setActiveIndex(-1);
+    keyboardSelectedRef.current = false;
 
     const timer = window.setTimeout(() => {
-      void fetchSuggestions(trimmed);
+      setDebouncedTerm(trimmed);
+      setIsOpen(true);
     }, SEARCH_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timer);
-  }, [fetchSuggestions, resetResults, trimmed]);
+  }, [trimmed]);
 
   useEffect(() => {
     function handleClick(event: MouseEvent) {
@@ -340,13 +277,9 @@ export default function SearchAutocomplete({
       return;
     }
 
-    if (hasFetched && lastFetchedQuery === trimmed) {
-      setIsOpen(true);
-      return;
-    }
-
-    void fetchSuggestions(trimmed);
-  }, [fetchSuggestions, hasFetched, lastFetchedQuery, trimmed]);
+    setDebouncedTerm(trimmed);
+    setIsOpen(true);
+  }, [trimmed]);
 
   const navigateToSearch = useCallback(() => {
     const nextQuery = query.trim();
@@ -450,7 +383,7 @@ export default function SearchAutocomplete({
               keyboardSelectedRef.current = false;
             }}
             onFocus={() => {
-              if (trimmed.length >= MIN_QUERY_LENGTH && hasFetched && lastFetchedQuery === trimmed) {
+              if (trimmed.length >= MIN_QUERY_LENGTH && debouncedTerm === trimmed) {
                 setIsOpen(true);
               }
             }}

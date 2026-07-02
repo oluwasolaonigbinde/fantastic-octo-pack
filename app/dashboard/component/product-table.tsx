@@ -17,13 +17,16 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import { Skeleton } from "@/components/base";
-import { fetchCategories } from "@/store/slices/category-slice";
-import { useEffect, useState } from "react";
+import { useCategoriesQuery } from "@/hooks/queries/categories";
+import {
+  useMyProductsQuery,
+  useProductsQuery,
+} from "@/hooks/queries/products";
+import { useState } from "react";
 import { SingleSelect } from "@/components/base";
 import { Input } from "@/components/base";
-import { fetchProducts } from "@/store/slices/product-slice";
 import { EmptyState } from "@/components/base";
 import SafeProductImage from "@/components/product/SafeProductImage";
 import { getListingStatusMeta } from "@/utils/productStatus";
@@ -47,70 +50,70 @@ const ProductTable = ({
   className,
 }: ProductTableProps) => {
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const { categories } = useAppSelector((state) => state.category);
-  const {
-    products,
-    myProducts,
-    page,
-    totalPages,
-    hasNextPage,
-    hasPreviousPage,
-    isLoading,
-    isError,
-    message,
-    nextPage,
-    previousPage,
-  } = useAppSelector((state) => state.product);
-  const { data } = useAppSelector((state) => state.auth);
+  const { data: categories = [] } = useCategoriesQuery();
   const [productName, setProductName] = useState("");
   const [statusFilter, setStatusFilter] = useState<"" | ProductStatus>("");
   const [category, setCategory] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [appliedFilters, setAppliedFilters] = useState<{
+    search?: string;
+    status?: ProductStatus;
+    category?: string;
+  }>({});
+  const { data: authData } = useAppSelector((state) => state.auth);
+
+  const {
+    data: productsData,
+    isLoading: isProductsLoading,
+    isError: isProductsError,
+    error: productsError,
+  } = useProductsQuery(
+    {
+      search: appliedFilters.search,
+      status: appliedFilters.status,
+      category: appliedFilters.category,
+      page: currentPage,
+    },
+    { enabled: !isSingleUserTable },
+  );
+
+  const {
+    data: myProductsData,
+    isLoading: isMyLoading,
+    isError: isMyError,
+  } = useMyProductsQuery(authData?._id, { enabled: Boolean(isSingleUserTable) });
+
+  const products = productsData?.products ?? null;
+  const myProducts = myProductsData?.products ?? null;
+  const page = productsData?.meta.page ?? 1;
+  const totalPages = productsData?.meta.totalPages ?? 0;
+  const hasNextPage = productsData?.meta.hasNextPage ?? false;
+  const hasPreviousPage = productsData?.meta.hasPreviousPage ?? false;
+  const nextPage = productsData?.meta.nextPage ?? null;
+  const previousPage = productsData?.meta.previousPage ?? null;
+
+  const isLoading = isSingleUserTable ? isMyLoading : isProductsLoading;
+  const isError = isSingleUserTable ? isMyError : isProductsError;
+  const message = productsError instanceof Error ? productsError.message : "";
   const hasLoadError = isSingleUserTable
     ? isError && !isLoading && myProducts === null
     : isError && !isLoading && products === null;
 
-  useEffect(() => {
-    dispatch(fetchCategories({}));
-  }, [dispatch]);
-
-  const fetchFilteredProducts = async () => {
-    await dispatch(
-        fetchProducts({
-          token: data?.tokens?.accessToken,
-          search: productName || undefined,
-          status: statusFilter || undefined,
-          category: category || undefined,
-        })
-      );
+  const fetchFilteredProducts = () => {
+    setAppliedFilters({
+      search: productName || undefined,
+      status: statusFilter || undefined,
+      category: category || undefined,
+    });
+    setCurrentPage(1);
   };
 
-  const fetchPrevious = async () => {
-    if (previousPage) {
-      await dispatch(
-        fetchProducts({
-          token: data?.tokens?.accessToken,
-          search: productName || undefined,
-          status: statusFilter || undefined,
-          category: category || undefined,
-          page: page - 1,
-        })
-      );
-    }
+  const fetchPrevious = () => {
+    if (previousPage) setCurrentPage((prev) => Math.max(1, prev - 1));
   };
 
-  const fetchNext = async () => {
-    if (nextPage) {
-      await dispatch(
-        fetchProducts({
-          token: data?.tokens?.accessToken,
-          search: productName || undefined,
-          status: statusFilter || undefined,
-          category: category || undefined,
-          page: page + 1,
-        })
-      );
-    }
+  const fetchNext = () => {
+    if (nextPage) setCurrentPage((prev) => prev + 1);
   };
 
   return (
@@ -209,7 +212,7 @@ const ProductTable = ({
                             <button
                               onClick={() =>
                                 router.push(
-                                  `/dashboard/${data?.role}/catalogue/${product._id}`
+                                  `/dashboard/${authData?.role}/catalogue/${product._id}`
                                 )
                               }
                               className="w-full text-success cursor-pointer"
@@ -246,7 +249,7 @@ const ProductTable = ({
                             <button
                               onClick={() =>
                                 router.push(
-                                  `/dashboard/${data?.role}/catalogue/${product._id}`
+                                  `/dashboard/${authData?.role}/catalogue/${product._id}`
                                 )
                               }
                               className="w-full text-success cursor-pointer"

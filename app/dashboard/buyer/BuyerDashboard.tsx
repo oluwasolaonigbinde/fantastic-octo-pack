@@ -28,11 +28,10 @@ import {
 import Header from "../component/header";
 import { OverviewNoticeBanner } from "../component/overview-primitives";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { useFetchBuyerServiceRequests } from "@/hooks/useBuyerServiceRequests";
-import messagingService from "@/services/messagingService";
+import { useOrdersQuery } from "@/hooks/queries/orders";
+import { useThreadsQuery } from "@/hooks/queries/messaging";
+import { useBuyerServiceRequestsQuery } from "@/hooks/queries/service-requests";
 import rfqService from "@/services/rfqService";
-import { fetchOrders } from "@/store/slices/order-slice";
-import type { Conversation } from "@/types/messaging";
 import type { Quote } from "@/types/rfq";
 
 import {
@@ -253,48 +252,28 @@ function RecentActivityItem({
 const BuyerDashboard: React.FC = () => {
   const dispatch = useAppDispatch();
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
-  const orders = useAppSelector((state) => state.order.orders);
-  const serviceRequests = useAppSelector(
-    (state) => state.serviceRequest.serviceRequests,
-  );
-  const serviceRequestStatusCounts = useAppSelector(
-    (state) => state.serviceRequest.statusCounts,
-  );
+  const { data: orders } = useOrdersQuery();
+  const { data: serviceRequestsData } = useBuyerServiceRequestsQuery();
+  const serviceRequests = serviceRequestsData?.requests ?? [];
+  const serviceRequestStatusCounts = serviceRequestsData?.statusCounts ?? null;
   const [showKycBanner, setShowKycBanner] = useState(true);
   const [quotes, setQuotes] = useState<Quote[] | null>(null);
-  const [conversations, setConversations] = useState<Conversation[] | null>(null);
 
-  useFetchBuyerServiceRequests();
-
-  useEffect(() => {
-    if (!token || orders !== null) return;
-    void dispatch(fetchOrders(token));
-  }, [dispatch, orders, token]);
+  const { data: conversations = null } = useThreadsQuery(5);
 
   useEffect(() => {
     if (!token) return;
 
     let isMounted = true;
 
-    const hydrateDashboardActivitySources = async () => {
-      const [quotesResult, conversationsResult] = await Promise.allSettled([
-        rfqService.fetchBuyerReceivedQuotes(token),
-        messagingService.listConversations(token, { limit: 5 }),
-      ]);
-
-      if (!isMounted) return;
-
-      setQuotes(
-        quotesResult.status === "fulfilled" ? quotesResult.value.data || [] : [],
-      );
-      setConversations(
-        conversationsResult.status === "fulfilled"
-          ? conversationsResult.value || []
-          : [],
-      );
-    };
-
-    void hydrateDashboardActivitySources();
+    rfqService
+      .fetchBuyerReceivedQuotes(token)
+      .then((result) => {
+        if (isMounted) setQuotes(result.data || []);
+      })
+      .catch(() => {
+        if (isMounted) setQuotes([]);
+      });
 
     return () => {
       isMounted = false;
@@ -304,7 +283,7 @@ const BuyerDashboard: React.FC = () => {
   const dashboardModel = useMemo(
     () =>
       buildBuyerDashboardModel({
-        orders,
+        orders: orders ?? null,
         serviceRequests,
         serviceRequestStatusCounts,
         quotes: token ? quotes : null,

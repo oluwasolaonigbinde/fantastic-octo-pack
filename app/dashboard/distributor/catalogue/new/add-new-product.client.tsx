@@ -31,12 +31,11 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchCategories } from "@/store/slices/category-slice";
+import { useCategoriesQuery } from "@/hooks/queries/categories";
 import {
-  createNewProduct,
-  resetProducts,
-  submitProductById,
-} from "@/store/slices/product-slice";
+  useCreateProductMutation,
+  useSubmitProductMutation,
+} from "@/hooks/queries/products";
 import { fetchPublicProfiles } from "@/store/slices/user-slice";
 import { UserRole } from "@/types/user";
 import type { BaseSpecification } from "@/types/categories";
@@ -552,6 +551,8 @@ function MergedDurationField({
 export default function AddNewProduct() {
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const createProduct = useCreateProductMutation();
+  const submitProduct = useSubmitProductMutation();
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const certificationInputRef = useRef<HTMLInputElement>(null);
@@ -559,11 +560,13 @@ export default function AddNewProduct() {
 
   const { data: authData } = useAppSelector((state) => state.auth);
   const {
-    categories,
+    data: categories = [],
     isLoading: categoriesLoading,
     isError: categoriesError,
-    message: categoriesMessage,
-  } = useAppSelector((state) => state.category);
+    error: categoriesQueryError,
+  } = useCategoriesQuery({ page: 1, limit: 50 });
+  const categoriesMessage =
+    categoriesQueryError instanceof Error ? categoriesQueryError.message : "";
   const {
     users: oemUsers,
     loading: oemUsersLoading,
@@ -591,12 +594,6 @@ export default function AddNewProduct() {
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [defaultImageIndex, setDefaultImageIndex] = useState(0);
   const [certificationFile, setCertificationFile] = useState<File | null>(null);
-
-  useEffect(() => {
-    if (categories.length === 0 && !categoriesLoading) {
-      dispatch(fetchCategories({ page: 1, limit: 50 }));
-    }
-  }, [categories.length, categoriesLoading, dispatch]);
 
   useEffect(() => {
     dispatch(fetchPublicProfiles({ page: 1, limit: 50, roles: [UserRole.OEM] }));
@@ -1221,17 +1218,12 @@ export default function AddNewProduct() {
     let createdProductId = "";
 
     try {
-      const created = await dispatch(
-        createNewProduct({ token, productData: formData }),
-      ).unwrap();
+      const created = await createProduct.mutateAsync(formData);
       createdProductId = created.data._id;
 
-      await dispatch(
-        submitProductById({ token, id: createdProductId }),
-      ).unwrap();
+      await submitProduct.mutateAsync(createdProductId);
 
       setSuccessOpen(true);
-      dispatch(resetProducts());
 
       if (typeof window !== "undefined" && storageKey) {
         window.sessionStorage.removeItem(storageKey);

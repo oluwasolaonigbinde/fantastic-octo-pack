@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Download, Eye, FileText } from "lucide-react";
 
@@ -11,8 +11,7 @@ import {
   distributorDemoOrderMeta,
   getOrderStatusTone,
 } from "@/constants/demoDistributorOrders";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchOrderDetail } from "@/store/slices/order-slice";
+import { useOrderQuery } from "@/hooks/queries/orders";
 import type { Order } from "@/types/order";
 import type { ProductRef, UserRef } from "@/types/rfq";
 
@@ -89,11 +88,6 @@ function InfoCard({
 export default function DistributorOrderDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const { currentOrder, isLoading, isError, message } = useAppSelector(
-    (state) => state.order,
-  );
-  const { data: authData } = useAppSelector((state) => state.auth);
   const [notice, setNotice] = useState("");
 
   const orderId = params.orderId as string;
@@ -102,15 +96,15 @@ export default function DistributorOrderDetailPage() {
     [orderId],
   );
 
-  useEffect(() => {
-    if (authData?.tokens?.accessToken && orderId && !demoOrder) {
-      dispatch(
-        fetchOrderDetail({ token: authData.tokens.accessToken, orderId }),
-      );
-    }
-  }, [authData?.tokens?.accessToken, demoOrder, dispatch, orderId]);
+  const {
+    data: currentOrder,
+    isLoading,
+    isError,
+    error,
+  } = useOrderQuery(orderId, { enabled: !demoOrder });
+  const message = error instanceof Error ? error.message : "";
 
-  const order = currentOrder;
+  const order = currentOrder ?? null;
   const productImage = useMemo(() => getProductImage(order), [order]);
 
   if (isLoading || (!order && !demoOrder)) {
