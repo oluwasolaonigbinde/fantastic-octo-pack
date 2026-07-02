@@ -29,9 +29,15 @@ const formatDate = (value: string) => {
   return new Intl.DateTimeFormat("en-GB").format(parsed);
 };
 
-const getPersonName = (person: string | UserRef | undefined, fallback: string) => {
+const getPersonName = (
+  person: string | UserRef | undefined,
+  fallback: string,
+) => {
   if (person && typeof person === "object") {
-    const name = [person.firstName, person.lastName].filter(Boolean).join(" ").trim();
+    const name = [person.firstName, person.lastName]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
     return name || person.email || fallback;
   }
   return fallback;
@@ -98,7 +104,9 @@ export default function DistributorOrderDetailPage() {
 
   useEffect(() => {
     if (authData?.tokens?.accessToken && orderId && !demoOrder) {
-      dispatch(fetchOrderDetail({ token: authData.tokens.accessToken, orderId }));
+      dispatch(
+        fetchOrderDetail({ token: authData.tokens.accessToken, orderId }),
+      );
     }
   }, [authData?.tokens?.accessToken, demoOrder, dispatch, orderId]);
 
@@ -130,9 +138,10 @@ export default function DistributorOrderDetailPage() {
     );
   }
 
-  const status = demoOrder?.status || order?.status;
+  const status = order?.status || demoOrder?.status;
   const statusTone = getOrderStatusTone(status);
-  const displayId = demoOrder?.id || (order ? getOrderDisplayId(order) : orderId);
+  const displayId =
+    demoOrder?.id || (order ? getOrderDisplayId(order) : orderId);
   const quantity =
     demoOrder?.quantity || order?.quantity || order?.items?.[0]?.quantity || 1;
   const productName =
@@ -142,9 +151,11 @@ export default function DistributorOrderDetailPage() {
     "Product name";
   const totalPrice = demoOrder?.totalPrice || order?.totalPrice || 0;
   const unitPrice = demoOrder?.unitPrice || totalPrice / quantity;
-  const createdAt = demoOrder?.createdAt || order?.createdAt || new Date().toISOString();
+  const createdAt =
+    demoOrder?.createdAt || order?.createdAt || new Date().toISOString();
   const buyerName =
-    demoOrder?.buyerName || getPersonName(order?.buyer, distributorDemoOrderMeta.buyer.name);
+    demoOrder?.buyerName ||
+    getPersonName(order?.buyer, distributorDemoOrderMeta.buyer.name);
 
   return (
     <div>
@@ -191,16 +202,16 @@ export default function DistributorOrderDetailPage() {
                   label="Total price"
                   value={formatCurrency(totalPrice)}
                 />
+                {/* to be updated to real values  */}
                 <DetailStat
                   label="Payment status"
-                  value={distributorDemoOrderMeta.paymentStatus}
+                  value={"Paid"}
                   valueClassName="text-[#F59E0B]"
                 />
                 <DetailStat
-                  label="Payment method"
-                  value={distributorDemoOrderMeta.paymentMethod}
+                  label="Date created"
+                  value={formatDate(createdAt)}
                 />
-                <DetailStat label="Date created" value={formatDate(createdAt)} />
                 <DetailStat
                   label="Status"
                   value={statusTone.label}
@@ -263,7 +274,9 @@ export default function DistributorOrderDetailPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      setNotice("Document preview is demo-only until order documents are available.")
+                      setNotice(
+                        "Document preview is demo-only until order documents are available.",
+                      )
                     }
                     className="ml-auto text-[#FF6B00]"
                     aria-label="Preview document"
@@ -273,7 +286,9 @@ export default function DistributorOrderDetailPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      setNotice("Document download is demo-only until backend files are available.")
+                      setNotice(
+                        "Document download is demo-only until backend files are available.",
+                      )
                     }
                     className="text-[#FF6B00]"
                     aria-label="Download document"
@@ -287,19 +302,23 @@ export default function DistributorOrderDetailPage() {
 
           <InfoCard title="Delivery Address">
             <p className="text-sm leading-7 text-[#111827]">
-              {distributorDemoOrderMeta.deliveryAddressLong}
+              {order?.deliveryAddress?.address}
             </p>
           </InfoCard>
 
           <InfoCard title="Buyer Information">
             <div className="grid gap-6 sm:grid-cols-2">
               <DetailStat label="Full name" value={buyerName} />
-              <DetailStat label="Role" value={distributorDemoOrderMeta.buyer.role} />
+              <DetailStat
+                label="Role"
+                value={distributorDemoOrderMeta.buyer.role}
+              />
               <DetailStat
                 label="Phone number"
                 value={
                   order && typeof order.buyer === "object"
-                    ? order.buyer.phoneNumber || distributorDemoOrderMeta.buyer.phone
+                    ? order.buyer.phoneNumber ||
+                      distributorDemoOrderMeta.buyer.phone
                     : distributorDemoOrderMeta.buyer.phone
                 }
               />

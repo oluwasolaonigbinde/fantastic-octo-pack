@@ -11,7 +11,7 @@ import { apiUrl } from "@/utils/api-base-url";
 
 export interface FetchProductsParams {
   category?: string;
-  sub_category?: string;
+  sub_category?: string | string[];
   createdBy?: string;
   assignedOem?: string;
   status?: ProductStatus;
@@ -19,6 +19,8 @@ export interface FetchProductsParams {
   oemApprovalStatus?: string;
   priceMode?: string;
   country?: string;
+  featured?: boolean;
+  hasPendingRevision?: boolean;
   search?: string;
   submittedFrom?: string;
   submittedTo?: string;
@@ -98,8 +100,12 @@ const fetchWithFilter = async (
   const queryParams = new URLSearchParams();
   if (filters) {
     if (filters.category) queryParams.append("category", filters.category);
-    if (filters.sub_category)
-      queryParams.append("sub_category", filters.sub_category);
+    if (filters.sub_category) {
+      const subCategory = Array.isArray(filters.sub_category)
+        ? filters.sub_category.join(",")
+        : filters.sub_category;
+      if (subCategory) queryParams.append("sub_category", subCategory);
+    }
     if (filters.createdBy) queryParams.append("createdBy", filters.createdBy);
     if (filters.assignedOem) queryParams.append("assignedOem", filters.assignedOem);
     if (filters.status) queryParams.append("status", filters.status);
@@ -110,6 +116,10 @@ const fetchWithFilter = async (
       queryParams.append("oemApprovalStatus", filters.oemApprovalStatus);
     if (filters.priceMode) queryParams.append("priceMode", filters.priceMode);
     if (filters.country) queryParams.append("country", filters.country);
+    if (filters.featured !== undefined)
+      queryParams.append("featured", String(filters.featured));
+    if (filters.hasPendingRevision !== undefined)
+      queryParams.append("hasPendingRevision", String(filters.hasPendingRevision));
     if (filters.search) queryParams.append("search", filters.search);
     if (filters.submittedFrom)
       queryParams.append("submittedFrom", filters.submittedFrom);

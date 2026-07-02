@@ -275,15 +275,22 @@ export default function ProductDetailsPage() {
     const productSpecificItems = [
       `Shipping from ${sellerLocation}.`,
       product?.delivery_time ? `Delivery window: ${product.delivery_time}.` : "",
-      product?.installation_time
-        ? `Installation timeline: ${product.installation_time}.`
-        : "",
+      product?.requiresInstallation
+        ? `On-site installation required${
+            product?.installation_time ? ` (${product.installation_time})` : ""
+          }.`
+        : "No on-site installation required.",
     ].filter(Boolean);
 
     return productSpecificItems.length > 0
       ? productSpecificItems
       : DEFAULT_LOGISTICS_ITEMS;
-  }, [product?.delivery_time, product?.installation_time, sellerLocation]);
+  }, [
+    product?.delivery_time,
+    product?.installation_time,
+    product?.requiresInstallation,
+    sellerLocation,
+  ]);
 
   const productOverviewText =
     product?.description?.trim() ||

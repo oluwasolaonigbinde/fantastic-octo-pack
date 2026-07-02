@@ -107,9 +107,52 @@ const extractSpecItemsFromLegacyString = (
     .filter(isNonNullProductSpecItem);
 };
 
+const buildKeyValueSpecItems = (
+  entries: ReadonlyArray<{ key?: string; value?: string }> | undefined,
+  group: ProductSpecItem["group"],
+): ProductSpecItem[] =>
+  (entries ?? [])
+    .map<ProductSpecItem | null>((entry) => {
+      const label = normalizeText(entry.key);
+      const value = normalizeText(entry.value);
+
+      if (!label && !value) {
+        return null;
+      }
+
+      return {
+        label: label || "Specification",
+        value,
+        group,
+      };
+    })
+    .filter(isNonNullProductSpecItem);
+
 export const getProductSpecificationItems = (
-  product?: Pick<Product, "key_attributes" | "keySpecifications"> | null,
+  product?: Pick<
+    Product,
+    | "key_attributes"
+    | "keySpecifications"
+    | "categorySpecifications"
+    | "customSpecifications"
+  > | null,
 ): ProductSpecItem[] => {
+  // Preferred: the current backend shape — category base specifications render
+  // as industry-specific specs, distributor-defined ones as "other".
+  const categoryItems = buildKeyValueSpecItems(
+    product?.categorySpecifications,
+    "industry_specific",
+  );
+  const customItems = buildKeyValueSpecItems(
+    product?.customSpecifications,
+    "other",
+  );
+  const modernItems = [...categoryItems, ...customItems];
+  if (modernItems.length > 0) {
+    return modernItems;
+  }
+
+  // Legacy fallback for products created before the spec migration.
   const attributeItems = extractSpecItemsFromAttributes(product?.key_attributes);
   if (attributeItems.length > 0) {
     return attributeItems;

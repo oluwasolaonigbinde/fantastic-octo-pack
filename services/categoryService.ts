@@ -1,4 +1,5 @@
 import {
+  CategoryListRequest,
   CategoryListResponse,
   CategoryResponse,
   CreateCategory,
@@ -31,10 +32,18 @@ const createCategory = async (
 // Fetch categories
 const fetchCategories = async (
   page?: number,
-  limit?: number
+  limit?: number,
+  options?: Pick<CategoryListRequest, "search" | "createdBy" | "populate">
 ): Promise<CategoryListResponse> => {
+  const queryParams = new URLSearchParams();
+  queryParams.append("page", String(page || 1));
+  queryParams.append("limit", String(limit || 10));
+  if (options?.search) queryParams.append("search", options.search);
+  if (options?.createdBy) queryParams.append("createdBy", options.createdBy);
+  if (options?.populate) queryParams.append("populate", options.populate);
+
   const response = await fetch(
-    `${apiUrl("/categories")}?page=${page || 1}&limit=${limit || 10}`,
+    `${apiUrl("/categories")}?${queryParams.toString()}`,
     {
       method: "GET",
       headers: {

@@ -33,23 +33,38 @@ export interface CertificationRef {
   originalName?: string;
 }
 
+/**
+ * Value supplied for one of the category's admin-defined base specifications.
+ * Required base specs must be supplied when listing a product in that category.
+ */
+export interface CategorySpecification {
+  key: string;
+  value: string;
+}
+
+/** Distributor-defined free-form specification (key/value pair). */
+export interface CustomSpecification {
+  key: string;
+  value: string;
+}
+
 export interface Product {
   _id: string;
   name: string;
   category: string;
-  sub_category?: string;
+  /** Subcategory names (each is one of the category's subcategories). */
+  sub_category?: string[];
   brand_oem?: string;
   manufacturing_country?: string;
   condition?: "new" | "used" | "refurbished";
-  quantityAvailable?: number;
-  priceMode?: "fixed" | "negotiable";
   pricePerUnit: number;
   pricing_type?: "fixed" | "negotiable" | "rfq";
   unit_of_measure?: string;
-  countries?: string[];
-  isRfqAvailable?: boolean;
-  keySpecifications?: string;
-  key_attributes?: KeyAttributes;
+  /** Values for the category's admin-defined base specifications. */
+  categorySpecifications?: CategorySpecification[];
+  /** Distributor-defined free-form specifications. */
+  customSpecifications?: CustomSpecification[];
+  requiresInstallation?: boolean;
   images: ProductImage[];
   description?: string;
   availability_status?: "in_stock" | "out_of_stock" | "on_order";
@@ -60,6 +75,7 @@ export interface Product {
   video_link?: string;
   certifications?: CertificationRef[];
   brochure?: CertificationRef;
+  featured?: boolean;
   oemApprovalStatus: OemApprovalStatus;
   hasOemBadge?: boolean;
   visibilityRejectionReason?: string;
@@ -70,6 +86,20 @@ export interface Product {
   submittedAt?: string | null;
   createdAt: string;
   updatedAt: string;
+
+  // --- Legacy compatibility (read-only; no longer sent on create/update) ---
+  /** @deprecated Legacy field. Prefer pricing_type. */
+  quantityAvailable?: number;
+  /** @deprecated Legacy field. Prefer pricing_type. */
+  priceMode?: "fixed" | "negotiable";
+  /** @deprecated Legacy field. */
+  countries?: string[];
+  /** @deprecated Legacy field. */
+  isRfqAvailable?: boolean;
+  /** @deprecated Legacy field; replaced by categorySpecifications/customSpecifications. */
+  keySpecifications?: string;
+  /** @deprecated Legacy field; replaced by categorySpecifications/customSpecifications. */
+  key_attributes?: KeyAttributes;
 }
 
 export interface ProductStatusCounts {
@@ -86,20 +116,18 @@ export interface ProductListSummary {
 export interface UpdateProduct {
   name?: string;
   category?: string;
-  sub_category?: string;
+  /** Subcategory names (each must be one of the category's subcategories). */
+  sub_category?: string[];
   brand_oem?: string;
-  assignedOem?: string;
+  assignedOem?: string | null;
   manufacturing_country?: string;
   condition?: "new" | "used" | "refurbished";
-  quantityAvailable?: number;
-  priceMode?: "fixed" | "negotiable";
   pricePerUnit?: number;
   pricing_type?: "fixed" | "negotiable" | "rfq";
   unit_of_measure?: string;
-  countries?: string[];
-  isRfqAvailable?: boolean;
-  keySpecifications?: string;
-  key_attributes?: KeyAttributes;
+  categorySpecifications?: CategorySpecification[];
+  customSpecifications?: CustomSpecification[];
+  requiresInstallation?: boolean;
   images?: ProductImage[];
   description?: string;
   availability_status?: "in_stock" | "out_of_stock" | "on_order";
@@ -138,20 +166,18 @@ export interface ProductResponse {
 export type CreateProductDto = {
   name: string;
   category: string;
-  sub_category?: string;
+  /** Subcategory names (each must be one of the category's subcategories). */
+  sub_category?: string[];
   brand_oem?: string;
-  assignedOem?: string;
+  assignedOem?: string | null;
   manufacturing_country: string;
   condition: "new" | "used" | "refurbished";
-  quantityAvailable?: number;
-  priceMode?: "fixed" | "negotiable";
   pricePerUnit: number;
   pricing_type: "fixed" | "negotiable" | "rfq";
   unit_of_measure: string;
-  countries?: string[];
-  isRfqAvailable?: boolean;
-  keySpecifications?: string;
-  key_attributes?: KeyAttributes;
+  categorySpecifications?: CategorySpecification[];
+  customSpecifications?: CustomSpecification[];
+  requiresInstallation?: boolean;
   description: string;
   availability_status: "in_stock" | "out_of_stock" | "on_order";
   installation_time: string;
@@ -160,6 +186,7 @@ export type CreateProductDto = {
   return_policy?: string;
   sku?: string;
   video_link?: string;
+  certifications?: CertificationRef[];
 };
 
 export type ReviewProductDto = {

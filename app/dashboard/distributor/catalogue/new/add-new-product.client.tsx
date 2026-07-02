@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 import Header from "../../../component/header";
-import { Button, Input, PopUp, SingleSelect } from "@/components/base";
+import { Button, Input, PopUp, SingleSelect, Switch } from "@/components/base";
 import {
   Select,
   SelectContent,
@@ -39,6 +39,7 @@ import {
 } from "@/store/slices/product-slice";
 import { fetchPublicProfiles } from "@/store/slices/user-slice";
 import { UserRole } from "@/types/user";
+import type { BaseSpecification } from "@/types/categories";
 
 /** Seeded OEM accounts use this display name (e.g. oem@local.test) so `assignedOem` matches OEM review guards. */
 const PLAYWRIGHT_OEM_DISPLAY_LABEL = "Playwright OEM";
@@ -48,7 +49,6 @@ type Condition = "new" | "used" | "refurbished" | "";
 type AvailabilityStatus = "in_stock" | "out_of_stock" | "on_order" | "";
 type PricingType = "fixed" | "negotiable" | "rfq" | "";
 type DurationUnit = "days" | "weeks" | "months";
-type AttributeGroup = "industryAttributes" | "otherAttributes";
 type AttributeRowField = "spec" | "detail";
 type FieldErrorKey =
   | "category"
@@ -59,7 +59,6 @@ type FieldErrorKey =
   | "condition"
   | "description"
   | "availability_status"
-  | "quantityAvailable"
   | "installation_time_value"
   | "installation_time_unit"
   | "delivery_time_value"
@@ -70,7 +69,6 @@ type FieldErrorKey =
   | "return_policy"
   | "sku"
   | "video_link"
-  | "industryAttributes"
   | "otherAttributes"
   | "images"
   | "certifications";
@@ -96,12 +94,12 @@ type WizardState = {
   condition: Condition;
   description: string;
   availability_status: AvailabilityStatus;
-  quantityAvailable: string;
+  requiresInstallation: boolean;
   installation_time_value: string;
   installation_time_unit: DurationUnit;
   delivery_time_value: string;
   delivery_time_unit: DurationUnit;
-  industryAttributes: AttributeRow[];
+  categorySpecValues: Record<string, string>;
   otherAttributes: AttributeRow[];
   pricing_type: PricingType;
   pricePerUnit: string;
@@ -116,7 +114,7 @@ const STEPS: StepDefinition[] = [
     id: 1,
     navLabel: "Product category",
     panelTitle: "Product Category",
-    panelDescription: "Provide the correct information about the product category",
+    panelDescription: "Select the category that best describes your product.",
   },
   {
     id: 2,
@@ -127,7 +125,7 @@ const STEPS: StepDefinition[] = [
   {
     id: 3,
     navLabel: "Stock & Availability",
-    panelTitle: "Stock & Availability",
+    panelTitle: "Stock & Key Specification",
     panelDescription: "Provide the correct information about stock & availability",
   },
   {
@@ -144,7 +142,9 @@ const STEPS: StepDefinition[] = [
   },
 ];
 
-const WIZARD_STORAGE_KEY = "distributor-product-wizard";
+// v2: schema migration — `category` now stores the ObjectId (was the name) and
+// the spec fields changed shape. Bumped so stale pre-migration drafts are dropped.
+const WIZARD_STORAGE_KEY = "distributor-product-wizard-v2";
 const MAX_PRODUCT_IMAGE_COUNT = 8;
 const MAX_UPLOAD_FILE_SIZE = 5 * 1024 * 1024;
 const PRODUCT_NAME_REGEX = /^[a-zA-Z0-9\s.,'()\-\/&+]{3,120}$/;
@@ -194,36 +194,6 @@ const DURATION_UNIT_OPTIONS = [
   { value: "months", label: "Months" },
 ];
 
-const SUB_CATEGORY_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
-  Equipment: [
-    { value: "Pumps & Compressors", label: "Pumps & Compressors" },
-    { value: "Diagnostic Equipment", label: "Diagnostic Equipment" },
-    { value: "Monitoring Systems", label: "Monitoring Systems" },
-    { value: "Sterilization Units", label: "Sterilization Units" },
-  ],
-  Consumables: [
-    { value: "Medical Disposables", label: "Medical Disposables" },
-    { value: "Laboratory Supplies", label: "Laboratory Supplies" },
-    { value: "Cleaning Supplies", label: "Cleaning Supplies" },
-    { value: "Protective Wear", label: "Protective Wear" },
-  ],
-  Instruments: [
-    { value: "Surgical Instruments", label: "Surgical Instruments" },
-    { value: "Lab Instruments", label: "Lab Instruments" },
-    { value: "Measuring Devices", label: "Measuring Devices" },
-  ],
-  Accessories: [
-    { value: "Machine Accessories", label: "Machine Accessories" },
-    { value: "Replacement Parts", label: "Replacement Parts" },
-    { value: "Mounting Kits", label: "Mounting Kits" },
-  ],
-  "Spare Parts": [
-    { value: "Electrical Parts", label: "Electrical Parts" },
-    { value: "Mechanical Parts", label: "Mechanical Parts" },
-    { value: "Control Components", label: "Control Components" },
-  ],
-};
-
 const buildEmptyAttributes = (): AttributeRow[] =>
   Array.from({ length: 5 }, () => ({ spec: "", detail: "" }));
 
@@ -236,12 +206,12 @@ const INITIAL_STATE: WizardState = {
   condition: "",
   description: "",
   availability_status: "",
-  quantityAvailable: "",
+  requiresInstallation: false,
   installation_time_value: "",
   installation_time_unit: "days",
   delivery_time_value: "",
   delivery_time_unit: "days",
-  industryAttributes: buildEmptyAttributes(),
+  categorySpecValues: {},
   otherAttributes: buildEmptyAttributes(),
   pricing_type: "",
   pricePerUnit: "",
@@ -287,11 +257,11 @@ const normalizeAttributeRows = (rows: AttributeRow[]): AttributeRow[] =>
     }))
     .filter((row) => row.spec || row.detail);
 
-const mapAttributeRowsForPayload = (rows: AttributeRow[]) =>
-  normalizeAttributeRows(rows).map((row) => ({
-    spec: row.spec,
-    detail: row.detail,
-  }));
+/** Maps free-form spec/detail rows to the backend `customSpecifications` shape. */
+const mapCustomSpecifications = (rows: AttributeRow[]) =>
+  normalizeAttributeRows(rows)
+    .filter((row) => row.spec && row.detail)
+    .map((row) => ({ key: row.spec, value: row.detail }));
 
 function StepNavigation({
   currentStep,
@@ -329,6 +299,93 @@ function StepNavigation({
         );
       })}
     </aside>
+  );
+}
+
+/**
+ * Renders value inputs for the selected category's admin-defined base
+ * specifications. The spec key is a fixed (read-only) label; the distributor
+ * fills in the value. Required specs gate submission.
+ */
+function CategorySpecTable({
+  specs,
+  values,
+  errors,
+  onChange,
+}: {
+  specs: BaseSpecification[];
+  values: Record<string, string>;
+  errors: Record<string, string>;
+  onChange: (key: string, value: string) => void;
+}) {
+  if (specs.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-gray5 px-4 py-6 text-center text-sm text-gray3">
+        This category has no required specifications.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <h5 className="text-sm font-medium text-gray1">Industrial-Specific Attributes</h5>
+
+      <div className="overflow-hidden rounded-xl border border-gray5">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] bg-gray7 text-sm font-medium text-gray2">
+          <div className="px-4 py-3">Specifications</div>
+          <div className="px-4 py-3">Details</div>
+        </div>
+
+        {specs.map((spec) => {
+          const value = values[spec.key] ?? "";
+          const error = errors[spec.key];
+          const required = spec.required !== false;
+
+          return (
+            <div
+              key={spec.key}
+              className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] border-t border-gray5"
+            >
+              <div className="flex items-center gap-1 px-4 py-3 text-sm text-gray1">
+                <span>{spec.key}</span>
+                {spec.unit ? <span className="text-gray3">({spec.unit})</span> : null}
+                {required ? <span className="text-danger">*</span> : null}
+              </div>
+              <div className="min-w-0 border-l border-gray5">
+                {spec.type === "enum" ? (
+                  <select
+                    value={value}
+                    aria-invalid={!!error}
+                    onChange={(event) => onChange(spec.key, event.target.value)}
+                    className={cn(
+                      "w-full bg-transparent px-4 py-3 text-sm outline-none",
+                      value ? "text-gray1" : "text-gray4",
+                    )}
+                  >
+                    <option value="">Select option</option>
+                    {(spec.options ?? []).map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type={spec.type === "number" ? "number" : "text"}
+                    value={value}
+                    aria-invalid={!!error}
+                    onChange={(event) => onChange(spec.key, event.target.value)}
+                    placeholder="Enter details"
+                    className="w-full min-w-0 bg-transparent px-4 py-3 text-sm text-gray1 outline-none placeholder:text-gray4"
+                  />
+                )}
+                {error ? <p className="px-4 pb-2 text-xs text-danger">{error}</p> : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -407,33 +464,39 @@ function AttributeTable({
 function MergedDurationField({
   id,
   label,
+  hint,
   value,
   unit,
   valueError,
   unitError,
+  disabled = false,
   onValueChange,
   onUnitChange,
 }: {
   id: string;
   label: string;
+  hint?: string;
   value: string;
   unit: DurationUnit;
   valueError?: string;
   unitError?: string;
+  disabled?: boolean;
   onValueChange: (v: string) => void;
   onUnitChange: (u: DurationUnit) => void;
 }) {
   const hasError = !!(valueError || unitError);
 
   return (
-    <div className="flex min-w-0 flex-col">
-      <label htmlFor={id} className="block pl-3 text-gray1">
+    <div className="flex min-w-0 flex-col gap-1">
+      <label htmlFor={id} className="block pl-3 text-sm font-medium text-gray2">
         {label}
       </label>
+      <p className="min-h-[2.25rem] pl-3 text-xs text-gray3">{hint}</p>
       <div
         className={cn(
           "flex h-12 min-h-12 w-full overflow-hidden rounded-xl border bg-transparent transition-colors focus-within:border-gray2",
-          hasError ? "border-danger" : "border-gray5"
+          hasError ? "border-danger" : "border-gray5",
+          disabled && "bg-gray7 opacity-60"
         )}
       >
         <input
@@ -443,14 +506,20 @@ function MergedDurationField({
           placeholder="Enter count"
           value={value}
           aria-invalid={hasError}
+          disabled={disabled}
           onChange={(event) => onValueChange(event.target.value)}
           className="min-w-0 flex-1 border-0 bg-transparent px-4 py-3 text-sm text-gray1 outline-none placeholder:text-gray4 focus:ring-0 disabled:cursor-not-allowed disabled:bg-gray7"
         />
         <div className="w-px shrink-0 self-stretch bg-gray5" aria-hidden />
-        <Select value={unit} onValueChange={(v) => onUnitChange(v as DurationUnit)}>
+        <Select
+          value={unit}
+          disabled={disabled}
+          onValueChange={(v) => onUnitChange(v as DurationUnit)}
+        >
           <SelectTrigger
             aria-label={`${label} unit`}
             aria-invalid={hasError}
+            disabled={disabled}
             className={cn(
               "h-12 min-h-12 w-[140px] shrink-0 rounded-none rounded-r-xl border-0 bg-transparent px-3 text-sm text-gray1 shadow-none outline-none",
               "focus-visible:ring-0 focus-visible:ring-offset-0",
@@ -501,12 +570,20 @@ export default function AddNewProduct() {
     error: oemUsersError,
   } = useAppSelector((state) => state.user);
 
+  // Scope the persisted draft to the signed-in user so a different account
+  // (e.g. after logout/login in the same tab) never rehydrates someone else's
+  // in-progress product. Empty until the user id is known.
+  const userId = authData?._id ?? "";
+  const storageKey = userId ? `${WIZARD_STORAGE_KEY}:${userId}` : "";
+
   const [currentStep, setCurrentStep] = useState<StepId>(1);
   const [form, setForm] = useState<WizardState>(INITIAL_STATE);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldErrorKey, string>>>({});
+  const [specErrors, setSpecErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
+  const [subscriptionError, setSubscriptionError] = useState("");
   const [hasHydrated, setHasHydrated] = useState(false);
   const [restoredToImageStep, setRestoredToImageStep] = useState(false);
 
@@ -526,11 +603,11 @@ export default function AddNewProduct() {
   }, [dispatch]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || !storageKey) {
       return;
     }
 
-    const raw = window.sessionStorage.getItem(WIZARD_STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(storageKey);
     if (!raw) {
       setHasHydrated(true);
       return;
@@ -546,10 +623,7 @@ export default function AddNewProduct() {
         setForm((prev) => ({
           ...prev,
           ...savedForm,
-          industryAttributes:
-            savedForm.industryAttributes && savedForm.industryAttributes.length > 0
-              ? savedForm.industryAttributes
-              : buildEmptyAttributes(),
+          categorySpecValues: savedForm.categorySpecValues ?? {},
           otherAttributes:
             savedForm.otherAttributes && savedForm.otherAttributes.length > 0
               ? savedForm.otherAttributes
@@ -566,25 +640,25 @@ export default function AddNewProduct() {
         setRestoredToImageStep(parsed.currentStep === 5);
       }
     } catch {
-      window.sessionStorage.removeItem(WIZARD_STORAGE_KEY);
+      window.sessionStorage.removeItem(storageKey);
     } finally {
       setHasHydrated(true);
     }
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
-    if (!hasHydrated || typeof window === "undefined") {
+    if (!hasHydrated || typeof window === "undefined" || !storageKey) {
       return;
     }
 
     window.sessionStorage.setItem(
-      WIZARD_STORAGE_KEY,
+      storageKey,
       JSON.stringify({
         currentStep,
         form,
       }),
     );
-  }, [currentStep, form, hasHydrated]);
+  }, [currentStep, form, hasHydrated, storageKey]);
 
   useEffect(() => {
     return () => {
@@ -595,15 +669,29 @@ export default function AddNewProduct() {
   const categoryOptions = useMemo(
     () =>
       categories.map((category) => ({
-        value: category.name,
+        value: category._id,
         label: category.name,
       })),
     [categories],
   );
 
+  const selectedCategory = useMemo(
+    () => categories.find((category) => category._id === form.category) ?? null,
+    [categories, form.category],
+  );
+
+  const baseSpecifications = useMemo(
+    () => selectedCategory?.baseSpecifications ?? [],
+    [selectedCategory],
+  );
+
   const subCategoryOptions = useMemo(
-    () => SUB_CATEGORY_OPTIONS[form.category] ?? [],
-    [form.category],
+    () =>
+      (selectedCategory?.subcategories ?? []).map((name) => ({
+        value: name,
+        label: name,
+      })),
+    [selectedCategory],
   );
 
   const sortedOemUsers = useMemo(() => {
@@ -688,33 +776,48 @@ export default function AddNewProduct() {
     setSubmitError("");
   };
 
+  const setSpecValue = (key: string, value: string) => {
+    setForm((prev) => ({
+      ...prev,
+      categorySpecValues: { ...prev.categorySpecValues, [key]: value },
+    }));
+    setSpecErrors((prev) => {
+      if (!prev[key]) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setSubmitError("");
+  };
+
   const setAttributeField = (
-    group: AttributeGroup,
     index: number,
     field: AttributeRowField,
     value: string,
   ) => {
     setForm((prev) => {
-      const rows = [...prev[group]];
+      const rows = [...prev.otherAttributes];
       rows[index] = { ...rows[index], [field]: value };
-      return { ...prev, [group]: rows };
+      return { ...prev, otherAttributes: rows };
     });
-    clearFieldError(group);
+    clearFieldError("otherAttributes");
   };
 
-  const addAttributeRow = (group: AttributeGroup) => {
+  const addAttributeRow = () => {
     setForm((prev) => ({
       ...prev,
-      [group]: [...prev[group], { spec: "", detail: "" }],
+      otherAttributes: [...prev.otherAttributes, { spec: "", detail: "" }],
     }));
   };
 
-  const removeAttributeRow = (group: AttributeGroup, index: number) => {
+  const removeAttributeRow = (index: number) => {
     setForm((prev) => {
-      const rows = prev[group].filter((_, rowIndex) => rowIndex !== index);
+      const rows = prev.otherAttributes.filter((_, rowIndex) => rowIndex !== index);
       return {
         ...prev,
-        [group]: rows.length > 0 ? rows : [{ spec: "", detail: "" }],
+        otherAttributes: rows.length > 0 ? rows : [{ spec: "", detail: "" }],
       };
     });
   };
@@ -870,13 +973,33 @@ export default function AddNewProduct() {
     setSubmitError("");
   };
 
+  const validateCategorySpecs = (): Record<string, string> => {
+    const errors: Record<string, string> = {};
+
+    baseSpecifications.forEach((spec) => {
+      const required = spec.required !== false;
+      const value = normalizeText(form.categorySpecValues[spec.key] ?? "");
+
+      if (required && !value) {
+        errors[spec.key] = `${spec.key} is required.`;
+        return;
+      }
+
+      if (value && spec.type === "number" && !Number.isFinite(Number(value))) {
+        errors[spec.key] = `${spec.key} must be a number.`;
+      }
+    });
+
+    return errors;
+  };
+
   const validateStep = (step: StepId): Partial<Record<FieldErrorKey, string>> => {
     const nextErrors: Partial<Record<FieldErrorKey, string>> = {};
 
     if (step === 1) {
       if (categoryLoadError) {
         nextErrors.category = categoryLoadError;
-      } else if (!normalizeText(form.category)) {
+      } else if (!normalizeText(form.category) || !selectedCategory) {
         nextErrors.category = "Select a category to continue.";
       }
 
@@ -910,22 +1033,7 @@ export default function AddNewProduct() {
 
     if (step === 3) {
       if (!form.availability_status) {
-        nextErrors.availability_status = "Select the availability status.";
-      }
-
-      if (
-        form.quantityAvailable !== "" &&
-        (!isPositiveWholeNumber(form.quantityAvailable) || Number(form.quantityAvailable) < 0)
-      ) {
-        nextErrors.quantityAvailable = "Enter a valid whole number (0 or more).";
-      }
-
-      if (!isPositiveWholeNumber(form.installation_time_value)) {
-        nextErrors.installation_time_value = "Enter a valid installation time.";
-      }
-
-      if (!form.installation_time_unit) {
-        nextErrors.installation_time_unit = "Select the installation time unit.";
+        nextErrors.availability_status = "Select the stock status.";
       }
 
       if (!isPositiveWholeNumber(form.delivery_time_value)) {
@@ -934,6 +1042,16 @@ export default function AddNewProduct() {
 
       if (!form.delivery_time_unit) {
         nextErrors.delivery_time_unit = "Select the delivery time unit.";
+      }
+
+      if (form.requiresInstallation) {
+        if (!isPositiveWholeNumber(form.installation_time_value)) {
+          nextErrors.installation_time_value = "Enter a valid installation time.";
+        }
+
+        if (!form.installation_time_unit) {
+          nextErrors.installation_time_unit = "Select the installation time unit.";
+        }
       }
 
       return nextErrors;
@@ -982,7 +1100,16 @@ export default function AddNewProduct() {
     const nextErrors = validateStep(currentStep);
     setFieldErrors((prev) => ({ ...prev, ...nextErrors }));
 
-    if (Object.keys(nextErrors).length > 0) {
+    let nextSpecErrors: Record<string, string> = {};
+    if (currentStep === 3) {
+      nextSpecErrors = validateCategorySpecs();
+      setSpecErrors(nextSpecErrors);
+    }
+
+    if (
+      Object.keys(nextErrors).length > 0 ||
+      Object.keys(nextSpecErrors).length > 0
+    ) {
       return;
     }
 
@@ -997,7 +1124,18 @@ export default function AddNewProduct() {
     const nextErrors = validateStep(5);
     setFieldErrors((prev) => ({ ...prev, ...nextErrors }));
 
-    if (Object.keys(nextErrors).length > 0) {
+    const nextSpecErrors = validateCategorySpecs();
+    setSpecErrors(nextSpecErrors);
+
+    if (
+      Object.keys(nextErrors).length > 0 ||
+      Object.keys(nextSpecErrors).length > 0
+    ) {
+      if (Object.keys(nextSpecErrors).length > 0) {
+        setSubmitError(
+          "Some required category specifications are missing. Please review the Stock & Key Specification step.",
+        );
+      }
       return;
     }
 
@@ -1012,7 +1150,7 @@ export default function AddNewProduct() {
     formData.append("category", form.category);
 
     if (normalizeText(form.sub_category)) {
-      formData.append("sub_category", normalizeText(form.sub_category));
+      formData.append("sub_category", JSON.stringify([normalizeText(form.sub_category)]));
     }
 
     if (form.assignedOem && form.assignedOem !== "__no-oem__") {
@@ -1023,14 +1161,13 @@ export default function AddNewProduct() {
     formData.append("condition", form.condition);
     formData.append("description", normalizeText(form.description));
     formData.append("availability_status", form.availability_status);
-
-    if (form.quantityAvailable !== "") {
-      formData.append("quantityAvailable", String(Number(form.quantityAvailable)));
-    }
+    formData.append("requiresInstallation", form.requiresInstallation ? "true" : "false");
 
     formData.append(
       "installation_time",
-      formatDuration(form.installation_time_value, form.installation_time_unit) ?? "",
+      form.requiresInstallation
+        ? formatDuration(form.installation_time_value, form.installation_time_unit) ?? "0 days"
+        : "0 days",
     );
     formData.append(
       "delivery_time",
@@ -1052,17 +1189,20 @@ export default function AddNewProduct() {
       formData.append("video_link", normalizeText(form.video_link));
     }
 
-    const industrySpecific = mapAttributeRowsForPayload(form.industryAttributes);
-    const otherAttributes = mapAttributeRowsForPayload(form.otherAttributes);
+    const categorySpecifications = baseSpecifications
+      .map((spec) => ({
+        key: spec.key,
+        value: normalizeText(form.categorySpecValues[spec.key] ?? ""),
+      }))
+      .filter((entry) => entry.value);
 
-    if (industrySpecific.length > 0 || otherAttributes.length > 0) {
-      formData.append(
-        "key_attributes",
-        JSON.stringify({
-          industry_specific: industrySpecific,
-          other: otherAttributes,
-        }),
-      );
+    if (categorySpecifications.length > 0) {
+      formData.append("categorySpecifications", JSON.stringify(categorySpecifications));
+    }
+
+    const customSpecifications = mapCustomSpecifications(form.otherAttributes);
+    if (customSpecifications.length > 0) {
+      formData.append("customSpecifications", JSON.stringify(customSpecifications));
     }
 
     images.forEach((image) => formData.append("images", image));
@@ -1093,14 +1233,22 @@ export default function AddNewProduct() {
       setSuccessOpen(true);
       dispatch(resetProducts());
 
-      if (typeof window !== "undefined") {
-        window.sessionStorage.removeItem(WIZARD_STORAGE_KEY);
+      if (typeof window !== "undefined" && storageKey) {
+        window.sessionStorage.removeItem(storageKey);
       }
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Unable to submit the product.";
+        error instanceof Error
+          ? error.message
+          : typeof error === "string"
+          ? error
+          : "Unable to submit the product.";
 
-      if (createdProductId) {
+      // Subscription/plan gating error — surface the backend message and point
+      // the distributor to their subscription page to upgrade.
+      if (!createdProductId && /plan|subscription|limit|upgrade/i.test(message)) {
+        setSubscriptionError(message);
+      } else if (createdProductId) {
         setSubmitError(
           `${message} The product was created but could not be submitted for review.`,
         );
@@ -1166,6 +1314,8 @@ export default function AddNewProduct() {
                   onValueChange={(value) => {
                     setField("category", value);
                     setField("sub_category", "");
+                    setForm((prev) => ({ ...prev, categorySpecValues: {} }));
+                    setSpecErrors({});
                   }}
                 />
 
@@ -1192,7 +1342,7 @@ export default function AddNewProduct() {
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <Input
                     label="Product name"
-                    placeholder="Enter name of product"
+                    placeholder="Enter product name"
                     value={form.name}
                     error={fieldErrors.name}
                     onChange={(event) => setField("name", event.target.value)}
@@ -1238,6 +1388,9 @@ export default function AddNewProduct() {
                   <label className="block pl-3 text-sm text-gray1">
                     Product Description
                   </label>
+                  <p className="pl-3 text-xs text-gray3">
+                    Describe key features, applications and selling points of this product
+                  </p>
                   <div className="overflow-hidden rounded-xl border border-gray5">
                     <div className="flex flex-wrap items-center gap-2 border-b border-gray5 bg-gray7 px-3 py-2">
                       <button
@@ -1289,45 +1442,77 @@ export default function AddNewProduct() {
 
             {currentStep === 3 ? (
               <div className="space-y-6">
+                <div className="flex flex-col gap-3 rounded-xl border border-gray5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray1">
+                      Does this product require on-site installation?
+                    </p>
+                    <p className="text-xs text-gray3">
+                      Turn this on to provide an installation timeline. Buyers will be guided through installation scheduling at checkout.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.requiresInstallation}
+                    onCheckedChange={(checked) => {
+                      setField("requiresInstallation", checked);
+                      if (!checked) {
+                        setFieldErrors((prev) => {
+                          const next = { ...prev };
+                          delete next.installation_time_value;
+                          delete next.installation_time_unit;
+                          return next;
+                        });
+                      }
+                    }}
+                    aria-label="Requires on-site installation"
+                  />
+                </div>
+
                 <div className="grid gap-4 md:grid-cols-3 md:items-start">
-                  <SingleSelect
-                    label="Availability status"
-                    placeholder="Select option"
-                    value={form.availability_status}
-                    options={AVAILABILITY_OPTIONS}
-                    error={fieldErrors.availability_status}
-                    className="!h-12 !min-h-12 !py-3"
-                    onValueChange={(value) =>
-                      setField("availability_status", value as AvailabilityStatus)
-                    }
-                  />
-
-                  <Input
-                    label="Quantity in stock"
-                    placeholder="Enter quantity"
-                    type="number"
-                    min={0}
-                    value={form.quantityAvailable}
-                    error={fieldErrors.quantityAvailable}
-                    onChange={(event) =>
-                      setField("quantityAvailable", event.target.value)
-                    }
-                  />
-
-                  <MergedDurationField
-                    id="installation_time_value"
-                    label="Installation Time"
-                    value={form.installation_time_value}
-                    unit={form.installation_time_unit}
-                    valueError={fieldErrors.installation_time_value}
-                    unitError={fieldErrors.installation_time_unit}
-                    onValueChange={(v) => setField("installation_time_value", v)}
-                    onUnitChange={(u) => setField("installation_time_unit", u)}
-                  />
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <label
+                      htmlFor="availability_status"
+                      className="block pl-3 text-sm font-medium text-gray2"
+                    >
+                      Stock Status
+                    </label>
+                    <p className="min-h-[2.25rem] pl-3 text-xs text-gray3" />
+                    <Select
+                      value={form.availability_status || undefined}
+                      onValueChange={(value) =>
+                        setField("availability_status", value as AvailabilityStatus)
+                      }
+                    >
+                      <SelectTrigger
+                        id="availability_status"
+                        aria-invalid={!!fieldErrors.availability_status}
+                        className={cn(
+                          "h-12 min-h-12 w-full rounded-xl border bg-transparent px-4 text-sm text-gray1 shadow-none",
+                          "data-[size=default]:h-12 data-[size=default]:min-h-12",
+                          fieldErrors.availability_status ? "border-danger" : "border-gray5"
+                        )}
+                      >
+                        <SelectValue placeholder="Select option" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {AVAILABILITY_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    {fieldErrors.availability_status ? (
+                      <p className="text-sm text-danger">{fieldErrors.availability_status}</p>
+                    ) : null}
+                  </div>
 
                   <MergedDurationField
                     id="delivery_time_value"
-                    label="Delivery time"
+                    label="Estimated Delivery Timeline"
+                    hint="How long would it take to deliver this product anywhere in Nigeria after payment confirmation?"
                     value={form.delivery_time_value}
                     unit={form.delivery_time_unit}
                     valueError={fieldErrors.delivery_time_value}
@@ -1335,31 +1520,42 @@ export default function AddNewProduct() {
                     onValueChange={(v) => setField("delivery_time_value", v)}
                     onUnitChange={(u) => setField("delivery_time_unit", u)}
                   />
+
+                  <MergedDurationField
+                    id="installation_time_value"
+                    label="Estimated Installation Duration"
+                    hint={
+                      form.requiresInstallation
+                        ? "How long does on-site installation take?"
+                        : "Enable on-site installation above to set this."
+                    }
+                    value={form.installation_time_value}
+                    unit={form.installation_time_unit}
+                    valueError={fieldErrors.installation_time_value}
+                    unitError={fieldErrors.installation_time_unit}
+                    disabled={!form.requiresInstallation}
+                    onValueChange={(v) => setField("installation_time_value", v)}
+                    onUnitChange={(u) => setField("installation_time_unit", u)}
+                  />
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="font-medium text-gray1">Key Attributes</h4>
+                  <h4 className="font-medium text-gray1">Key Specs</h4>
 
-                  <AttributeTable
-                    title="Industrial-Specific Attributes"
-                    rows={form.industryAttributes}
-                    error={fieldErrors.industryAttributes}
-                    onAddRow={() => addAttributeRow("industryAttributes")}
-                    onRemoveRow={(index) => removeAttributeRow("industryAttributes", index)}
-                    onChange={(index, field, value) =>
-                      setAttributeField("industryAttributes", index, field, value)
-                    }
+                  <CategorySpecTable
+                    specs={baseSpecifications}
+                    values={form.categorySpecValues}
+                    errors={specErrors}
+                    onChange={setSpecValue}
                   />
 
                   <AttributeTable
                     title="Other Attributes"
                     rows={form.otherAttributes}
                     error={fieldErrors.otherAttributes}
-                    onAddRow={() => addAttributeRow("otherAttributes")}
-                    onRemoveRow={(index) => removeAttributeRow("otherAttributes", index)}
-                    onChange={(index, field, value) =>
-                      setAttributeField("otherAttributes", index, field, value)
-                    }
+                    onAddRow={addAttributeRow}
+                    onRemoveRow={removeAttributeRow}
+                    onChange={setAttributeField}
                   />
                 </div>
               </div>
@@ -1409,61 +1605,62 @@ export default function AddNewProduct() {
                   className="min-h-[120px]"
                 />
 
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Input
-                    label="SKU (Optional)"
-                    placeholder="Enter SKU"
-                    value={form.sku}
-                    error={fieldErrors.sku}
-                    onChange={(event) => setField("sku", event.target.value)}
-                  />
+                <Input
+                  label="SKU (Optional)"
+                  placeholder="Enter SKU"
+                  value={form.sku}
+                  error={fieldErrors.sku}
+                  onChange={(event) => setField("sku", event.target.value)}
+                />
 
-                  <div className="space-y-2">
-                    <label className="block pl-3 text-sm text-gray1">
-                      Certifications (optional)
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => certificationInputRef.current?.click()}
-                      className="flex min-h-[84px] w-full flex-col items-center justify-center rounded-xl border border-dashed border-gray5 bg-white px-4 py-4 text-center hover:border-primary"
-                    >
-                      <FileText size={20} className="mb-2 text-gray3" />
-                      <span className="text-sm text-gray2">
-                        <span className="text-[#FE6E00]">Click here</span> to upload file
-                      </span>
-                      <span className="mt-1 text-xs text-gray3">
-                        Allowed format - DOCX, PNG, PDF
-                      </span>
-                    </button>
-                    <input
-                      ref={certificationInputRef}
-                      type="file"
-                      accept=".docx,.png,.pdf"
-                      className="hidden"
-                      onChange={handleCertification}
-                    />
-                    {certificationFile ? (
-                      <div className="flex items-center justify-between rounded-xl bg-gray7 px-4 py-3 text-sm">
-                        <span className="truncate text-gray1">{certificationFile.name}</span>
-                        <button
-                          type="button"
-                          className="text-gray3 hover:text-danger"
-                          onClick={() => {
-                            setCertificationFile(null);
-                            clearFieldError("certifications");
-                            if (certificationInputRef.current) {
-                              certificationInputRef.current.value = "";
-                            }
-                          }}
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ) : null}
-                    {fieldErrors.certifications ? (
-                      <p className="text-sm text-danger">{fieldErrors.certifications}</p>
-                    ) : null}
-                  </div>
+                <div className="space-y-2">
+                  <label className="block pl-3 text-sm text-gray1">
+                    Certifications (optional)
+                  </label>
+                  <p className="pl-3 text-xs text-gray3">
+                    Upload relevant certifications such as CE, FDA, ISO, NAFDAC or OEM authorization documents.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => certificationInputRef.current?.click()}
+                    className="flex min-h-[120px] w-full flex-col items-center justify-center rounded-xl border border-dashed border-gray5 bg-white px-4 py-4 text-center hover:border-primary"
+                  >
+                    <FileText size={24} className="mb-2 text-gray3" />
+                    <span className="text-sm text-gray2">
+                      <span className="text-[#FE6E00]">Click here</span> to upload file
+                    </span>
+                    <span className="mt-1 text-xs text-gray3">
+                      Allowed format - DOCX, PNG, PDF
+                    </span>
+                  </button>
+                  <input
+                    ref={certificationInputRef}
+                    type="file"
+                    accept=".docx,.png,.pdf"
+                    className="hidden"
+                    onChange={handleCertification}
+                  />
+                  {certificationFile ? (
+                    <div className="flex items-center justify-between rounded-xl bg-gray7 px-4 py-3 text-sm">
+                      <span className="truncate text-gray1">{certificationFile.name}</span>
+                      <button
+                        type="button"
+                        className="text-gray3 hover:text-danger"
+                        onClick={() => {
+                          setCertificationFile(null);
+                          clearFieldError("certifications");
+                          if (certificationInputRef.current) {
+                            certificationInputRef.current.value = "";
+                          }
+                        }}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ) : null}
+                  {fieldErrors.certifications ? (
+                    <p className="text-sm text-danger">{fieldErrors.certifications}</p>
+                  ) : null}
                 </div>
               </div>
             ) : null}
@@ -1480,6 +1677,9 @@ export default function AddNewProduct() {
 
                 <div className="space-y-3">
                   <label className="block pl-3 text-sm text-gray1">Upload images</label>
+                  <p className="pl-3 text-xs text-gray3">
+                    Upload clear product images from different angles to improve buyer confidence.
+                  </p>
                   <button
                     type="button"
                     onClick={() => imageInputRef.current?.click()}
@@ -1599,6 +1799,22 @@ export default function AddNewProduct() {
         onPrimaryAction={() => {
           setSuccessOpen(false);
           router.push("/dashboard/distributor/catalogue");
+        }}
+      />
+
+      <PopUp
+        open={Boolean(subscriptionError)}
+        type="warning"
+        variant="two-buttons"
+        title="Upgrade your plan"
+        description={subscriptionError}
+        primaryButtonText="View plans"
+        secondaryButtonText="Not now"
+        onClose={() => setSubscriptionError("")}
+        onSecondaryAction={() => setSubscriptionError("")}
+        onPrimaryAction={() => {
+          setSubscriptionError("");
+          router.push("/dashboard/distributor/subscriptions");
         }}
       />
     </div>
