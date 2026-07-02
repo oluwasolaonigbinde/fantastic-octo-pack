@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -18,8 +18,8 @@ import {
 } from "lucide-react";
 
 import Header from "@/app/dashboard/component/header";
-import adminService, { type AdminPlatformUserRow } from "@/services/adminService";
-import { useAppSelector } from "@/hooks/useAppSelector";
+import { useAdminPlatformUsersQuery } from "@/hooks/queries/admin";
+import { type AdminPlatformUserRow } from "@/services/adminService";
 import { UserRole } from "@/types/user";
 
 const NOT_AVAILABLE = "Not available";
@@ -94,59 +94,26 @@ function getInitials(value: string) {
 
 export default function AdminAgentDetailPage() {
   const searchParams = useSearchParams();
-  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
-  const [agent, setAgent] = useState<AdminPlatformUserRow | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const requestedId = searchParams.get("id");
 
-  useEffect(() => {
-    if (!token) {
-      const timeoutId = window.setTimeout(() => setLoading(false), 0);
-      return () => window.clearTimeout(timeoutId);
-    }
+  const agentsQuery = useAdminPlatformUsersQuery({
+    role: UserRole.AGENT,
+    page: 1,
+    limit: 20,
+  });
 
-    let isMounted = true;
+  const loading = agentsQuery.isPending;
+  const error = agentsQuery.isError
+    ? agentsQuery.error instanceof Error
+      ? agentsQuery.error.message
+      : "Unable to load agent details."
+    : "";
 
-    const loadAgent = async () => {
-      setLoading(true);
-      setError("");
-
-      try {
-        const response = await adminService.getPlatformUsers(token, {
-          role: UserRole.AGENT,
-          page: 1,
-          limit: 20,
-        });
-
-        if (!isMounted) return;
-
-        const matchedAgent =
-          response.docs.find((row) => row.id === requestedId) ?? response.docs[0] ?? null;
-
-        setAgent(matchedAgent);
-      } catch (nextError) {
-        if (!isMounted) return;
-
-        setError(
-          nextError instanceof Error
-            ? nextError.message
-            : "Unable to load agent details.",
-        );
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void loadAgent();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [requestedId, token]);
+  const agent: AdminPlatformUserRow | null = useMemo(() => {
+    const docs = agentsQuery.data?.docs ?? [];
+    return docs.find((row) => row.id === requestedId) ?? docs[0] ?? null;
+  }, [agentsQuery.data, requestedId]);
 
   const agentName = useMemo(() => agent?.name || "Agent detail", [agent]);
   const statusLabel = useMemo(() => formatStatus(agent?.status), [agent?.status]);

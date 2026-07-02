@@ -19,8 +19,8 @@ import {
 } from "lucide-react";
 
 import { PublicLayout } from "@/components/layout";
-import productService from "@/services/productService";
-import { userService } from "@/services/userService";
+import { useProductsQuery } from "@/hooks/queries/products";
+import { useUserQuery } from "@/hooks/queries/users";
 import type { Product } from "@/types/product";
 import type { PublicProfileData, UserData } from "@/types/user";
 import { readAuthSessionUser } from "@/utils/authSession";
@@ -235,77 +235,26 @@ function OEMProfileContent() {
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("id") || "";
 
-  const [profile, setProfile] = useState<PublicProfileData | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [productsLoading, setProductsLoading] = useState(false);
-  const [productError, setProductError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
+  const profileQuery = useUserQuery(selectedId || undefined);
+  const productsQuery = useProductsQuery(
+    { assignedOem: selectedId, populate: "createdBy", limit: 24 },
+    { enabled: Boolean(selectedId) },
+  );
+
+  const profile = profileQuery.data ?? null;
+  const products: Product[] = productsQuery.data?.products ?? [];
+  const profileLoading = Boolean(selectedId) && profileQuery.isLoading;
+  const productsLoading = Boolean(selectedId) && productsQuery.isLoading;
+  const productError = productsQuery.isError
+    ? productsQuery.error instanceof Error
+      ? productsQuery.error.message
+      : "Failed to load products."
+    : null;
+
   useEffect(() => {
-    let cancelled = false;
-
-    if (!selectedId) {
-      return undefined;
-    }
-
-    void (async () => {
-      if (cancelled) {
-        return;
-      }
-
-      setProfileLoading(true);
-      try {
-        const data = await userService.getPublicProfileById(selectedId);
-        if (!cancelled) {
-          setProfile(data);
-        }
-      } catch {
-        if (!cancelled) {
-          setProfile(null);
-        }
-      } finally {
-        if (!cancelled) {
-          setProfileLoading(false);
-        }
-      }
-    })();
-
-    void (async () => {
-      if (cancelled) {
-        return;
-      }
-
-      setProductsLoading(true);
-      setProductError(null);
-      try {
-        const response = await productService.fetchWithFilter({
-          assignedOem: selectedId,
-          populate: "createdBy",
-          limit: 24,
-        });
-
-        if (!cancelled) {
-          setProducts(response.data.docs ?? []);
-          setCurrentPage(1);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setProducts([]);
-          setProductError(
-            error instanceof Error ? error.message : "Failed to load products."
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setProductsLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+    setCurrentPage(1);
   }, [selectedId]);
 
   const oemName = buildName(profile);

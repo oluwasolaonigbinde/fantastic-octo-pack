@@ -4,12 +4,10 @@
 
 import Header from "../../../component/header";
 import ProductImageGallery from "@/app/products/[id]/ProductImageGallery";
-import { fetchProductById } from "@/store/slices/product-slice";
-import { useEffect } from "react";
-// import { fetchProductById } from "@/store/slices/product-slice";
+import { useProductQuery } from "@/hooks/queries/products";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import { ArrowLeft, Pencil } from "lucide-react";
 import { BigLoader, Button } from "@/components/base";
 import { useRouter } from "next/navigation";
@@ -40,34 +38,16 @@ export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { id } = params;
-  const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { product, isLoading, isError, message } = useAppSelector(
-    (state) => state.product,
-  );
-
-  // const product: ProductResponse = await fetchProductById(params.id);
-  // return {
-  //   title: product?.name || "Product Detail",
-  // };
-
-  // const productData: ProductResponse = await fetch(
-  //   `${process.env.NEXT_PUBLIC_API_URL}/products/${params.id}`,
-  //   { cache: "no-store" } // makes it SSR on every request
-  // ).then(res => res.json());
-
-  // const product = productData?.data || {};
-
-  useEffect(() => {
-    if (id && authData?.tokens?.accessToken) {
-      dispatch(
-        fetchProductById({
-          id: id as string,
-          token: authData.tokens.accessToken,
-        }),
-      );
-    }
-  }, [dispatch, id, authData?.tokens?.accessToken]);
+  const {
+    data: product,
+    isLoading,
+    isError,
+    error,
+  } = useProductQuery(id as string, {
+    enabled: Boolean(id && authData?.tokens?.accessToken),
+  });
+  const message = error instanceof Error ? error.message : "";
 
   const statusMeta = product ? getListingStatusMeta(product.status) : null;
   const isEditable = product ? canEditProduct(product.status) : false;

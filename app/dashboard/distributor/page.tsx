@@ -4,8 +4,8 @@ import Header from "../component/header";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { fetchUserProducts } from "@/store/slices/product-slice";
-import { fetchDistributorInbox } from "@/store/slices/rfq-slice";
+import { useMyProductsQuery } from "@/hooks/queries/products";
+import { useDistributorInboxQuery } from "@/hooks/queries/rfqs";
 import { reset } from "@/store/slices/auth-slice";
 import { Button } from "@/components/base";
 import { ClipboardList, Mail, Plus, ShoppingBag, Wallet } from "lucide-react";
@@ -23,34 +23,16 @@ import { DistributorRecentListedSection } from "./_components/distributor-recent
 export default function DistributorDashboard() {
   const dispatch = useAppDispatch();
   const router = useRouter();
-  const { myProducts, isLoading } = useAppSelector(
-    (state) => state.product,
-  );
   const { data } = useAppSelector((state) => state.auth);
-  const { distributorQuotes } = useAppSelector((state) => state.rfq);
+  const { data: myProductsData, isLoading } = useMyProductsQuery(data?._id);
+  const myProducts = myProductsData?.products ?? null;
+  const { data: distributorQuotes } = useDistributorInboxQuery();
 
   const [alertDismissed, setAlertDismissed] = useState(readAlertDismissals);
 
   useEffect(() => {
     dispatch(reset());
-    if (myProducts) {
-      return;
-    }
-    if (data?._id && data?.tokens?.accessToken) {
-      dispatch(
-        fetchUserProducts({
-          id: data._id,
-          token: data.tokens.accessToken,
-        }),
-      );
-    }
-  }, [myProducts, dispatch, data?._id, data?.tokens?.accessToken, data]);
-
-  useEffect(() => {
-    if (data?.tokens?.accessToken && !distributorQuotes) {
-      dispatch(fetchDistributorInbox(data.tokens.accessToken));
-    }
-  }, [dispatch, data?.tokens?.accessToken, distributorQuotes]);
+  }, [dispatch]);
 
   const totalQuoteRequests = distributorQuotes?.length ?? 0;
   const unrespondedQuotes =

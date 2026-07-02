@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -10,7 +10,8 @@ import Banner from "@/components/features/public/Banner";
 import { Spinner } from "@/components/base";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { PublicLayout } from "@/components/layout";
-import { reviewService, type ReviewData } from "@/services/reviewService";
+import { type ReviewData } from "@/services/reviewService";
+import { useEngineerReviewsQuery } from "@/hooks/queries/reviews";
 import { fetchPublicProfileById } from "@/store/slices/user-slice";
 
 import EngineerProfileCard from "./EngineerProfileCard";
@@ -251,55 +252,27 @@ export default function EngineerProfilePage() {
   const dispatch = useAppDispatch();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [reviews, setReviews] = useState<ReviewData[]>([]);
-  const [reviewsLoading, setReviewsLoading] = useState(false);
-  const [reviewsError, setReviewsError] = useState<string | null>(null);
 
   const id = searchParams.get("id") || "";
   const mode = searchParams.get("view") === "profile" ? "profile" : "request";
 
   const { selectedUser, loading, error } = useAppSelector((state) => state.user);
 
+  const reviewsQuery = useEngineerReviewsQuery(id || undefined);
+  const reviews: ReviewData[] = reviewsQuery.data ?? [];
+  const reviewsLoading = reviewsQuery.isLoading && Boolean(id);
+  const reviewsError = reviewsQuery.error
+    ? reviewsQuery.error instanceof Error
+      ? reviewsQuery.error.message
+      : "Failed to fetch buyer reviews"
+    : null;
+
   useEffect(() => {
     if (!id) {
       return;
     }
 
-    let isActive = true;
-
     dispatch(fetchPublicProfileById(id));
-
-    const loadReviews = async () => {
-      setReviews([]);
-      setReviewsLoading(true);
-      setReviewsError(null);
-
-      try {
-        const reviewData = await reviewService.getEngineerReviews(id);
-        if (isActive) {
-          setReviews(reviewData);
-        }
-      } catch (reviewError) {
-        if (isActive) {
-          setReviews([]);
-          setReviewsError(
-            reviewError instanceof Error
-              ? reviewError.message
-              : "Failed to fetch buyer reviews"
-          );
-        }
-      } finally {
-        if (isActive) {
-          setReviewsLoading(false);
-        }
-      }
-    };
-
-    void loadReviews();
-
-    return () => {
-      isActive = false;
-    };
   }, [dispatch, id]);
 
   const engineerName = selectedUser

@@ -7,8 +7,7 @@ import {
   OverviewNoticeBanner,
 } from "../component/overview-primitives";
 import { ProtectedRoute } from "@/components/dashboard/protected-routes";
-import { useAppSelector } from "@/hooks/useAppSelector";
-import { useFetchEngineerServiceRequests } from "@/hooks/useEngineerServiceRequests";
+import { useEngineerServiceRequestsQuery } from "@/hooks/queries/service-requests";
 import { UserRole } from "@/types/user";
 
 import {
@@ -18,8 +17,8 @@ import {
 import { EngineerDashboardDesktopOverview } from "./_components/engineer-dashboard-desktop-overview";
 
 export default function EngineerDashboardPage() {
-  useFetchEngineerServiceRequests();
-  const { serviceRequests } = useAppSelector((s) => s.serviceRequest);
+  const { data } = useEngineerServiceRequestsQuery();
+  const serviceRequests = data?.requests ?? [];
 
   return (
     <ProtectedRoute requiredRole={UserRole.ENGINEER}>

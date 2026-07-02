@@ -14,10 +14,10 @@ import {
 } from "@/components/ui/table";
 import { CalendarDays, Download, Eye, Filter } from "lucide-react";
 import { ADMIN_PRODUCTS_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import productService from "@/services/productService";
-import { fetchProducts } from "@/store/slices/product-slice";
-import { fetchCategories } from "@/store/slices/category-slice";
+import { useProductsQuery } from "@/hooks/queries/products";
+import { useCategoriesQuery } from "@/hooks/queries/categories";
 import { getListingStatusMeta } from "@/utils/productStatus";
 import { getProductStockTableValue } from "@/utils/productDisplay";
 import type { Product, ProductStatus, ProductStatusCounts } from "@/types/product";
@@ -125,18 +125,8 @@ function MetricCard({
 }
 
 export default function AdminProductsPage() {
-  const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { categories } = useAppSelector((state) => state.category);
-  const {
-    products,
-    isLoading,
-    totalProducts,
-    page,
-    totalPages,
-    hasNextPage,
-    hasPreviousPage,
-  } = useAppSelector((state) => state.product);
+  const { data: categories = [] } = useCategoriesQuery();
 
   const [draftFilters, setDraftFilters] =
     useState<AdminProductFilters>(DEFAULT_FILTERS);
@@ -149,6 +139,26 @@ export default function AdminProductsPage() {
 
   const token = authData?.tokens?.accessToken;
 
+  const { data: productsData, isLoading } = useProductsQuery(
+    {
+      populate: "createdBy,assignedOem",
+      page: currentPage,
+      search: appliedFilters.search.trim() || undefined,
+      status: appliedFilters.status !== "all" ? appliedFilters.status : undefined,
+      category:
+        appliedFilters.category !== "all" ? appliedFilters.category : undefined,
+      submittedFrom: appliedFilters.submittedFrom || undefined,
+      submittedTo: appliedFilters.submittedTo || undefined,
+    },
+    { enabled: Boolean(token) },
+  );
+  const products = productsData?.products ?? null;
+  const totalProducts = productsData?.meta.totalDocs ?? 0;
+  const page = productsData?.meta.page ?? 1;
+  const totalPages = productsData?.meta.totalPages ?? 0;
+  const hasNextPage = productsData?.meta.hasNextPage ?? false;
+  const hasPreviousPage = productsData?.meta.hasPreviousPage ?? false;
+
   const updateDraftFilter = <K extends keyof AdminProductFilters>(
     key: K,
     value: AdminProductFilters[K]
@@ -160,29 +170,6 @@ export default function AdminProductsPage() {
     setAppliedFilters({ ...draftFilters });
     setCurrentPage(1);
   };
-
-  useEffect(() => {
-    if (token && categories.length === 0) {
-      dispatch(fetchCategories({}));
-    }
-  }, [dispatch, token, categories.length]);
-
-  useEffect(() => {
-    if (!token) return;
-
-    dispatch(
-      fetchProducts({
-        token,
-        populate: "createdBy,assignedOem",
-        page: currentPage,
-        search: appliedFilters.search.trim() || undefined,
-        status: appliedFilters.status !== "all" ? appliedFilters.status : undefined,
-        category: appliedFilters.category !== "all" ? appliedFilters.category : undefined,
-        submittedFrom: appliedFilters.submittedFrom || undefined,
-        submittedTo: appliedFilters.submittedTo || undefined,
-      })
-    );
-  }, [dispatch, token, appliedFilters, currentPage]);
 
   useEffect(() => {
     let ignore = false;

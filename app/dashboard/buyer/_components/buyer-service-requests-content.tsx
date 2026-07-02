@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 
 import { Spinner } from "@/components/base";
-import { useAppSelector } from "@/hooks/useAppSelector";
+import { useBuyerServiceRequestsQuery } from "@/hooks/queries/service-requests";
 import {
   ServiceRequestData,
   ServiceRequestStatus,
@@ -149,7 +149,8 @@ function applyTableFilters(
 }
 
 export function BuyerServiceRequestKpiStrip() {
-  const { serviceRequests } = useAppSelector((state) => state.serviceRequest);
+  const { data } = useBuyerServiceRequestsQuery();
+  const serviceRequests = data?.requests ?? [];
 
   const thisMonthRequests = useMemo(() => {
     const now = new Date();
@@ -359,9 +360,8 @@ export function BuyerServiceRequestCards({
   statusFilter = "",
   dateFilter = "",
 }: BuyerServiceRequestCardsProps) {
-  const { serviceRequests, isLoading, isError } = useAppSelector(
-    (state) => state.serviceRequest,
-  );
+  const { data, isPending: isLoading, isError } = useBuyerServiceRequestsQuery();
+  const serviceRequests = data?.requests ?? [];
   const [detailTargetId, setDetailTargetId] = useState<string | null>(null);
 
   const detailTarget = useMemo(

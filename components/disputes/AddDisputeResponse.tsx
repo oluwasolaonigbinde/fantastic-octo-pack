@@ -3,11 +3,11 @@
 import { useRef, useState } from "react";
 import { Paperclip, Send } from "lucide-react";
 
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import {
-  addOrderDisputeComment,
-  addOrderDisputeEvidence,
-} from "@/store/slices/order-dispute-slice";
+  useAddOrderDisputeCommentMutation,
+  useAddOrderDisputeEvidenceMutation,
+} from "@/hooks/queries/order-disputes";
+import { useAppSelector } from "@/hooks/useAppSelector";
 
 /**
  * The "Add your response" composer shared by the buyer and distributor dispute
@@ -15,8 +15,9 @@ import {
  * (`POST /evidence`) for the dispute.
  */
 export function AddDisputeResponse({ disputeId }: { disputeId: string }) {
-  const dispatch = useAppDispatch();
   const token = useAppSelector((s) => s.auth.data?.tokens?.accessToken);
+  const addComment = useAddOrderDisputeCommentMutation();
+  const addEvidence = useAddOrderDisputeEvidenceMutation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [message, setMessage] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -30,14 +31,10 @@ export function AddDisputeResponse({ disputeId }: { disputeId: string }) {
     setError("");
     try {
       if (message.trim()) {
-        await dispatch(
-          addOrderDisputeComment({ token, disputeId, text: message.trim() }),
-        ).unwrap();
+        await addComment.mutateAsync({ disputeId, text: message.trim() });
       }
       if (file) {
-        await dispatch(
-          addOrderDisputeEvidence({ token, disputeId, file }),
-        ).unwrap();
+        await addEvidence.mutateAsync({ disputeId, file });
       }
       setMessage("");
       setFile(null);

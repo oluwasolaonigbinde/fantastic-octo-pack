@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import {
-  clearWalletTopup,
-  fetchMyWallet,
-  topUpWallet,
-} from "@/store/slices/wallet-slice";
+import { useTopUpWalletMutation } from "@/hooks/queries/wallet";
+import { queryKeys } from "@/lib/query-keys";
+import type { WalletTopupResult } from "@/types/wallet";
 
 export type TopUpReturnStatus = "success" | "cancelled" | null;
 
@@ -20,9 +18,9 @@ export type TopUpReturnStatus = "success" | "cancelled" | null;
  *   origin so the auth session in localStorage stays visible on return.
  */
 export function useWalletTopup({ callbackPath }: { callbackPath: string }) {
-  const dispatch = useAppDispatch();
-  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
-  const { topup } = useAppSelector((state) => state.wallet);
+  const qc = useQueryClient();
+  const topUpMutation = useTopUpWalletMutation();
+  const [topup, setTopup] = useState<WalletTopupResult | null>(null);
 
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
@@ -47,8 +45,8 @@ export function useWalletTopup({ callbackPath }: { callbackPath: string }) {
   useEffect(() => {
     if (returnStatus !== null) {
       window.history.replaceState(null, "", callbackPath);
-      if (returnStatus === "success" && token) {
-        dispatch(fetchMyWallet(token));
+      if (returnStatus === "success") {
+        qc.invalidateQueries({ queryKey: queryKeys.wallet.all });
       }
     }
     // Intentionally runs once on mount — returnStatus is derived from the
@@ -64,9 +62,9 @@ export function useWalletTopup({ callbackPath }: { callbackPath: string }) {
       if (returnStatus === null) {
         window.location.href = topup.authorizationUrl;
       }
-      dispatch(clearWalletTopup());
+      setTopup(null);
     }
-  }, [topup, dispatch, returnStatus]);
+  }, [topup, returnStatus]);
 
   /**
    * Open the top-up panel. Pass `prefillNaira` to pre-populate the amount field
@@ -99,7 +97,6 @@ export function useWalletTopup({ callbackPath }: { callbackPath: string }) {
       setAmountError("Minimum top-up amount is ₦100");
       return;
     }
-    if (!token) return;
 
     setIsSubmitting(true);
     // Keep the callback on the SAME origin the user is currently on. A different
@@ -107,12 +104,11 @@ export function useWalletTopup({ callbackPath }: { callbackPath: string }) {
     // localStorage, so the dashboard treats the user as logged out on return.
     const callbackUrl = `${window.location.origin}${callbackPath}`;
     try {
-      await dispatch(
-        topUpWallet({
-          token,
-          payload: { amount: numericAmount * 100, callbackUrl },
-        }),
-      ).unwrap();
+      const result = await topUpMutation.mutateAsync({
+        amount: numericAmount * 100,
+        callbackUrl,
+      });
+      setTopup(result);
     } catch (err) {
       setTopupError(
         err instanceof Error

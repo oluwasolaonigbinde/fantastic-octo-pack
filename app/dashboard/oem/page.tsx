@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowRight,
   Check,
@@ -23,9 +23,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import { cn } from "@/lib/utils";
-import { fetchOemListingRequests } from "@/store/slices/product-slice";
+import { useOemListingRequestsQuery } from "@/hooks/queries/products";
 import type { Product } from "@/types/product";
 
 import { buildDistributorSummaries, normalizeOemStatus } from "./oem-ui";
@@ -465,24 +465,14 @@ const DetailPanel = ({
 );
 
 export default function OEMDashboardPage() {
-  const dispatch = useAppDispatch();
-  const { oemListingRequests } = useAppSelector((state) => state.product);
   const { data } = useAppSelector((state) => state.auth);
+  const { data: oemListing } = useOemListingRequestsQuery(
+    { assignedOem: data?._id, populate: "createdBy", limit: 12 },
+    { enabled: Boolean(data?._id && data?.tokens?.accessToken) },
+  );
+  const oemListingRequests = oemListing?.requests ?? null;
   const [directSalesModalOpen, setDirectSalesModalOpen] = useState(false);
   const [directSalesEnabled, setDirectSalesEnabled] = useState(false);
-
-  useEffect(() => {
-    if (data?._id && data?.tokens?.accessToken) {
-      dispatch(
-        fetchOemListingRequests({
-          assignedOem: data._id,
-          token: data.tokens.accessToken,
-          populate: "createdBy",
-          limit: 12,
-        }),
-      );
-    }
-  }, [data?._id, data?.tokens?.accessToken, dispatch]);
 
   const products = useMemo(() => oemListingRequests ?? [], [oemListingRequests]);
   const distributors = useMemo(() => buildDistributorSummaries(products), [products]);

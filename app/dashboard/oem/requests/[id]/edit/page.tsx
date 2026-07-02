@@ -13,8 +13,11 @@ import {
 } from "@/components/oem/SimpleRichTextEditor";
 import { Textarea } from "@/components/ui/textarea";
 import categoryService from "@/services/categoryService";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchProductById, updateProductById } from "@/store/slices/product-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import {
+  useProductQuery,
+  useUpdateProductMutation,
+} from "@/hooks/queries/products";
 import type { Category } from "@/types/categories";
 import type {
   CustomSpecification,
@@ -232,9 +235,7 @@ export default function OemEditProductPage() {
   const router = useRouter();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
 
-  const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { product, isLoading } = useAppSelector((state) => state.product);
 
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const certificationInputRef = useRef<HTMLInputElement | null>(null);
@@ -265,13 +266,11 @@ export default function OemEditProductPage() {
   const [assetErrors, setAssetErrors] = useState<Partial<Record<"images" | "certifications" | "brochure", string>>>({});
 
   const token = authData?.tokens?.accessToken ?? "";
+  const { data: product, isLoading } = useProductQuery(id, {
+    enabled: Boolean(id && token),
+  });
+  const updateProduct = useUpdateProductMutation();
   const productId = product?._id ?? "";
-
-  useEffect(() => {
-    if (id && token) {
-      dispatch(fetchProductById({ id, token }));
-    }
-  }, [dispatch, id, token]);
 
   useEffect(() => {
     let ignore = false;
@@ -617,14 +616,7 @@ export default function OemEditProductPage() {
         };
 
     try {
-      await dispatch(
-        updateProductById({
-          token,
-          id: product._id,
-          productData,
-        }),
-      ).unwrap();
-      await dispatch(fetchProductById({ id: product._id, token })).unwrap();
+      await updateProduct.mutateAsync({ id: product._id, productData });
 
       setDraftFormByProductId((current) => omitKey(current, product._id));
       setDefaultImageIndexByProductId((current) => omitKey(current, product._id));

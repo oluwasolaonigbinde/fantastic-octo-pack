@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -17,11 +17,11 @@ import {
 } from "lucide-react";
 import Header from "../../../component/header";
 import { Button, Textarea } from "@/components/base";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import {
-  fetchProductById,
-  reviewProductVisibilityById,
-} from "@/store/slices/product-slice";
+  useProductQuery,
+  useReviewProductVisibilityMutation,
+} from "@/hooks/queries/products";
 import type { UserData } from "@/types/user";
 import { getListingStatusMeta } from "@/utils/productStatus";
 
@@ -52,10 +52,8 @@ const getUserName = (value?: string | UserData): string => {
 export default function AdminProductDetailPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  const dispatch = useAppDispatch();
 
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { product, isLoading, isError, message } = useAppSelector((state) => state.product);
 
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectForm, setShowRejectForm] = useState(false);
@@ -64,11 +62,14 @@ export default function AdminProductDetailPage() {
 
   const token = authData?.tokens?.accessToken;
 
-  useEffect(() => {
-    if (id && token) {
-      dispatch(fetchProductById({ id, token }));
-    }
-  }, [dispatch, id, token]);
+  const {
+    data: product,
+    isLoading,
+    isError,
+    error,
+  } = useProductQuery(id, { enabled: Boolean(id && token) });
+  const message = error instanceof Error ? error.message : "";
+  const reviewVisibility = useReviewProductVisibilityMutation();
 
   const statusMeta = product ? getListingStatusMeta(product.status) : null;
   const defaultImage = product?.images.find((image) => image.isDefault)?.url;
@@ -110,26 +111,16 @@ export default function AdminProductDetailPage() {
     [product]
   );
 
-  const refresh = () => {
-    if (id && token) {
-      dispatch(fetchProductById({ id, token }));
-    }
-  };
-
   const handleApprove = async () => {
     if (!product || !token) return;
     setSubmitting(true);
     setActionError("");
 
     try {
-      await dispatch(
-        reviewProductVisibilityById({
-          token,
-          id: product._id,
-          dto: { action: "approve" },
-        })
-      ).unwrap();
-      refresh();
+      await reviewVisibility.mutateAsync({
+        id: product._id,
+        dto: { action: "approve" },
+      });
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Approval failed");
     } finally {
@@ -144,14 +135,10 @@ export default function AdminProductDetailPage() {
     setActionError("");
 
     try {
-      await dispatch(
-        reviewProductVisibilityById({
-          token,
-          id: product._id,
-          dto: { action: "reject", rejectionReason: rejectReason.trim() },
-        })
-      ).unwrap();
-      refresh();
+      await reviewVisibility.mutateAsync({
+        id: product._id,
+        dto: { action: "reject", rejectionReason: rejectReason.trim() },
+      });
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Rejection failed");
     } finally {

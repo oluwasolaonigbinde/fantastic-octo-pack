@@ -35,8 +35,12 @@ import {
   TableRow,
 } from "@/components/base";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import {
+  useCreateKycSubmissionMutation,
+  useMyKycQuery,
+  useUploadKycDocumentMutation,
+} from "@/hooks/queries/kyc";
 import authService from "@/services/authService";
-import kycService from "@/services/kycService";
 import { setUser } from "@/store/slices/auth-slice";
 import type { KycSubmission, KycTierDefinition } from "@/types/kyc";
 import { UserRole } from "@/types/user";
@@ -249,10 +253,6 @@ export default function DistributorKycView({
   const { data: authUser } = useAppSelector((state) => state.auth);
   const token = authUser?.tokens?.accessToken ?? "";
 
-  const [tiers, setTiers] = useState<KycTierDefinition[]>([]);
-  const [submissions, setSubmissions] = useState<KycSubmission[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTier, setActiveTier] = useState<KycTierDefinition | null>(null);
   const [textValues, setTextValues] = useState<Record<string, string>>({});
@@ -260,6 +260,31 @@ export default function DistributorKycView({
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [inlineCountry, setInlineCountry] = useState("Nigeria");
+
+  const kycQuery = useMyKycQuery();
+  const uploadDocument = useUploadKycDocumentMutation();
+  const createSubmission = useCreateKycSubmissionMutation();
+
+  const tiers: KycTierDefinition[] = useMemo(
+    () =>
+      (kycQuery.data?.tiers ?? []).filter((tier) =>
+        DISTRIBUTOR_TIER_KEYS.has(tier.tierKey),
+      ),
+    [kycQuery.data?.tiers],
+  );
+  const submissions: KycSubmission[] = useMemo(
+    () =>
+      (kycQuery.data?.submissions ?? []).filter(
+        (submission) => submission.userRole === UserRole.DISTRIBUTOR,
+      ),
+    [kycQuery.data?.submissions],
+  );
+  const loading = kycQuery.isLoading;
+  const error = kycQuery.isError
+    ? kycQuery.error instanceof Error
+      ? kycQuery.error.message
+      : "Unable to load KYC data"
+    : null;
 
   const refreshAuthProfile = useCallback(async () => {
     if (!token) {
@@ -286,52 +311,15 @@ export default function DistributorKycView({
     }
   }, [authUser, dispatch, token]);
 
-  const fetchData = useCallback(async (options?: { silent?: boolean }) => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-
-    const silent = options?.silent ?? false;
-
-    if (!silent) {
-      setLoading(true);
-      setError(null);
-    }
-
-    try {
-      const [tiersResponse, submissionsResponse] = await Promise.all([
-        kycService.getTiers(token),
-        kycService.getSubmissions(token),
-      ]);
-
-      setTiers(
-        tiersResponse.data.filter((tier) => DISTRIBUTOR_TIER_KEYS.has(tier.tierKey)),
-      );
-      const distributorSubmissions = submissionsResponse.data.filter(
-        (submission) => submission.userRole === UserRole.DISTRIBUTOR,
-      );
-      setSubmissions(distributorSubmissions);
-
-      if (distributorSubmissions.some((submission) => submission.status === "approved")) {
-        await refreshAuthProfile();
-      }
-    } catch (fetchError) {
-      if (!silent) {
-        setError(fetchError instanceof Error ? fetchError.message : "Unable to load KYC data");
-      }
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-    }
-  }, [refreshAuthProfile, token]);
+  const hasApprovedSubmission = submissions.some(
+    (submission) => submission.status === "approved",
+  );
 
   useEffect(() => {
-    queueMicrotask(() => {
-      void fetchData();
-    });
-  }, [fetchData]);
+    if (hasApprovedSubmission) {
+      void refreshAuthProfile();
+    }
+  }, [hasApprovedSubmission, refreshAuthProfile]);
 
   const tierStatuses = useMemo(
     () => orderedStatuses(tiers, submissions),
@@ -367,34 +355,6 @@ export default function DistributorKycView({
     [tierStatusMap, tiers],
   );
 
-  const hasPendingSubmission = useMemo(
-    () => submissions.some((submission) => submission.status === "submitted"),
-    [submissions],
-  );
-
-  useEffect(() => {
-    if (!token || !hasPendingSubmission) {
-      return;
-    }
-
-    const refreshPendingStatus = () => {
-      if (document.visibilityState === "visible") {
-        void fetchData({ silent: true });
-      }
-    };
-
-    const intervalId = window.setInterval(refreshPendingStatus, 15000);
-
-    window.addEventListener("focus", refreshPendingStatus);
-    document.addEventListener("visibilitychange", refreshPendingStatus);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refreshPendingStatus);
-      document.removeEventListener("visibilitychange", refreshPendingStatus);
-    };
-  }, [fetchData, hasPendingSubmission, token]);
-
   const openSubmissionDialog = (tier: KycTierDefinition) => {
     setActiveTier(tier);
     setDialogOpen(true);
@@ -427,7 +387,7 @@ export default function DistributorKycView({
           throw new Error(`${documentDefinition.label} is required`);
         }
 
-        const uploaded = await kycService.uploadDocument(token, file);
+        const uploaded = await uploadDocument.mutateAsync(file);
         uploadedDocuments.push({
           fieldName: documentDefinition.fieldName,
           fileName: uploaded.data.fileName,
@@ -437,7 +397,7 @@ export default function DistributorKycView({
         });
       }
 
-      await kycService.createSubmission(token, {
+      await createSubmission.mutateAsync({
         tierKey: tier.tierKey,
         textFields: payloadTextFields,
         documents: uploadedDocuments,
@@ -445,7 +405,6 @@ export default function DistributorKycView({
 
       setDialogOpen(false);
       setActiveTier(null);
-      await fetchData();
       return true;
     } catch (submitTierError) {
       setSubmitError(

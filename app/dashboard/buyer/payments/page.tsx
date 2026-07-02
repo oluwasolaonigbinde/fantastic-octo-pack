@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   CalendarDays,
@@ -14,9 +14,8 @@ import {
 } from "lucide-react";
 
 import Header from "../../component/header";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchMyWallet } from "@/store/slices/wallet-slice";
-import { fetchMyPayments } from "@/store/slices/payment-slice";
+import { useMyPaymentsQuery } from "@/hooks/queries/payments";
+import { useWallet } from "@/hooks/useWallet";
 import { useWalletTopup } from "@/hooks/useWalletTopup";
 import { useEscrowSummary } from "@/hooks/useEscrowSummary";
 import { TopUpDrawer, TopUpReturnBanner } from "@/components/wallet/wallet-topup";
@@ -104,19 +103,16 @@ function WalletMetricCard({ metric }: { metric: WalletMetric }) {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function BuyerPayments() {
-  const dispatch = useAppDispatch();
-  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
-
   const {
     wallet,
     isLoading: walletLoading,
     isError: walletError,
     message: walletMessage,
-  } = useAppSelector((state) => state.wallet);
+  } = useWallet();
 
-  const { myPayments, isLoading: paymentsLoading } = useAppSelector(
-    (state) => state.payment,
-  );
+  const { data: paymentsData, isLoading: paymentsLoading } =
+    useMyPaymentsQuery();
+  const myPayments = paymentsData?.payments ?? null;
 
   const [copied, setCopied] = useState(false);
 
@@ -133,13 +129,6 @@ export default function BuyerPayments() {
     dismissReturnStatus,
     panelProps,
   } = useWalletTopup({ callbackPath: "/dashboard/buyer/payments" });
-
-  useEffect(() => {
-    if (token) {
-      dispatch(fetchMyWallet(token));
-      dispatch(fetchMyPayments({ token }));
-    }
-  }, [dispatch, token]);
 
   const walletBalanceNaira = wallet
     ? koboToNaira(wallet.availableBalance)

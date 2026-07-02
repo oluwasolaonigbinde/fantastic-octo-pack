@@ -26,9 +26,10 @@ import { useWallet } from "@/hooks/useWallet";
 import { useWalletTopup } from "@/hooks/useWalletTopup";
 import { TopUpDrawer, TopUpReturnBanner } from "@/components/wallet/wallet-topup";
 import { koboToNaira } from "@/lib/wallet-format";
-import { fetchUserProducts } from "@/store/slices/product-slice";
-import { fetchDistributorInbox } from "@/store/slices/rfq-slice";
-import { fetchMySubscription } from "@/store/slices/subscription-slice";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query-keys";
+import { useMyProductsQuery } from "@/hooks/queries/products";
+import { useDistributorInboxQuery } from "@/hooks/queries/rfqs";
 import type { PlanFeature, Subscription, SubscriptionPlan } from "@/types/subscription";
 
 const MOCK_MESSAGE_SUMMARY = { total: 4, read: 1, unread: 3 };
@@ -275,9 +276,12 @@ function PlanCard({
 
 export default function DistributorSubscriptions() {
   const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { myProducts, totalProducts } = useAppSelector((state) => state.product);
-  const { distributorQuotes } = useAppSelector((state) => state.rfq);
+  const { data: myProductsData } = useMyProductsQuery(authData?._id);
+  const myProducts = myProductsData?.products ?? null;
+  const totalProducts = myProductsData?.total ?? 0;
+  const { data: distributorQuotes } = useDistributorInboxQuery();
 
   const {
     plans,
@@ -311,18 +315,6 @@ export default function DistributorSubscriptions() {
     title: string;
     description: string;
   } | null>(null);
-
-  useEffect(() => {
-    if (authData?._id && authData?.tokens?.accessToken && !myProducts) {
-      dispatch(fetchUserProducts({ id: authData._id, token: authData.tokens.accessToken }));
-    }
-  }, [authData?._id, authData?.tokens?.accessToken, dispatch, myProducts]);
-
-  useEffect(() => {
-    if (authData?.tokens?.accessToken && !distributorQuotes) {
-      dispatch(fetchDistributorInbox(authData.tokens.accessToken));
-    }
-  }, [authData?.tokens?.accessToken, dispatch, distributorQuotes]);
 
   const products = useMemo(() => myProducts ?? [], [myProducts]);
   const quotes = useMemo(() => distributorQuotes ?? [], [distributorQuotes]);
@@ -403,8 +395,9 @@ export default function DistributorSubscriptions() {
     }
     // If the backend says a subscription already exists, refresh so the cards
     // flip to "Manage Subscription".
-    const token = authData?.tokens?.accessToken;
-    if (token) void dispatch(fetchMySubscription(token));
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.subscription.all,
+    });
     setPopup({
       type: "warning",
       title: "Couldn't subscribe",

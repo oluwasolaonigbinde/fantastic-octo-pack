@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -11,8 +11,8 @@ import {
 
 import Header from "../../component/header";
 import { Button, Input, PopUp, SingleSelect } from "@/components/base";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchOemListingRequests } from "@/store/slices/product-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { useOemListingRequestsQuery } from "@/hooks/queries/products";
 
 import { buildDistributorSummaries, normalizeOemStatus } from "../oem-ui";
 
@@ -49,9 +49,12 @@ const PLAN_DETAILS: Record<
 };
 
 export default function OemSubscription() {
-  const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { oemListingRequests } = useAppSelector((state) => state.product);
+  const { data: oemListing } = useOemListingRequestsQuery(
+    { assignedOem: authData?._id, populate: "createdBy" },
+    { enabled: Boolean(authData?._id && authData?.tokens?.accessToken) },
+  );
+  const oemListingRequests = oemListing?.requests ?? null;
 
   const [currentPlan, setCurrentPlan] = useState<PlanTier>("basic");
   const [selectedPlan, setSelectedPlan] = useState<PlanTier>("basic");
@@ -60,18 +63,6 @@ export default function OemSubscription() {
   const [modalMode, setModalMode] = useState<PlanModalMode | null>(null);
   const [checkoutView, setCheckoutView] = useState(false);
   const [showPaymentPopup, setShowPaymentPopup] = useState(false);
-
-  useEffect(() => {
-    if (authData?._id && authData?.tokens?.accessToken) {
-      dispatch(
-        fetchOemListingRequests({
-          assignedOem: authData._id,
-          token: authData.tokens.accessToken,
-          populate: "createdBy",
-        }),
-      );
-    }
-  }, [dispatch, authData?._id, authData?.tokens?.accessToken]);
 
   const products = useMemo(() => oemListingRequests ?? [], [oemListingRequests]);
   const totalDistributors = useMemo(

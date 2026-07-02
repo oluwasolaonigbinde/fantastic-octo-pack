@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock, Eye, Filter, ShieldCheck } from "lucide-react";
 
 import Header from "@/app/dashboard/component/header";
 import { Button, Input, RightSlider, SingleSelect, SummaryCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@/components/base";
-import { useAppSelector } from "@/hooks/useAppSelector";
-import kycService, { type AdminKycFilters } from "@/services/kycService";
-import type { AdminKycListRow, AdminKycStats, AdminKycSubmissionDetail } from "@/types/kyc";
+import {
+  useAdminKycDetailQuery,
+  useAdminKycListQuery,
+  useAdminKycStatsQuery,
+  useApproveKycMutation,
+  useRejectKycMutation,
+} from "@/hooks/queries/kyc";
+import { type AdminKycFilters } from "@/services/kycService";
 import { getKycFileTypeLabel } from "@/utils/kycFileTypeLabel";
 
 
@@ -25,50 +30,50 @@ const humanizeFieldName = (value: string) =>
     .replace(/^./, (character) => character.toUpperCase());
 
 export default function AdminKycManagement() {
-  const { data } = useAppSelector((state) => state.auth);
-  const token = data?.tokens?.accessToken ?? "";
-
-  const [stats, setStats] = useState<AdminKycStats | null>(null);
-  const [rows, setRows] = useState<AdminKycListRow[]>([]);
   const [filters, setFilters] = useState<AdminKycFilters>({
     status: "all",
     userCategory: "all",
     date: "",
   });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<AdminKycSubmissionDetail | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerLoading, setDrawerLoading] = useState(false);
-  const [drawerError, setDrawerError] = useState<string | null>(null);
-  const [rejecting, setRejecting] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [showRejectForm, setShowRejectForm] = useState(false);
 
-  const fetchOverview = async () => {
-    if (!token) return;
+  const statsQuery = useAdminKycStatsQuery();
+  const listQuery = useAdminKycListQuery(filters);
+  const detailQuery = useAdminKycDetailQuery(selectedId, {
+    enabled: drawerOpen && Boolean(selectedId),
+  });
+  const approveMutation = useApproveKycMutation();
+  const rejectMutation = useRejectKycMutation();
 
-    setLoading(true);
-    setError(null);
+  const stats = statsQuery.data ?? null;
+  const rows = listQuery.data ?? [];
+  const loading = listQuery.isLoading || statsQuery.isLoading;
+  const listError = listQuery.isError
+    ? listQuery.error instanceof Error
+      ? listQuery.error.message
+      : "Unable to load KYC management"
+    : null;
 
-    try {
-      const [statsResponse, rowsResponse] = await Promise.all([
-        kycService.getAdminStats(token),
-        kycService.getAdminSubmissions(token, filters),
-      ]);
-
-      setStats(statsResponse.data);
-      setRows("docs" in rowsResponse.data ? rowsResponse.data.docs : rowsResponse.data);
-    } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : "Unable to load KYC management");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void fetchOverview();
-  }, [token, filters.status, filters.userCategory, filters.date]);
+  const selected = detailQuery.data ?? null;
+  const drawerLoading = detailQuery.isLoading || approveMutation.isPending;
+  const rejecting = rejectMutation.isPending;
+  const drawerError =
+    detailQuery.isError
+      ? detailQuery.error instanceof Error
+        ? detailQuery.error.message
+        : "Unable to fetch KYC submission"
+      : approveMutation.isError
+        ? approveMutation.error instanceof Error
+          ? approveMutation.error.message
+          : "Unable to approve submission"
+        : rejectMutation.isError
+          ? rejectMutation.error instanceof Error
+            ? rejectMutation.error.message
+            : "Unable to reject submission"
+          : null;
 
   const summaryValues = useMemo(
     () => ({
@@ -80,70 +85,30 @@ export default function AdminKycManagement() {
     [stats],
   );
 
-  const openSubmission = async (id: string) => {
-    if (!token) return;
-
+  const openSubmission = (id: string) => {
+    setSelectedId(id);
     setDrawerOpen(true);
-    setDrawerLoading(true);
-    setDrawerError(null);
     setShowRejectForm(false);
     setRejectionReason("");
-
-    try {
-      const response = await kycService.getAdminSubmission(token, id);
-      setSelected(response.data);
-    } catch (submissionError) {
-      setDrawerError(
-        submissionError instanceof Error
-          ? submissionError.message
-          : "Unable to fetch KYC submission",
-      );
-    } finally {
-      setDrawerLoading(false);
-    }
   };
 
-  const approve = async () => {
-    if (!token || !selected) return;
-
-    setDrawerLoading(true);
-    try {
-      const response = await kycService.approveAdminSubmission(token, selected._id);
-      setSelected(response.data);
-      await fetchOverview();
-    } catch (approvalError) {
-      setDrawerError(
-        approvalError instanceof Error ? approvalError.message : "Unable to approve submission",
-      );
-    } finally {
-      setDrawerLoading(false);
-    }
+  const approve = () => {
+    if (!selected) return;
+    approveMutation.mutate(selected._id);
   };
 
-  const reject = async () => {
-    if (!token || !selected || !rejectionReason.trim()) return;
+  const reject = () => {
+    if (!selected || !rejectionReason.trim()) return;
 
-    setRejecting(true);
-    setDrawerError(null);
-    try {
-      const response = await kycService.rejectAdminSubmission(
-        token,
-        selected._id,
-        rejectionReason.trim(),
-      );
-      setSelected(response.data);
-      setShowRejectForm(false);
-      setRejectionReason("");
-      await fetchOverview();
-    } catch (rejectionError) {
-      setDrawerError(
-        rejectionError instanceof Error
-          ? rejectionError.message
-          : "Unable to reject submission",
-      );
-    } finally {
-      setRejecting(false);
-    }
+    rejectMutation.mutate(
+      { id: selected._id, rejectionReason: rejectionReason.trim() },
+      {
+        onSuccess: () => {
+          setShowRejectForm(false);
+          setRejectionReason("");
+        },
+      },
+    );
   };
 
   return (
@@ -236,11 +201,11 @@ export default function AdminKycManagement() {
               iconLeft={<Filter size={16} />}
               className="self-end"
               type="button"
-              onClick={() => void fetchOverview()}
+              onClick={() => void listQuery.refetch()}
             />
           </div>
 
-          {error ? <p className="text-sm text-danger">{error}</p> : null}
+          {listError ? <p className="text-sm text-danger">{listError}</p> : null}
 
           <div className="overflow-x-auto">
             <Table>

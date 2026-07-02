@@ -2,9 +2,10 @@
 
 import { useState, useMemo, useEffect, useRef } from "react";
 import { Check, Clock, Info, Loader2, Search, Wallet } from "lucide-react";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { withdrawFromWallet } from "@/store/slices/wallet-slice";
-import { fetchMyPayments } from "@/store/slices/payment-slice";
+import { useQueryClient } from "@tanstack/react-query";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { queryKeys } from "@/lib/query-keys";
+import { useWithdrawFromWalletMutation } from "@/hooks/queries/wallet";
 import { useWallet } from "@/hooks/useWallet";
 import { useEscrowSummary } from "@/hooks/useEscrowSummary";
 import { useMyPayments } from "@/hooks/usePayments";
@@ -51,8 +52,9 @@ const statusColor: Record<PaymentStatus, string> = {
 };
 
 export default function DistributorPayments() {
-  const dispatch = useAppDispatch();
+  const queryClient = useQueryClient();
   const token = useAppSelector((s) => s.auth.data?.tokens?.accessToken);
+  const withdrawMutation = useWithdrawFromWalletMutation();
 
   const { wallet, isLoading: walletLoading } = useWallet();
   const { summary: escrowSummary, isLoading: escrowLoading } = useEscrowSummary();
@@ -201,21 +203,16 @@ export default function DistributorPayments() {
 
     setPayoutBusy(true);
     try {
-      await dispatch(
-        withdrawFromWallet({
-          token,
-          payload: {
-            amount: amountKobo,
-            accountNumber: payoutAccount,
-            bankCode: selectedBank.code,
-            accountName: resolvedName,
-          },
-        })
-      ).unwrap();
+      await withdrawMutation.mutateAsync({
+        amount: amountKobo,
+        accountNumber: payoutAccount,
+        bankCode: selectedBank.code,
+        accountName: resolvedName,
+      });
 
       setPayoutOpen(false);
       setSuccessOpen(true);
-      if (token) void dispatch(fetchMyPayments({ token }));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.payments.all });
     } catch {
       setPayoutOpen(false);
       setErrorOpen(true);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   CalendarDays,
@@ -25,8 +25,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  useAdminOrdersQuery,
+  useAdminQuotesQuery,
+  useAdminRfqsOrdersSummaryQuery,
+  useAdminRfqsQuery,
+} from "@/hooks/queries/admin";
 import { useAppSelector } from "@/hooks/useAppSelector";
-import adminService, {
+import {
   type AdminOrderRow,
   type AdminPagination,
   type AdminQuoteRow,
@@ -398,92 +404,76 @@ export default function AdminRfqsOrdersPage() {
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const [topTab, setTopTab] = useState<TopTab>("rfqs");
   const [rfqSub, setRfqSub] = useState<RfqSubTab>("all");
-  const [summary, setSummary] = useState(EMPTY_SUMMARY);
-  const [rfqsPage, setRfqsPage] = useState<AdminPagination<AdminRfqRow>>(
-    emptyPage<AdminRfqRow>()
-  );
-  const [quotesPage, setQuotesPage] = useState<AdminPagination<AdminQuoteRow>>(
-    emptyPage<AdminQuoteRow>()
-  );
-  const [ordersPage, setOrdersPage] = useState<AdminPagination<AdminOrderRow>>(
-    emptyPage<AdminOrderRow>()
-  );
   const [draftFilters, setDraftFilters] = useState({
     productName: "",
     distributorName: "",
   });
   const [appliedFilters, setAppliedFilters] = useState(draftFilters);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [detailData, setDetailData] = useState<DetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
 
-  const loadData = useCallback(async () => {
-    if (!token) return;
+  const isOrders = topTab === "orders";
+  const isQuotes = !isOrders && rfqSub !== "all";
+  const isRfqs = !isOrders && rfqSub === "all";
 
-    setLoading(true);
-    setError("");
-
-    const params = {
+  const baseParams = useMemo(
+    () => ({
       productName: appliedFilters.productName.trim() || undefined,
       distributorName: appliedFilters.distributorName.trim() || undefined,
       page,
       limit: PAGE_SIZE,
-    };
+    }),
+    [appliedFilters, page],
+  );
 
-    try {
-      const quoteStatus = RFQ_QUOTE_STATUS_FILTERS[rfqSub];
-      const [nextSummary, nextPage] = await Promise.all([
-        adminService.getRfqsOrdersSummary(token),
-        topTab === "orders"
-          ? adminService.getOrders(token, params)
-          : rfqSub !== "all"
-            ? adminService.getQuotes(
-                token,
-                quoteStatus ? { ...params, status: quoteStatus } : params,
-              )
-            : adminService.getRfqs(token, params),
-      ]);
+  const quoteParams = useMemo(() => {
+    const quoteStatus = RFQ_QUOTE_STATUS_FILTERS[rfqSub];
+    return quoteStatus ? { ...baseParams, status: quoteStatus } : baseParams;
+  }, [baseParams, rfqSub]);
 
-      setSummary(nextSummary);
-      if (topTab === "orders") {
-        setOrdersPage(nextPage as AdminPagination<AdminOrderRow>);
-      } else if (rfqSub !== "all") {
-        setQuotesPage(nextPage as AdminPagination<AdminQuoteRow>);
-      } else {
-        setRfqsPage(nextPage as AdminPagination<AdminRfqRow>);
-      }
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Unable to load RFQs and orders."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [appliedFilters, page, rfqSub, token, topTab]);
+  const pollOptions = {
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchOnWindowFocus: true,
+  };
 
-  useEffect(() => {
-    if (!token) return;
+  const summaryQuery = useAdminRfqsOrdersSummaryQuery(pollOptions);
+  const rfqsQuery = useAdminRfqsQuery(baseParams, {
+    ...pollOptions,
+    enabled: isRfqs,
+  });
+  const quotesQuery = useAdminQuotesQuery(quoteParams, {
+    ...pollOptions,
+    enabled: isQuotes,
+  });
+  const ordersQuery = useAdminOrdersQuery(baseParams, {
+    ...pollOptions,
+    enabled: isOrders,
+  });
 
-    const initialLoadId = window.setTimeout(() => void loadData(), 0);
-    const intervalId = window.setInterval(() => void loadData(), POLL_INTERVAL_MS);
-    const onFocus = () => void loadData();
-    window.addEventListener("focus", onFocus);
+  const summary = summaryQuery.data ?? EMPTY_SUMMARY;
+  const ordersPage =
+    (ordersQuery.data as AdminPagination<AdminOrderRow> | undefined) ??
+    emptyPage<AdminOrderRow>();
+  const quotesPage =
+    (quotesQuery.data as AdminPagination<AdminQuoteRow> | undefined) ??
+    emptyPage<AdminQuoteRow>();
+  const rfqsPage =
+    (rfqsQuery.data as AdminPagination<AdminRfqRow> | undefined) ??
+    emptyPage<AdminRfqRow>();
 
-    return () => {
-      window.clearTimeout(initialLoadId);
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [loadData, token]);
+  const activeQuery = isOrders ? ordersQuery : isQuotes ? quotesQuery : rfqsQuery;
+  const loading = summaryQuery.isPending || activeQuery.isPending;
+  const error =
+    summaryQuery.isError || activeQuery.isError
+      ? (summaryQuery.error ?? activeQuery.error) instanceof Error
+        ? ((summaryQuery.error ?? activeQuery.error) as Error).message
+        : "Unable to load RFQs and orders."
+      : "";
 
-  const activePage =
-    topTab === "orders" ? ordersPage : rfqSub !== "all" ? quotesPage : rfqsPage;
+  const activePage = isOrders ? ordersPage : isQuotes ? quotesPage : rfqsPage;
 
   const detailTitle = useMemo(() => {
     if (!detailTarget) return "Details";

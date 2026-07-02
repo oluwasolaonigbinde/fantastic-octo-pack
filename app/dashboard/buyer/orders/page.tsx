@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarDays,
@@ -29,9 +29,8 @@ import {
   toBuyerDisputeRow,
   type BuyerDisputeRow,
 } from "@/lib/order-dispute-presenter";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useOrdersQuery } from "@/hooks/queries/orders";
 import { useOrderDisputes } from "@/hooks/useOrderDisputes";
-import { fetchOrders } from "@/store/slices/order-slice";
 
 type ActiveTab = "orders" | "disputes";
 
@@ -368,21 +367,13 @@ function MobileDisputeList({
 }
 
 export default function BuyerOrders() {
-  const dispatch = useAppDispatch();
   const router = useRouter();
-  const { orders, isLoading } = useAppSelector((state) => state.order);
-  const { data: authData } = useAppSelector((state) => state.auth);
+  const { data: orders, isLoading } = useOrdersQuery();
   const { disputes, isLoading: disputesLoading } = useOrderDisputes();
   const [activeTab, setActiveTab] = useState<ActiveTab>("orders");
   const [orderIdQuery, setOrderIdQuery] = useState("");
   const [statusQuery, setStatusQuery] = useState("");
   const [dateQuery, setDateQuery] = useState("");
-
-  useEffect(() => {
-    if (authData?.tokens?.accessToken && !orders) {
-      dispatch(fetchOrders(authData.tokens.accessToken));
-    }
-  }, [dispatch, authData?.tokens?.accessToken, orders]);
 
   const realOrders = useMemo(() => (Array.isArray(orders) ? orders.map(toBuyerOrderRow) : []), [orders]);
   const displayOrders = realOrders.length > 0 ? realOrders : buyerDemoOrders;

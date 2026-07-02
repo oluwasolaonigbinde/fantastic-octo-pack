@@ -15,10 +15,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import productService from "@/services/productService";
-import { fetchCategories } from "@/store/slices/category-slice";
-import { fetchProducts } from "@/store/slices/product-slice";
+import { useCategoriesQuery } from "@/hooks/queries/categories";
+import { useProductsQuery } from "@/hooks/queries/products";
 import { canEditProduct, getListingStatusMeta } from "@/utils/productStatus";
 import {
   getProductDefaultImageUrl,
@@ -60,21 +60,13 @@ const formatCurrency = (amount: number): string =>
 
 export default function DistributorCatalogue() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
   const {
-    products,
-    isLoading,
-    isError,
-    message,
-    totalPages,
-  } = useAppSelector((state) => state.product);
-  const {
-    categories,
+    data: categories = [],
     isLoading: categoriesLoading,
     isError: categoriesError,
-    message: categoriesMessage,
-  } = useAppSelector((state) => state.category);
+    error: categoriesQueryError,
+  } = useCategoriesQuery({ page: 1, limit: 50 });
 
   const [draftFilters, setDraftFilters] = useState<CatalogueFilters>(
     DEFAULT_FILTERS,
@@ -89,21 +81,25 @@ export default function DistributorCatalogue() {
 
   const token = authData?.tokens?.accessToken;
 
-  useEffect(() => {
-    if (!token) return;
-
-    void dispatch(
-      fetchProducts({
-        token,
-        page: currentPage,
-        limit: PAGE_SIZE,
-        search: appliedFilters.productName.trim() || undefined,
-        category: appliedFilters.category || undefined,
-        status: appliedFilters.status || undefined,
-        statuses: appliedFilters.status ? undefined : LISTED_STATUSES,
-      }),
-    );
-  }, [appliedFilters, currentPage, dispatch, token]);
+  const {
+    data: productsData,
+    isLoading,
+    isError,
+    error,
+  } = useProductsQuery(
+    {
+      page: currentPage,
+      limit: PAGE_SIZE,
+      search: appliedFilters.productName.trim() || undefined,
+      category: appliedFilters.category || undefined,
+      status: appliedFilters.status || undefined,
+      statuses: appliedFilters.status ? undefined : LISTED_STATUSES,
+    },
+    { enabled: Boolean(token) },
+  );
+  const products = productsData?.products ?? null;
+  const totalPages = productsData?.meta.totalPages ?? 0;
+  const message = error instanceof Error ? error.message : "";
 
   useEffect(() => {
     let ignore = false;
@@ -150,12 +146,6 @@ export default function DistributorCatalogue() {
     };
   }, [token]);
 
-  useEffect(() => {
-    if (categories.length === 0 && !categoriesLoading) {
-      dispatch(fetchCategories({ page: 1, limit: 50 }));
-    }
-  }, [categories.length, categoriesLoading, dispatch]);
-
   const visibleProducts = useMemo(
     () => (products ?? []).filter((product) => isListedStatus(product.status)),
     [products],
@@ -176,7 +166,8 @@ export default function DistributorCatalogue() {
 
   const categoryLoadError =
     !categoriesLoading && categoriesError
-      ? categoriesMessage || "Unable to load categories for filtering right now."
+      ? (categoriesQueryError instanceof Error && categoriesQueryError.message) ||
+        "Unable to load categories for filtering right now."
       : "";
 
   const applyFilters = () => {

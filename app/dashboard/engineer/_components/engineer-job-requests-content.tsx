@@ -25,8 +25,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/base/Dialog";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { updateServiceRequestStatus } from "@/store/slices/service-request-slice";
+import {
+  useEngineerServiceRequestsQuery,
+  useUpdateServiceRequestStatusMutation,
+} from "@/hooks/queries/service-requests";
 import {
   ServiceRequestData,
   ServiceRequestParty,
@@ -173,7 +175,8 @@ type EngineerSummaryMetricCardsProps = {
 export function EngineerSummaryMetricCards({
   requests,
 }: EngineerSummaryMetricCardsProps) {
-  const statusCounts = useAppSelector((s) => s.serviceRequest.statusCounts);
+  const { data } = useEngineerServiceRequestsQuery();
+  const statusCounts = data?.statusCounts ?? null;
 
   const total = statusCounts?.total ?? requests.length;
   const pending = statusCounts?.pending ?? countByStatus(requests, ServiceRequestStatus.PENDING);
@@ -678,11 +681,9 @@ export function EngineerJobCards({
   statusFilter = "",
   dateFilter = "",
 }: EngineerJobCardsProps) {
-  const dispatch = useAppDispatch();
-  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
-  const { serviceRequests, isLoading, isError } = useAppSelector(
-    (state) => state.serviceRequest,
-  );
+  const { data, isPending: isLoading, isError } = useEngineerServiceRequestsQuery();
+  const serviceRequests = useMemo(() => data?.requests ?? [], [data]);
+  const updateStatusMutation = useUpdateServiceRequestStatusMutation();
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -721,29 +722,14 @@ export function EngineerJobCards({
     status: ServiceRequestStatus,
     options?: { showResult?: boolean },
   ): Promise<boolean> => {
-    if (!token) {
-      if (!options?.showResult) {
-        setActionError("You must be signed in to update a job.");
-      }
-      if (options?.showResult) {
-        setStatusResult("error");
-      }
-      return false;
-    }
-
     setActionError(null);
     setUpdatingId(request._id);
 
     try {
-      await dispatch(
-        updateServiceRequestStatus({
-          token,
-          id: request._id,
-          payload: {
-            status,
-          },
-        }),
-      ).unwrap();
+      await updateStatusMutation.mutateAsync({
+        id: request._id,
+        payload: { status },
+      });
       if (options?.showResult) {
         setFailedStatusRequest(null);
         setStatusDialogRequest(null);
@@ -753,8 +739,8 @@ export function EngineerJobCards({
     } catch (error) {
       if (!options?.showResult) {
         setActionError(
-          typeof error === "string"
-            ? error
+          error instanceof Error
+            ? error.message
             : "Could not update job status. Try again.",
         );
       }

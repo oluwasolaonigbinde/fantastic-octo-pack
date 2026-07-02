@@ -8,8 +8,11 @@ import { ArrowLeft, Check, Pencil, X } from "lucide-react";
 import Header from "../../../component/header";
 import { Button, PopUp } from "@/components/base";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchProductById, reviewProductById } from "@/store/slices/product-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import {
+  useProductQuery,
+  useReviewProductMutation,
+} from "@/hooks/queries/products";
 import {
   getProductAvailabilityLabel,
   getProductSpecificationItems,
@@ -28,9 +31,7 @@ export default function OemListingRequestDetailPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
 
-  const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { product, isLoading, isError, message } = useAppSelector((state) => state.product);
 
   const [showRejectForm, setShowRejectForm] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
@@ -41,11 +42,14 @@ export default function OemListingRequestDetailPage() {
 
   const token = authData?.tokens?.accessToken ?? "";
 
-  useEffect(() => {
-    if (id && token) {
-      dispatch(fetchProductById({ id, token }));
-    }
-  }, [dispatch, id, token]);
+  const {
+    data: product,
+    isLoading,
+    isError,
+    error,
+  } = useProductQuery(id, { enabled: Boolean(id && token) });
+  const message = error instanceof Error ? error.message : "";
+  const reviewProduct = useReviewProductMutation();
 
   const listingStatus = normalizeOemStatus(product?.oemApprovalStatus ?? "pending");
   const listingStatusMeta = getOemStatusMeta(listingStatus);
@@ -74,14 +78,10 @@ export default function OemListingRequestDetailPage() {
     setReviewLoading(true);
 
     try {
-      await dispatch(
-        reviewProductById({
-          token,
-          id: product._id,
-          dto: { action: "approve" },
-        }),
-      ).unwrap();
-      await dispatch(fetchProductById({ id: product._id, token }));
+      await reviewProduct.mutateAsync({
+        id: product._id,
+        dto: { action: "approve" },
+      });
       setShowApproveSuccess(true);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Approval failed");
@@ -99,17 +99,13 @@ export default function OemListingRequestDetailPage() {
     setReviewLoading(true);
 
     try {
-      await dispatch(
-        reviewProductById({
-          token,
-          id: product._id,
-          dto: {
-            action: "reject",
-            rejectionReason: rejectReason.trim(),
-          },
-        }),
-      ).unwrap();
-      await dispatch(fetchProductById({ id: product._id, token }));
+      await reviewProduct.mutateAsync({
+        id: product._id,
+        dto: {
+          action: "reject",
+          rejectionReason: rejectReason.trim(),
+        },
+      });
       setShowRejectForm(false);
       setRejectReason("");
     } catch (error) {
