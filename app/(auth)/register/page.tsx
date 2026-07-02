@@ -8,6 +8,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button, CustomCheckbox, Input } from "@/components/base";
 import { AuthBackButton } from "@/components/features/auth/AuthBackButton";
+import { PhoneInput } from "@/components/features/auth/PhoneInput";
 import { SocialProviderButtons } from "@/components/features/auth/SocialProviderButtons";
 import authService, { AuthApiError } from "@/services/authService";
 import { useAppDispatch } from "@/hooks/useAppSelector";
@@ -260,17 +261,13 @@ export default function RegisterPage() {
           }
         />
 
-        <Input
-          {...register("phoneNumber")}
+        <PhoneInput
           id="phoneNumber"
           label="Phone number"
-          autoComplete="tel"
-          placeholder="Enter your phone number"
-          error={
-            errors.phoneNumber && touchedFields.phoneNumber
-              ? errors.phoneNumber.message
-              : undefined
+          onChange={(val) =>
+            setValue("phoneNumber", val, { shouldValidate: true, shouldTouch: true })
           }
+          error={errors.phoneNumber ? errors.phoneNumber.message : undefined}
         />
 
         <div>

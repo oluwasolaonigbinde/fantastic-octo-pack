@@ -42,9 +42,7 @@ export default function ProductInfo({
         </h1>
 
         <div className="mt-6 md:mt-8">
-          <span className="sr-only">
-            {availabilityLabel}
-          </span>
+          <span className="sr-only">{availabilityLabel}</span>
 
           <p className="text-3xl font-bold leading-10 text-[#111827] md:text-[38px] md:leading-[48px]">
             {formatCurrency(price)}
@@ -102,7 +100,9 @@ export default function ProductInfo({
         </div>
 
         <p className="mt-4 text-sm leading-6 text-[#4B5563]">
-          A short copy here to give a more confident purchase to users
+          Your payment stays protected until delivery is confirmed. Suppliers
+          are only paid after you approve the order, Baiy support is available
+          for refunds, and delivery issues.
         </p>
       </div>
     </div>

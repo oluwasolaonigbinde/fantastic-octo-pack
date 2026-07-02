@@ -3,10 +3,70 @@ import type {
   ConversationDetail,
   MessagingEnvelope,
   Message,
+  MessageAttachment,
+  MessageType,
   SendMessageRequest,
   StartConversationRequest,
 } from "@/types/messaging";
 import { apiUrl } from "@/utils/api-base-url";
+
+/**
+ * Backend messages may arrive either pre-mapped (camelCase: `id`, `senderId`,
+ * `conversationId`) or as raw Mongo documents (`_id`, `sender`, `conversation`).
+ * System messages additionally carry a `type` and an `attachment.order`. This
+ * normalizer collapses both shapes into our `Message` contract so the UI can
+ * rely on stable field names and render order cards from `attachment.order`.
+ */
+const ORDER_MESSAGE_TYPES: MessageType[] = ["order_proposal", "order_created"];
+
+const toId = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "_id" in value) {
+    const inner = (value as { _id?: unknown })._id;
+    if (typeof inner === "string") return inner;
+  }
+  return "";
+};
+
+const normalizeMessage = (raw: unknown): Message => {
+  const record = (raw ?? {}) as Record<string, unknown>;
+  const rawType = record.type;
+  const type: MessageType = ORDER_MESSAGE_TYPES.includes(rawType as MessageType)
+    ? (rawType as MessageType)
+    : "text";
+
+  const attachmentSource = record.attachment as
+    | Record<string, unknown>
+    | null
+    | undefined;
+  const attachment: MessageAttachment | null = attachmentSource
+    ? { ...attachmentSource, order: toId(attachmentSource.order) || undefined }
+    : null;
+
+  return {
+    id: toId(record.id ?? record._id),
+    conversationId: toId(record.conversationId ?? record.conversation),
+    senderId: toId(record.senderId ?? record.sender),
+    text: typeof record.text === "string" ? record.text : "",
+    type,
+    attachment,
+    createdAt:
+      typeof record.createdAt === "string" ? record.createdAt : "",
+  };
+};
+
+const normalizeConversationDetail = (raw: unknown): ConversationDetail => {
+  const record = (raw ?? {}) as {
+    conversation: Conversation;
+    messages?: unknown[];
+  };
+  return {
+    conversation: record.conversation,
+    messages: Array.isArray(record.messages)
+      ? record.messages.map(normalizeMessage)
+      : [],
+  };
+};
 
 const parseJsonResponse = async <T>(
   response: Response,
@@ -98,9 +158,9 @@ const getConversation = (
   token: string,
   conversationId: string,
 ): Promise<ConversationDetail> =>
-  requestJson<ConversationDetail>(`/conversations/${conversationId}`, token, {
+  requestJson<unknown>(`/conversations/${conversationId}`, token, {
     fallbackMessage: "Unable to load conversation",
-  });
+  }).then(normalizeConversationDetail);
 
 const sendMessage = (
   token: string,

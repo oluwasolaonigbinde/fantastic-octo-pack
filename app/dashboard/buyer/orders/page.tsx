@@ -127,7 +127,7 @@ function OrderTable({
             <th className="py-3 pr-4 font-medium">Unit price</th>
             <th className="py-3 pr-4 font-medium">Total price</th>
             <th className="py-3 pr-4 font-medium">Date</th>
-            <th className="py-3 pr-4 font-medium">Delivery status</th>
+            <th className="py-3 pr-4 font-medium">Order status</th>
             <th className="py-3 font-medium">Action</th>
           </tr>
         </thead>
@@ -550,7 +550,7 @@ export default function BuyerOrders() {
                   placeholder="Enter order ID"
                 />
                 <FilterField
-                  label="Delivery status"
+                  label="Order status"
                   value={statusQuery}
                   onChange={setStatusQuery}
                   placeholder="Select status"

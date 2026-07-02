@@ -22,6 +22,16 @@ import { getListingStatusMeta } from "@/utils/productStatus";
 import { getProductStockTableValue } from "@/utils/productDisplay";
 import type { Product, ProductStatus, ProductStatusCounts } from "@/types/product";
 import type { UserData } from "@/types/user";
+import CategoriesManagement from "./categories-management";
+import OemsManagement from "./oems-management";
+
+const PRODUCT_TABS = [
+  { key: "products", label: "Products and Listings" },
+  { key: "categories", label: "Categories Management" },
+  { key: "oems", label: "OEMs Management" },
+] as const;
+
+type ProductTabKey = (typeof PRODUCT_TABS)[number]["key"];
 
 type AdminProductFilters = {
   search: string;
@@ -133,6 +143,7 @@ export default function AdminProductsPage() {
   const [appliedFilters, setAppliedFilters] =
     useState<AdminProductFilters>(DEFAULT_FILTERS);
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState<ProductTabKey>("products");
   const [listingSummary, setListingSummary] =
     useState<ProductStatusCounts | null>(null);
 
@@ -279,6 +290,30 @@ export default function AdminProductsPage() {
         description="View all products and listing requests"
       />
 
+      <div className="px-5 pt-5 lg:px-6">
+        <div className="flex flex-col gap-2 rounded-xl border border-gray5 bg-white p-1 sm:flex-row">
+          {PRODUCT_TABS.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 rounded-lg px-4 py-3 text-sm font-medium uppercase tracking-wide transition-colors ${
+                activeTab === tab.key
+                  ? "bg-primary text-white"
+                  : "text-gray2 hover:bg-gray6"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === "categories" ? (
+        <CategoriesManagement />
+      ) : activeTab === "oems" ? (
+        <OemsManagement />
+      ) : (
       <div className="space-y-6 p-5 lg:p-6">
         <section className="space-y-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -306,7 +341,7 @@ export default function AdminProductsPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-gray5 bg-white p-5 lg:min-h-[1180px]">
+        <section className="rounded-2xl border border-gray5 bg-white p-4 sm:p-5">
           <h3 className="text-xl font-semibold leading-8 text-gray1">
             All Listed Products
           </h3>
@@ -357,7 +392,7 @@ export default function AdminProductsPage() {
             />
           </div>
 
-          <div className="mt-6 overflow-x-auto overflow-y-hidden">
+          <div className="mt-6 min-h-[560px] overflow-x-auto">
             {isLoading ? (
               <div className="space-y-2 p-3">
                 {Array.from({ length: 6 }).map((_, index) => (
@@ -467,6 +502,7 @@ export default function AdminProductsPage() {
           </div>
         </section>
       </div>
+      )}
     </div>
   );
 }

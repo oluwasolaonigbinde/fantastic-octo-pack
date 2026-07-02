@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import type { Product, ProductImage } from "@/types/product";
 import { PublicLayout } from "@/components/layout";
 import SafeProductImage from "@/components/product/SafeProductImage";
+import { getProductAvailabilityLabel } from "@/utils/productDisplay";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { useEffect } from "react";
 import { fetchProducts } from "@/store/slices/product-slice";
@@ -457,9 +458,7 @@ export default function Home() {
                               className="shrink-0 text-[#13A83B]"
                             />
                             <span className="truncate">
-                              {item.quantityAvailable
-                                ? `${item.quantityAvailable} In stock`
-                                : "In stock"}
+                              {getProductAvailabilityLabel(item)}
                             </span>
                           </div>
                           <div className="flex items-center gap-1.5">

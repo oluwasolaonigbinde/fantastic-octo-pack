@@ -35,47 +35,48 @@ const options = [
 
 export const RoleToggle: React.FC<RoleToggleProps> = ({ onChange, value }) => {
   return (
-    <div className="grid grid-cols-2 gap-3 font-urbanist sm:grid-cols-4">
-      {options.map((option) => (
-        <label
-          htmlFor={option.id}
-          className={`group w-full cursor-pointer rounded-2xl border border-gray6 p-2 hover:border-primary ${
-            value === option.value ? "border-primary" : ""
-          }`}
-          key={option.id}
-        >
-          <input
-            type="radio"
-            name="role"
-            id={option.id}
-            value={option.value}
-            checked={value === option.value}
-            onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
-              onChange(
-                event.target.value as
-                  | "buyer"
-                  | "distributor"
-                  | "engineer"
-                  | "oem"
-              );
-            }}
-            hidden
-          />
-          <div
-            className={`flex min-h-[92px] flex-col items-center justify-center gap-2 rounded-xl bg-gray7 px-2 py-4 text-center text-sm font-medium text-gray1 group-hover:bg-primary-light ${
-              value === option.value ? "bg-primary-light" : ""
+    <div className="grid grid-cols-2 gap-4 font-urbanist">
+      {options.map((option) => {
+        const isSelected = value === option.value;
+        return (
+          <label
+            htmlFor={option.id}
+            key={option.id}
+            className={`group min-h-[146px] min-w-[129px] w-full cursor-pointer rounded-2xl p-2 transition-[border-color] ${
+              isSelected
+                ? "border-2 border-[#053782]"
+                : "border-2 border-gray6 hover:border-[#053782]/40"
             }`}
           >
-            <Image
-              src={option.icon}
-              alt="role"
-              width={32}
-              height={32}
+            <input
+              type="radio"
+              name="role"
+              id={option.id}
+              value={option.value}
+              checked={isSelected}
+              onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
+                onChange(
+                  event.target.value as
+                    | "buyer"
+                    | "distributor"
+                    | "engineer"
+                    | "oem"
+                );
+              }}
+              hidden
             />
-            <p>{option.label}</p>
-          </div>
-        </label>
-      ))}
+            <div className="flex h-full flex-col items-center justify-center gap-2 rounded-xl bg-gray7 px-2 py-6 text-center text-sm font-medium text-gray1">
+              <Image
+                src={option.icon}
+                alt="role"
+                width={36}
+                height={36}
+              />
+              <p>{option.label}</p>
+            </div>
+          </label>
+        );
+      })}
     </div>
   );
 };

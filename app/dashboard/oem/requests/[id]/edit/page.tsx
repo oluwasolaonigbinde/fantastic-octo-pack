@@ -17,6 +17,7 @@ import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { fetchProductById, updateProductById } from "@/store/slices/product-slice";
 import type { Category } from "@/types/categories";
 import type {
+  CustomSpecification,
   KeyAttributeItem,
   Product,
   ProductImage,
@@ -35,9 +36,7 @@ type EditableFormState = {
   model: string;
   brand: string;
   description: string;
-  quantityAvailable: string;
   pricePerUnit: string;
-  priceMode: "fixed" | "negotiable";
   keySpecificationsText: string;
   customSpecificationsText: string;
 };
@@ -73,9 +72,7 @@ const EMPTY_FORM: EditableFormState = {
   model: "",
   brand: "",
   description: "",
-  quantityAvailable: "",
   pricePerUnit: "",
-  priceMode: "fixed",
   keySpecificationsText: "",
   customSpecificationsText: "",
 };
@@ -132,6 +129,20 @@ const parseAttributes = (value: string, includeModel?: string): KeyAttributeItem
   return items;
 };
 
+/** Maps the key/custom specification text fields to the backend `customSpecifications` shape. */
+const buildCustomSpecificationsPayload = (
+  form: Pick<EditableFormState, "keySpecificationsText" | "customSpecificationsText" | "model">,
+): CustomSpecification[] | undefined => {
+  const items = [
+    ...parseAttributes(richHtmlToPlainText(form.keySpecificationsText)),
+    ...parseAttributes(richHtmlToPlainText(form.customSpecificationsText), form.model),
+  ]
+    .filter((item) => item.spec && item.detail)
+    .map((item) => ({ key: item.spec as string, value: item.detail as string }));
+
+  return items.length > 0 ? items : undefined;
+};
+
 const getDefaultImageIndex = (images: ProductImage[]) => {
   const index = images.findIndex((image) => image.isDefault);
   return index >= 0 ? index : 0;
@@ -140,13 +151,11 @@ const getDefaultImageIndex = (images: ProductImage[]) => {
 const buildFormFromProduct = (product: Product): EditableFormState => ({
   name: product.name || "",
   category: product.category || "",
-  subCategory: product.sub_category || "",
+  subCategory: product.sub_category?.[0] || "",
   model: extractEditableModel(product),
   brand: product.brand_oem || "",
   description: product.description || "",
-  quantityAvailable: product.quantityAvailable ? String(product.quantityAvailable) : "",
   pricePerUnit: product.pricePerUnit ? String(product.pricePerUnit) : "",
-  priceMode: product.priceMode === "negotiable" ? "negotiable" : "fixed",
   keySpecificationsText: product.keySpecifications || "",
   customSpecificationsText: buildCustomSpecificationsText(product),
 });
@@ -193,20 +202,11 @@ const buildBaseUpdatePayload = (
 ): UpdateProduct => ({
   name: form.name.trim(),
   category: form.category.trim(),
-  sub_category: form.subCategory.trim() || undefined,
+  sub_category: form.subCategory.trim() ? [form.subCategory.trim()] : undefined,
   brand_oem: form.brand.trim() || undefined,
   description: form.description.trim() || undefined,
-  quantityAvailable: form.quantityAvailable ? Number(form.quantityAvailable) : undefined,
   pricePerUnit: form.pricePerUnit ? Number(form.pricePerUnit) : undefined,
-  priceMode: form.priceMode,
-  keySpecifications: richHtmlToPlainText(form.keySpecificationsText) || undefined,
-  key_attributes: {
-    industry_specific: product.key_attributes?.industry_specific ?? [],
-    other: parseAttributes(
-      richHtmlToPlainText(form.customSpecificationsText),
-      form.model,
-    ),
-  },
+  customSpecifications: buildCustomSpecificationsPayload(form),
   images: retainedImages.map((image, index) => ({
     ...image,
     isDefault: index === defaultImageIndex,
@@ -579,26 +579,16 @@ export default function OemEditProductPage() {
 
           appendIfPresent(formData, "name", basePayload.name);
           appendIfPresent(formData, "category", basePayload.category);
-          appendIfPresent(formData, "sub_category", basePayload.sub_category);
+          appendIfPresent(formData, "sub_category", basePayload.sub_category?.[0]);
           appendIfPresent(formData, "brand_oem", basePayload.brand_oem);
           appendIfPresent(formData, "description", basePayload.description);
-
-          if (typeof basePayload.quantityAvailable === "number") {
-            formData.append("quantityAvailable", String(basePayload.quantityAvailable));
-          }
 
           if (typeof basePayload.pricePerUnit === "number") {
             formData.append("pricePerUnit", String(basePayload.pricePerUnit));
           }
 
-          if (basePayload.priceMode) {
-            formData.append("priceMode", basePayload.priceMode);
-          }
-
-          appendIfPresent(formData, "keySpecifications", basePayload.keySpecifications);
-
-          if (basePayload.key_attributes) {
-            formData.append("key_attributes", JSON.stringify(basePayload.key_attributes));
+          if (basePayload.customSpecifications) {
+            formData.append("customSpecifications", JSON.stringify(basePayload.customSpecifications));
           }
 
           formData.append("existingImages", JSON.stringify(retainedImages));

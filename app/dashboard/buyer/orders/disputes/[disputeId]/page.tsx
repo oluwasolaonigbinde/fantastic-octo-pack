@@ -427,7 +427,7 @@ export default function BuyerOrderDisputeDetailPage() {
 
             <SummaryCard dispute={dispute} />
 
-            <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
+            <div className="grid gap-4 lg:grid-cols-[360px_1fr] lg:items-start">
               <div className="space-y-4">
                 {tone?.isResolved ? (
                   <>
