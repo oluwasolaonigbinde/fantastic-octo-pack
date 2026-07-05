@@ -16,7 +16,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { queryKeys } from "@/lib/query-keys";
-import orderDisputeService from "@/services/orderDisputeService";
+import orderDisputeService, {
+  type AdminOrderDisputeFilters,
+} from "@/services/orderDisputeService";
 import type {
   CreateOrderDisputePayload,
   OrderDispute,
@@ -53,6 +55,25 @@ export const useOrderDisputesQuery = (
   return useQuery({
     queryKey: queryKeys.orderDisputes.list(filters),
     queryFn: () => orderDisputeService.fetchOrderDisputes(token as string),
+    enabled: Boolean(token) && (options?.enabled ?? true),
+    select: normalizeDisputes,
+  });
+};
+
+/**
+ * Every order dispute on the platform (admin only). Backed by
+ * `GET /admin/order-disputes`, which supports status/party/date filters.
+ */
+export const useAdminOrderDisputesQuery = (
+  filters: AdminOrderDisputeFilters = {},
+  options?: { enabled?: boolean },
+) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: queryKeys.orderDisputes.list({ admin: true, ...filters }),
+    queryFn: () =>
+      orderDisputeService.fetchAdminOrderDisputes(token as string, filters),
     enabled: Boolean(token) && (options?.enabled ?? true),
     select: normalizeDisputes,
   });

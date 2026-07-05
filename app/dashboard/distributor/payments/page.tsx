@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { Bank, PaymentIntent, PaymentStatus } from "@/types/payment";
+import type { Bank, PaymentChannel, PaymentIntent, PaymentStatus } from "@/types/payment";
 
 const formatDateTime = (iso: string) => {
   const d = new Date(iso);
@@ -49,6 +49,19 @@ const statusColor: Record<PaymentStatus, string> = {
   pending_approval: "text-[#F5A400]",
   pending: "text-[#F5A400]",
   refunded: "text-[#F5A400]",
+};
+
+const channelLabel: Record<PaymentChannel, string> = {
+  card: "Card",
+  bank: "Bank",
+  bank_transfer: "Bank transfer",
+  dedicated_virtual_account: "Virtual account",
+  ussd: "USSD",
+  qr: "QR",
+  mobile_money: "Mobile money",
+  eft: "EFT",
+  wallet: "Wallet",
+  internal: "Internal",
 };
 
 export default function DistributorPayments() {
@@ -346,12 +359,13 @@ export default function DistributorPayments() {
                 No transactions found.
               </div>
             ) : (
-              <table className="min-w-[900px] w-full text-left text-sm">
+              <table className="min-w-[1050px] w-full text-left text-sm">
                 <thead>
                   <tr className="border-b border-gray5 text-gray3">
                     <th className="py-3 pr-5 font-medium">Transaction ID</th>
                     <th className="py-3 pr-5 font-medium">Description</th>
                     <th className="py-3 pr-5 font-medium">Transaction type</th>
+                    <th className="py-3 pr-5 font-medium">Channel</th>
                     <th className="py-3 pr-5 font-medium">Amount</th>
                     <th className="py-3 pr-5 font-medium whitespace-nowrap">Date &amp; Time</th>
                     <th className="py-3 font-medium">Status</th>
@@ -361,11 +375,12 @@ export default function DistributorPayments() {
                   {filteredTransactions.map((tx) => (
                     <tr key={tx._id} className="border-b border-gray5 last:border-0">
                       <td className="py-4 pr-5 text-gray1">{tx.reference}</td>
-                      <td className="py-4 pr-5 text-gray1">
-                        {intentLabel[tx.intent] ?? tx.intent} transaction
-                      </td>
+                      <td className="py-4 pr-5 text-gray1">{tx.description ?? "-"}</td>
                       <td className="py-4 pr-5 text-gray1">
                         {intentLabel[tx.intent] ?? tx.intent}
+                      </td>
+                      <td className="py-4 pr-5 text-gray1">
+                        {tx.channel ? (channelLabel[tx.channel] ?? tx.channel) : "-"}
                       </td>
                       <td className="py-4 pr-5 font-medium text-gray1">
                         {formatNaira(koboToNaira(tx.amount))}

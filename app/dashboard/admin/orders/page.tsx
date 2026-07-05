@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import {
   CalendarDays,
   ClipboardList,
@@ -257,7 +257,7 @@ function PlainAction({
 }: {
   children: ReactNode;
   icon: ReactNode;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent) => void;
   tone?: "primary" | "success" | "muted";
 }) {
   const toneClass =
@@ -464,7 +464,11 @@ export default function AdminOrdersPage() {
                   <EmptyRow colSpan={8} />
                 ) : (
                   ordersPage.docs.map((row) => (
-                    <TableRow key={row.id}>
+                    <TableRow
+                      key={row.id}
+                      onClick={() => void openDetail({ kind: "order", row })}
+                      className="cursor-pointer"
+                    >
                       <TableCell className="min-w-[180px]">
                         <div className="flex items-center gap-3">
                           <span className="size-8 shrink-0 rounded-full bg-gray5" />
@@ -484,7 +488,10 @@ export default function AdminOrdersPage() {
                       <TableCell>
                         <PlainAction
                           icon={<Eye size={16} />}
-                          onClick={() => void openDetail({ kind: "order", row })}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openDetail({ kind: "order", row });
+                          }}
                           tone="success"
                         >
                           View

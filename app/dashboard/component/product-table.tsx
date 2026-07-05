@@ -189,7 +189,15 @@ const ProductTable = ({
                   ? myProducts?.map((product, idx) => {
                        const chip = getListingStatusMeta(product.status);
                       return (
-                        <TableRow key={`recent` + idx}>
+                        <TableRow
+                          key={`recent` + idx}
+                          onClick={() =>
+                            router.push(
+                              `/dashboard/${authData?.role}/catalogue/${product._id}`
+                            )
+                          }
+                          className="cursor-pointer"
+                        >
                           <TableCell className="flex items-center gap-2">
                             <SafeProductImage
                               src={getProductDefaultImageUrl(product)}
@@ -210,11 +218,12 @@ const ProductTable = ({
                           <TableCell>{product.category}</TableCell>
                           <TableCell className="inline-flex items-center gap-3">
                             <button
-                              onClick={() =>
+                              onClick={(event) => {
+                                event.stopPropagation();
                                 router.push(
                                   `/dashboard/${authData?.role}/catalogue/${product._id}`
-                                )
-                              }
+                                );
+                              }}
                               className="w-full text-success cursor-pointer"
                             >
                               <Eye />
@@ -226,7 +235,15 @@ const ProductTable = ({
                   : products?.map((product, idx) => {
                        const chip = getListingStatusMeta(product.status);
                       return (
-                        <TableRow key={`recent` + idx}>
+                        <TableRow
+                          key={`recent` + idx}
+                          onClick={() =>
+                            router.push(
+                              `/dashboard/${authData?.role}/catalogue/${product._id}`
+                            )
+                          }
+                          className="cursor-pointer"
+                        >
                           <TableCell className="flex items-center gap-2">
                             <SafeProductImage
                               src={getProductDefaultImageUrl(product)}
@@ -247,11 +264,12 @@ const ProductTable = ({
                           <TableCell>{product.category}</TableCell>
                           <TableCell className="inline-flex items-center gap-3">
                             <button
-                              onClick={() =>
+                              onClick={(event) => {
+                                event.stopPropagation();
                                 router.push(
                                   `/dashboard/${authData?.role}/catalogue/${product._id}`
-                                )
-                              }
+                                );
+                              }}
                               className="w-full text-success cursor-pointer"
                             >
                               <Eye />

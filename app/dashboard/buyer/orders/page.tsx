@@ -145,7 +145,7 @@ function OrderTable({
                   {formatCurrency(order.totalPrice)}
                 </td>
                 <td className="py-4 pr-4 text-[#111827]">
-                  {formatDate(order.createdAt)} (1 week)
+                  {formatDate(order.createdAt)}
                 </td>
                 <td className={`py-4 pr-4 ${statusTone.textClassName}`}>
                   {statusTone.label}

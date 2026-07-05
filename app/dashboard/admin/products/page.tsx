@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Header from "../../component/header";
 import { Button, Input, SingleSelect, Skeleton } from "@/components/base";
 import {
@@ -12,6 +13,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { CalendarDays, Download, Eye, Filter } from "lucide-react";
 import { ADMIN_PRODUCTS_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import { useAppSelector } from "@/hooks/useAppSelector";
@@ -125,6 +131,7 @@ function MetricCard({
 }
 
 export default function AdminProductsPage() {
+  const router = useRouter();
   const { data: authData } = useAppSelector((state) => state.auth);
   const { data: categories = [] } = useCategoriesQuery();
 
@@ -418,7 +425,13 @@ export default function AdminProductsPage() {
                     const image = product.images.find((item) => item.isDefault)?.url;
 
                     return (
-                      <TableRow key={product._id}>
+                      <TableRow
+                        key={product._id}
+                        onClick={() =>
+                          router.push(`/dashboard/admin/products/${product._id}`)
+                        }
+                        className="cursor-pointer hover:bg-gray7"
+                      >
                         <TableCell className="min-w-[220px]">
                           <div className="flex items-center gap-3">
                             <div className="size-8 shrink-0 overflow-hidden rounded bg-gray5">
@@ -442,15 +455,31 @@ export default function AdminProductsPage() {
                         <TableCell>{getProductStockTableValue(product)}</TableCell>
                         <TableCell>{formatMoney(product.pricePerUnit)}</TableCell>
                         <TableCell>
-                          <span
-                            className={`text-base font-normal ${getAdminTableStatusTextClass(product.status)}`}
-                          >
-                            {statusLabel}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`text-base font-normal ${getAdminTableStatusTextClass(product.status)}`}
+                            >
+                              {statusLabel}
+                            </span>
+                            {product.hasPendingRevision ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    className="inline-flex size-2.5 shrink-0 cursor-default rounded-full bg-yellow-400"
+                                    aria-label="Changes awaiting approval"
+                                  />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Changes awaiting approval
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Link
                             href={`/dashboard/admin/products/${product._id}`}
+                            onClick={(event) => event.stopPropagation()}
                             className="inline-flex items-center gap-2 text-base font-medium text-primary"
                           >
                             <Eye size={16} />

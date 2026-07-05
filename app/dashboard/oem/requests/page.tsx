@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   ChevronLeft,
@@ -37,6 +38,7 @@ import {
 const PAGE_SIZE = 10;
 
 export default function OemListingRequests() {
+  const router = useRouter();
   const { data: authData } = useAppSelector((state) => state.auth);
   const { data: oemListing, isLoading } = useOemListingRequestsQuery(
     { assignedOem: authData?._id, populate: "createdBy" },
@@ -281,7 +283,11 @@ export default function OemListingRequests() {
                     const statusMeta = getOemStatusMeta(status);
 
                     return (
-                      <TableRow key={product._id}>
+                      <TableRow
+                        key={product._id}
+                        onClick={() => router.push(`/dashboard/oem/requests/${product._id}`)}
+                        className="cursor-pointer"
+                      >
                         <TableCell className="whitespace-nowrap">
                           <div className="flex items-center gap-3">
                             <div className="size-7 rounded-md bg-gray5" />
@@ -302,6 +308,7 @@ export default function OemListingRequests() {
                         <TableCell>
                           <Link
                             href={`/dashboard/oem/requests/${product._id}`}
+                            onClick={(event) => event.stopPropagation()}
                             className="inline-flex items-center gap-2 text-sm font-medium text-primary"
                           >
                             <Eye size={16} />

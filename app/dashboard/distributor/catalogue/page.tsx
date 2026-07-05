@@ -8,6 +8,11 @@ import Header from "../../component/header";
 import { Button, Input, SingleSelect, Skeleton } from "@/components/base";
 import SafeProductImage from "@/components/product/SafeProductImage";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Table,
   TableBody,
   TableCell,
@@ -305,7 +310,13 @@ export default function DistributorCatalogue() {
                   {visibleProducts.map((product) => {
                     const statusMeta = getListingStatusMeta(product.status);
                     return (
-                      <TableRow key={product._id}>
+                      <TableRow
+                        key={product._id}
+                        onClick={() =>
+                          router.push(`/dashboard/distributor/catalogue/${product._id}`)
+                        }
+                        className="cursor-pointer"
+                      >
                         <TableCell className="min-w-[240px]">
                           <div className="flex items-center gap-3">
                             <SafeProductImage
@@ -323,11 +334,26 @@ export default function DistributorCatalogue() {
                         <TableCell>{formatCurrency(product.pricePerUnit)}</TableCell>
                         <TableCell>{getProductStockTableValue(product)}</TableCell>
                         <TableCell>
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}
-                          >
-                            {statusMeta.label}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}
+                            >
+                              {statusMeta.label}
+                            </span>
+                            {product.hasPendingRevision ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    className="inline-flex size-2.5 shrink-0 cursor-default rounded-full bg-yellow-400"
+                                    aria-label="Changes awaiting approval"
+                                  />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Changes awaiting approval
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell>{product.category}</TableCell>
                         <TableCell>
@@ -335,27 +361,45 @@ export default function DistributorCatalogue() {
                             <button
                               type="button"
                               aria-label={`View ${product.name}`}
-                              onClick={() =>
+                              onClick={(event) => {
+                                event.stopPropagation();
                                 router.push(
                                   `/dashboard/distributor/catalogue/${product._id}`,
-                                )
-                              }
+                                );
+                              }}
                             >
                               <Eye size={16} />
                             </button>
-                            <button
-                              type="button"
-                              aria-label={`Edit ${product.name}`}
-                              disabled
-                              title={
-                                canEditProduct(product.status)
-                                  ? "Edit flow is being re-aligned to the approved lifecycle."
-                                  : "Editing is locked once a product is submitted for review."
-                              }
-                              className="cursor-not-allowed text-primary/40"
-                            >
-                              <Pencil size={16} />
-                            </button>
+                            {canEditProduct(product.status) ? (
+                              <button
+                                type="button"
+                                aria-label={`Edit ${product.name}`}
+                                title={
+                                  product.status === "approved"
+                                    ? "Edit this listing — changes go live after admin approval."
+                                    : "Edit this product."
+                                }
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  router.push(
+                                    `/dashboard/distributor/catalogue/${product._id}/edit`,
+                                  );
+                                }}
+                                className="text-primary hover:text-primary/80"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                aria-label={`Edit ${product.name}`}
+                                disabled
+                                title="Editing is locked while this product is under review."
+                                className="cursor-not-allowed text-primary/40"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

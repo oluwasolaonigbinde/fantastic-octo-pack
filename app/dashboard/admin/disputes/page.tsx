@@ -28,12 +28,23 @@ import {
   useServiceDisputeQuery,
   useServiceDisputesQuery,
 } from "@/hooks/queries/service-disputes";
+import { useAdminOrderDisputesQuery } from "@/hooks/queries/order-disputes";
+import {
+  getDisputeAmount,
+  getDisputeBuyerName,
+  getDisputeDisplayId,
+  getDisputeOrder,
+  getDisputeSellerName,
+} from "@/lib/order-dispute-presenter";
+import { getOrderDisplayId } from "@/constants/demoBuyerOrders";
+import { formatNaira } from "@/lib/wallet-format";
 import { ServiceRequestData } from "@/types/service-request";
 import {
   ServiceDisputeData,
   ServiceDisputeResolutionOutcome,
   ServiceDisputeStatus,
 } from "@/types/service-dispute";
+import type { OrderDisputeStatus } from "@/types/order-dispute";
 import { UserRole } from "@/types/user";
 
 const DISPUTE_NOTE_ACCENTS = ["bg-[#2F6BFF]", "bg-[#F6B90A]", "bg-[#22C55E]"] as const;
@@ -371,11 +382,223 @@ function DisputeNoteCard({
   );
 }
 
+type DisputeTab = "order" | "service";
+
+function DisputeTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: DisputeTab;
+  onChange: (tab: DisputeTab) => void;
+}) {
+  const tabs: Array<{ id: DisputeTab; label: string }> = [
+    { id: "order", label: "Order Disputes" },
+    { id: "service", label: "Service Disputes" },
+  ];
+
+  return (
+    <div className="inline-flex gap-1 rounded-2xl border border-[#E6ECF2] bg-white p-1">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => onChange(tab.id)}
+          className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+            activeTab === tab.id ? "bg-primary text-white" : "text-gray3"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function orderDisputeStatusLabel(status: OrderDisputeStatus): string {
+  switch (status) {
+    case "under_review":
+      return "Under review";
+    case "awaiting_evidence":
+      return "Awaiting evidence";
+    case "resolved":
+      return "Resolved";
+    default:
+      return status;
+  }
+}
+
+function orderDisputeStatusClassName(status: OrderDisputeStatus): string {
+  switch (status) {
+    case "resolved":
+      return "text-success";
+    case "awaiting_evidence":
+      return "text-warning";
+    default:
+      return "text-primary";
+  }
+}
+
+/**
+ * The "Order Disputes" tab — escrow disputes raised against orders. Each row
+ * links to the standalone admin order-dispute detail page. Data comes straight
+ * from `GET /order-disputes`.
+ */
+function OrderDisputesTab() {
+  const router = useRouter();
+  const query = useAdminOrderDisputesQuery();
+  const disputes = useMemo(() => query.data ?? [], [query.data]);
+  const loading = query.isPending;
+  const error = query.isError
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to load order disputes."
+    : "";
+
+  const summary = useMemo(
+    () => ({
+      total: disputes.length,
+      awaitingEvidence: disputes.filter((d) => d.status === "awaiting_evidence")
+        .length,
+      resolved: disputes.filter((d) => d.status === "resolved").length,
+      pendingReview: disputes.filter((d) => d.status === "under_review").length,
+    }),
+    [disputes],
+  );
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <SummaryCard
+          title="Total disputes"
+          value={String(summary.total)}
+          icon={<CircleDollarSign size={18} className="text-primary" />}
+          iconBg="bg-[#E7F1FF]"
+          subtitle={`${summary.total} records in queue`}
+        />
+        <SummaryCard
+          title="Awaiting evidence"
+          value={String(summary.awaitingEvidence)}
+          icon={<SearchCheck size={18} className="text-[#F08A32]" />}
+          iconBg="bg-[#FFF3E8]"
+          subtitle={`${summary.awaitingEvidence} need evidence`}
+        />
+        <SummaryCard
+          title="Resolved disputes"
+          value={String(summary.resolved)}
+          icon={<CheckCircle2 size={18} className="text-[#13A83B]" />}
+          iconBg="bg-[#E8FAEE]"
+          subtitle={`${summary.resolved} resolved cases`}
+        />
+        <SummaryCard
+          title="Pending review"
+          value={String(summary.pendingReview)}
+          icon={<FileText size={18} className="text-[#F6B90A]" />}
+          iconBg="bg-[#FFF5DB]"
+          subtitle={`${summary.pendingReview} under review`}
+        />
+      </div>
+
+      <section className="card space-y-6">
+        <div>
+          <h3 className="medium3 text-gray1">All Order Disputes</h3>
+          <p className="mt-1 text-sm text-gray3">View all escrow dispute logs</p>
+        </div>
+
+        {loading ? (
+          <div className="rounded-2xl border border-[#E6ECF2] bg-white p-6 text-sm text-[#6B7280]">
+            Loading order disputes...
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            {error}
+          </div>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-[#EEF2F7] text-xs font-medium text-gray3">
+                  <th className="pb-3 pr-4">Dispute ID</th>
+                  <th className="pb-3 pr-4">Order ID</th>
+                  <th className="pb-3 pr-4">Raised by</th>
+                  <th className="pb-3 pr-4">Against</th>
+                  <th className="pb-3 pr-4">Amount</th>
+                  <th className="pb-3 pr-4">Status</th>
+                  <th className="pb-3 pr-4">Date raised</th>
+                  <th className="pb-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disputes.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-sm text-gray3">
+                      No order disputes found.
+                    </td>
+                  </tr>
+                ) : (
+                  disputes.map((dispute) => {
+                    const order = getDisputeOrder(dispute);
+                    const orderId = getOrderDisplayId(
+                      order?._id ??
+                        (typeof dispute.order === "string"
+                          ? dispute.order
+                          : undefined),
+                    );
+                    return (
+                      <tr
+                        key={dispute._id}
+                        onClick={() => router.push(`/dashboard/admin/order-disputes/${dispute._id}`)}
+                        className="cursor-pointer border-t border-[#EEF2F7]"
+                      >
+                        <td className="py-4 pr-4 font-medium text-gray1">
+                          <span className="inline-block max-w-[120px] truncate align-bottom">
+                            {getDisputeDisplayId(dispute._id)}
+                          </span>
+                        </td>
+                        <td className="py-4 pr-4">{orderId}</td>
+                        <td className="py-4 pr-4">{getDisputeBuyerName(dispute)}</td>
+                        <td className="py-4 pr-4">{getDisputeSellerName(dispute)}</td>
+                        <td className="py-4 pr-4 whitespace-nowrap">
+                          {formatNaira(getDisputeAmount(dispute))}
+                        </td>
+                        <td className="py-4 pr-4">
+                          <span
+                            className={`text-xs font-medium ${orderDisputeStatusClassName(dispute.status)}`}
+                          >
+                            {orderDisputeStatusLabel(dispute.status)}
+                          </span>
+                        </td>
+                        <td className="py-4 pr-4 whitespace-nowrap">
+                          {formatDate(dispute.createdAt)}
+                        </td>
+                        <td className="py-4">
+                          <Link
+                            href={`/dashboard/admin/order-disputes/${dispute._id}`}
+                            onClick={(event) => event.stopPropagation()}
+                            className="inline-flex items-center gap-2 text-sm font-medium text-primary"
+                          >
+                            <Eye size={14} />
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
 export default function AdminDisputesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedDisputeId = searchParams.get("disputeId");
 
+  const [activeTab, setActiveTab] = useState<DisputeTab>("order");
   const [statusFilter, setStatusFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [dateInputValue, setDateInputValue] = useState("");
@@ -581,6 +804,11 @@ export default function AdminDisputesPage() {
         <div className="space-y-8 p-4 md:p-6">
           {!detailView ? (
             <>
+              <DisputeTabs activeTab={activeTab} onChange={setActiveTab} />
+              {activeTab === "order" ? (
+                <OrderDisputesTab />
+              ) : (
+                <>
               <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
                 <SummaryCard
                   title="Total disputes"
@@ -718,7 +946,11 @@ export default function AdminDisputesPage() {
                           </tr>
                         ) : (
                           filteredDisputes.map((dispute) => (
-                            <tr key={dispute._id} className="border-t border-[#EEF2F7]">
+                            <tr
+                              key={dispute._id}
+                              onClick={() => handleOpenDisputeDetail(dispute._id)}
+                              className="cursor-pointer border-t border-[#EEF2F7]"
+                            >
                               <td className="py-4 pr-4 font-medium text-gray1">
                                 <span className="inline-block max-w-[120px] truncate align-bottom">
                                   {dispute._id}
@@ -751,7 +983,10 @@ export default function AdminDisputesPage() {
                               <td className="py-4">
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenDisputeDetail(dispute._id)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleOpenDisputeDetail(dispute._id);
+                                  }}
                                   className="inline-flex items-center gap-2 text-sm font-medium text-primary"
                                 >
                                   <Eye size={14} />
@@ -766,6 +1001,8 @@ export default function AdminDisputesPage() {
                   </div>
                 )}
               </section>
+                </>
+              )}
             </>
           ) : (
             <>

@@ -464,7 +464,8 @@ export default function SubmitterKycView({
             return (
               <article
                 key={tier.tierKey}
-                className="flex min-h-[69px] flex-col items-start justify-between gap-3 overflow-hidden rounded-[10px] bg-white px-[10px] py-4 sm:flex-row sm:items-center sm:gap-4 sm:py-0"
+                onClick={() => router.push(detailHref)}
+                className="flex min-h-[69px] cursor-pointer flex-col items-start justify-between gap-3 overflow-hidden rounded-[10px] bg-white px-[10px] py-4 sm:flex-row sm:items-center sm:gap-4 sm:py-0"
               >
                 <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1">
                   <div className="flex shrink-0 items-center gap-[9px]">
@@ -490,6 +491,7 @@ export default function SubmitterKycView({
                   <TierBadge status={status} />
                   <Link
                     href={detailHref}
+                    onClick={(event) => event.stopPropagation()}
                     className="inline-flex items-center gap-2 text-[15px] font-normal leading-6 text-black sm:text-[16px]"
                   >
                     See details
@@ -546,7 +548,8 @@ export default function SubmitterKycView({
                 documents.map((document) => (
                   <tr
                     key={document.fieldName}
-                    className="h-[38px] border-b border-[#EEF1F5] text-[12px] leading-4 text-black last:border-b-0"
+                    onClick={() => window.open(document.fileUrl, "_blank", "noopener,noreferrer")}
+                    className="h-[38px] cursor-pointer border-b border-[#EEF1F5] text-[12px] leading-4 text-black last:border-b-0"
                   >
                     <td className="truncate px-2 md:px-3">{getDocumentLabel(tier, document.fieldName)}</td>
                     <td className="px-2 md:px-3">
@@ -558,6 +561,7 @@ export default function SubmitterKycView({
                         href={document.fileUrl}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={(event) => event.stopPropagation()}
                         className="mx-auto flex size-6 items-center justify-center rounded-full text-[#0669D9]"
                         aria-label={`View ${getDocumentLabel(tier, document.fieldName)}`}
                       >
@@ -604,7 +608,8 @@ export default function SubmitterKycView({
           {submission.documents.map((document) => (
             <tr
               key={document.fieldName}
-              className="h-12 border-b border-[#EEF1F5] text-[15px] font-normal leading-6 text-[#111827] last:border-b-0"
+              onClick={() => window.open(document.fileUrl, "_blank", "noopener,noreferrer")}
+              className="h-12 cursor-pointer border-b border-[#EEF1F5] text-[15px] font-normal leading-6 text-[#111827] last:border-b-0"
             >
               <td className="truncate px-3">{getDocumentLabel(tier, document.fieldName)}</td>
               <td className="px-3">{getKycFileTypeLabel(document.fileType, document.fileName)}</td>
@@ -614,6 +619,7 @@ export default function SubmitterKycView({
                   href={document.fileUrl}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(event) => event.stopPropagation()}
                   className="flex size-8 items-center justify-center text-[#111827]"
                   aria-label={`View ${getDocumentLabel(tier, document.fieldName)}`}
                 >
@@ -939,7 +945,11 @@ export default function SubmitterKycView({
                       </TableHeader>
                       <TableBody>
                         {submission.documents.map((document) => (
-                          <TableRow key={document.fieldName}>
+                          <TableRow
+                            key={document.fieldName}
+                            onClick={() => window.open(document.fileUrl, "_blank", "noopener,noreferrer")}
+                            className="cursor-pointer"
+                          >
                             <TableCell>{document.fileName}</TableCell>
                             <TableCell>
                               {getKycFileTypeLabel(document.fileType, document.fileName)}
@@ -950,6 +960,7 @@ export default function SubmitterKycView({
                                 href={document.fileUrl}
                                 target="_blank"
                                 rel="noreferrer"
+                                onClick={(event) => event.stopPropagation()}
                                 className="text-primary"
                               >
                                 Download

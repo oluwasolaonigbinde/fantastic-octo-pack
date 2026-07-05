@@ -161,7 +161,11 @@ export function DistributorRecentProductsTable({
             return (
               <TableRow
                 key={product._id ?? `recent-${idx}`}
-                className="h-12 border-b border-[#F3F4F6]"
+                onClick={() => {
+                  if (!canOpenProduct) return;
+                  router.push(`/dashboard/${roleSegment}/catalogue/${product._id}`);
+                }}
+                className={`h-12 border-b border-[#F3F4F6] ${canOpenProduct ? "cursor-pointer" : ""}`}
               >
                 <TableCell className="flex items-center gap-2 font-normal text-black">
                   <SafeProductImage
@@ -193,11 +197,12 @@ export function DistributorRecentProductsTable({
                       type="button"
                       aria-label={`View ${product.name}`}
                       className="text-[#13A83B] hover:opacity-80"
-                      onClick={() =>
+                      onClick={(event) => {
+                        event.stopPropagation();
                         router.push(
                           `/dashboard/${roleSegment}/catalogue/${product._id}`,
-                        )
-                      }
+                        );
+                      }}
                     >
                       <Eye className="size-6" />
                     </button>
@@ -210,7 +215,8 @@ export function DistributorRecentProductsTable({
                           ? "text-[#0669D9] hover:opacity-80"
                           : "cursor-not-allowed text-gray5"
                       }
-                      onClick={() => {
+                      onClick={(event) => {
+                        event.stopPropagation();
                         if (!canOpenProduct) return;
                         router.push(
                           `/dashboard/${roleSegment}/catalogue/${product._id}`,

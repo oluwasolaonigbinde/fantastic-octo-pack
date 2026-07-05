@@ -438,7 +438,8 @@ export function BuyerServiceRequestCards({
                 return (
                   <tr
                     key={request._id}
-                    className="text-[#111827] [&>td]:border-b [&>td]:border-[#EEF2F7] [&>td]:py-4"
+                    onClick={() => setDetailTargetId(request._id)}
+                    className="cursor-pointer text-[#111827] [&>td]:border-b [&>td]:border-[#EEF2F7] [&>td]:py-4"
                   >
                     <td className="px-4">
                       <div className="flex items-center gap-3">
@@ -465,7 +466,10 @@ export function BuyerServiceRequestCards({
                       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                         <button
                           type="button"
-                          onClick={() => setDetailTargetId(request._id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setDetailTargetId(request._id);
+                          }}
                           className="inline-flex items-center gap-1.5 font-semibold text-primary"
                         >
                           <Eye className="size-4" strokeWidth={1.75} aria-hidden />
@@ -475,6 +479,7 @@ export function BuyerServiceRequestCards({
                         {showMessaging ? (
                           <Link
                             href="/dashboard/buyer/messages"
+                            onClick={(event) => event.stopPropagation()}
                             className="inline-flex items-center gap-1 text-xs font-semibold text-primary underline-offset-2 hover:underline"
                           >
                             Open chat

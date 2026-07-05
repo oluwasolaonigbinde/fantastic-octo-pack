@@ -135,7 +135,8 @@ function MobileOrderList({
         return (
           <article
             key={order.id}
-            className="rounded-2xl border border-[#DDE0E5] bg-white p-4"
+            onClick={() => onView(order)}
+            className="cursor-pointer rounded-2xl border border-[#DDE0E5] bg-white p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -176,7 +177,10 @@ function MobileOrderList({
             </div>
             <button
               type="button"
-              onClick={() => onView(order)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onView(order);
+              }}
               className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-primary text-sm font-medium text-primary"
             >
               <Eye size={16} />
@@ -207,7 +211,8 @@ function MobileDisputeList({
         return (
           <article
             key={dispute.sourceId}
-            className="rounded-2xl border border-[#DDE0E5] bg-white p-4"
+            onClick={() => onView(dispute)}
+            className="cursor-pointer rounded-2xl border border-[#DDE0E5] bg-white p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -248,7 +253,10 @@ function MobileDisputeList({
             </div>
             <button
               type="button"
-              onClick={() => onView(dispute)}
+              onClick={(event) => {
+                event.stopPropagation();
+                onView(dispute);
+              }}
               className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-primary text-sm font-medium text-primary"
             >
               <Eye size={16} />
@@ -451,7 +459,11 @@ export default function DistributorOrdersPage() {
                       {displayOrders.map((order) => {
                         const statusTone = getOrderStatusTone(order.status);
                         return (
-                          <tr key={order.id} className="border-b border-[#F3F4F6]">
+                          <tr
+                            key={order.id}
+                            onClick={() => router.push(`/dashboard/distributor/orders/${order.id}`)}
+                            className="cursor-pointer border-b border-[#F3F4F6]"
+                          >
                             <td className="py-4 pr-4 text-[#111827]">
                               {order.id.startsWith("ORD-")
                                 ? order.id
@@ -478,9 +490,10 @@ export default function DistributorOrdersPage() {
                             <td className="py-4">
                               <button
                                 type="button"
-                                onClick={() =>
-                                  router.push(`/dashboard/distributor/orders/${order.id}`)
-                                }
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  router.push(`/dashboard/distributor/orders/${order.id}`);
+                                }}
                                 className="inline-flex items-center gap-2 text-sm font-medium text-primary"
                               >
                                 <Eye size={15} />
@@ -569,7 +582,14 @@ export default function DistributorOrdersPage() {
                       return (
                         <tr
                           key={dispute.sourceId}
-                          className="border-b border-[#F3F4F6]"
+                          onClick={() =>
+                            router.push(
+                              `/dashboard/distributor/orders/${
+                                dispute.orderSourceId || dispute.sourceId
+                              }/disputes/${dispute.sourceId}`,
+                            )
+                          }
+                          className="cursor-pointer border-b border-[#F3F4F6]"
                         >
                           <td className="py-4 pr-4 text-[#111827]">{dispute.id}</td>
                           <td className="py-4 pr-4 text-[#111827]">
@@ -593,13 +613,14 @@ export default function DistributorOrdersPage() {
                           <td className="py-4">
                             <button
                               type="button"
-                              onClick={() =>
+                              onClick={(event) => {
+                                event.stopPropagation();
                                 router.push(
                                   `/dashboard/distributor/orders/${
                                     dispute.orderSourceId || dispute.sourceId
                                   }/disputes/${dispute.sourceId}`,
-                                )
-                              }
+                                );
+                              }}
                               className="inline-flex items-center gap-2 text-sm font-medium text-primary"
                             >
                               <Eye size={15} />

@@ -19,7 +19,7 @@ import { useWallet } from "@/hooks/useWallet";
 import { useWalletTopup } from "@/hooks/useWalletTopup";
 import { useEscrowSummary } from "@/hooks/useEscrowSummary";
 import { TopUpDrawer, TopUpReturnBanner } from "@/components/wallet/wallet-topup";
-import type { PaymentIntent, PaymentStatus } from "@/types/payment";
+import type { PaymentChannel, PaymentIntent, PaymentStatus } from "@/types/payment";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -63,6 +63,19 @@ const statusColor: Record<PaymentStatus, string> = {
   pending_approval: "text-[#F5A400]",
   pending: "text-[#F5A400]",
   refunded: "text-[#017BED]",
+};
+
+const channelLabel: Record<PaymentChannel, string> = {
+  card: "Card",
+  bank: "Bank",
+  bank_transfer: "Bank transfer",
+  dedicated_virtual_account: "Virtual account",
+  ussd: "USSD",
+  qr: "QR",
+  mobile_money: "Mobile money",
+  eft: "EFT",
+  wallet: "Wallet",
+  internal: "Internal",
 };
 
 // ─── Subcomponents ───────────────────────────────────────────────────────────
@@ -389,12 +402,13 @@ export default function BuyerPayments() {
                 No transactions found.
               </div>
             ) : (
-              <table className="min-w-[1020px] w-full text-left text-base">
+              <table className="min-w-[1180px] w-full text-left text-base">
                 <thead>
                   <tr className="border-b border-[#F0F2F5] text-[#6B7280]">
                     <th className="py-3 pr-6 font-medium">Transaction ID</th>
                     <th className="py-3 pr-6 font-medium">Description</th>
                     <th className="py-3 pr-6 font-medium">Transaction type</th>
+                    <th className="py-3 pr-6 font-medium">Channel</th>
                     <th className="py-3 pr-6 font-medium">Amount</th>
                     <th className="py-3 pr-6 font-medium">Date &amp; Time</th>
                     <th className="py-3 font-medium">Status</th>
@@ -410,13 +424,17 @@ export default function BuyerPayments() {
                         {transaction.reference}
                       </td>
                       <td className="py-4 pr-6 text-[#000000]">
-                        {intentLabel[transaction.intent] ?? transaction.intent}{" "}
-                        transaction
+                        {transaction.description ?? "-"}
                       </td>
                       <td
                         className={`py-4 pr-6 ${intentColor[transaction.intent] ?? "text-[#111827]"}`}
                       >
                         {intentLabel[transaction.intent] ?? transaction.intent}
+                      </td>
+                      <td className="py-4 pr-6 text-[#111827]">
+                        {transaction.channel
+                          ? (channelLabel[transaction.channel] ?? transaction.channel)
+                          : "-"}
                       </td>
                       <td className="py-4 pr-6 font-medium text-[#111827]">
                         {formatNaira(koboToNaira(transaction.amount))}

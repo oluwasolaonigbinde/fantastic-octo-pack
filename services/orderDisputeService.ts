@@ -75,6 +75,53 @@ const fetchOrderDisputes = async (
   return response.json();
 };
 
+/** Query filters accepted by the admin order-dispute list endpoint. */
+export interface AdminOrderDisputeFilters {
+  status?: string;
+  resolutionOutcome?: string;
+  distributorId?: string;
+  buyerId?: string;
+  orderId?: string;
+  search?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * GET /admin/order-disputes — List every order dispute on the platform (admin
+ * only). Supports status/party/date filters, search, and pagination.
+ */
+const fetchAdminOrderDisputes = async (
+  token: string,
+  filters: AdminOrderDisputeFilters = {},
+): Promise<OrderDisputeListResponse> => {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      query.set(key, String(value));
+    }
+  });
+  const queryString = query.toString();
+
+  const response = await fetch(
+    apiUrl(`/admin/order-disputes${queryString ? `?${queryString}` : ""}`),
+    {
+      method: "GET",
+      headers: withAuthHeaders(token),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await parseErrorMessage(response, "Failed to fetch order disputes"),
+    );
+  }
+
+  return response.json();
+};
+
 /** GET /order-disputes/{id} — Get an order dispute. */
 const fetchOrderDisputeById = async (
   token: string,
@@ -198,6 +245,7 @@ const resolveOrderDispute = async (
 export const orderDisputeService = {
   createOrderDispute,
   fetchOrderDisputes,
+  fetchAdminOrderDisputes,
   fetchOrderDisputeById,
   addOrderDisputeComment,
   addOrderDisputeEvidence,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import {
   CalendarDays,
   CircleDollarSign,
@@ -272,7 +272,7 @@ function PlainAction({
 }: {
   children: ReactNode;
   icon: ReactNode;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent) => void;
   tone?: "primary" | "success" | "muted";
 }) {
   const toneClass =
@@ -716,7 +716,11 @@ export default function AdminRfqsOrdersPage() {
                         <EmptyRow colSpan={8} />
                       ) : (
                         rfqsPage.docs.map((row) => (
-                          <TableRow key={row.id}>
+                          <TableRow
+                            key={row.id}
+                            onClick={() => void openDetail({ kind: "rfq", row })}
+                            className="cursor-pointer"
+                          >
                             <TableCell className="min-w-[180px]">
                               <div className="flex items-center gap-3">
                                 <span className="size-8 shrink-0 rounded-full bg-gray5" />
@@ -738,7 +742,10 @@ export default function AdminRfqsOrdersPage() {
                             <TableCell>
                               <PlainAction
                                 icon={<Eye size={16} />}
-                                onClick={() => void openDetail({ kind: "rfq", row })}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void openDetail({ kind: "rfq", row });
+                                }}
                                 tone="success"
                               >
                                 View
@@ -753,7 +760,11 @@ export default function AdminRfqsOrdersPage() {
                         <EmptyRow colSpan={7} />
                       ) : (
                         quotesPage.docs.map((row) => (
-                          <TableRow key={row.id}>
+                          <TableRow
+                            key={row.id}
+                            onClick={() => void openDetail({ kind: "quote", row })}
+                            className="cursor-pointer"
+                          >
                             <TableCell className="min-w-[180px]">
                               <div className="flex items-center gap-3">
                                 <span className="size-8 shrink-0 rounded-full bg-gray5" />
@@ -771,7 +782,10 @@ export default function AdminRfqsOrdersPage() {
                               <span className="inline-flex items-center gap-4">
                                 <PlainAction
                                   icon={<Eye size={16} />}
-                                  onClick={() => void openDetail({ kind: "quote", row })}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void openDetail({ kind: "quote", row });
+                                  }}
                                 >
                                   View
                                 </PlainAction>
@@ -780,6 +794,7 @@ export default function AdminRfqsOrdersPage() {
                                     href={row.downloadUrl}
                                     target="_blank"
                                     rel="noreferrer"
+                                    onClick={(event) => event.stopPropagation()}
                                     className="inline-flex items-center gap-2 text-base font-medium text-success"
                                   >
                                     <Download size={16} />
@@ -892,7 +907,11 @@ export default function AdminRfqsOrdersPage() {
                       <EmptyRow colSpan={8} />
                     ) : (
                       ordersPage.docs.map((row) => (
-                        <TableRow key={row.id}>
+                        <TableRow
+                          key={row.id}
+                          onClick={() => void openDetail({ kind: "order", row })}
+                          className="cursor-pointer"
+                        >
                           <TableCell className="min-w-[180px]">
                             <div className="flex items-center gap-3">
                               <span className="size-8 shrink-0 rounded-full bg-gray5" />
@@ -916,7 +935,10 @@ export default function AdminRfqsOrdersPage() {
                           <TableCell>
                             <PlainAction
                               icon={<Eye size={16} />}
-                              onClick={() => void openDetail({ kind: "order", row })}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void openDetail({ kind: "order", row });
+                              }}
                             >
                               View
                             </PlainAction>

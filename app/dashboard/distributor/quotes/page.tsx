@@ -762,7 +762,15 @@ function DistributorQuotesPageInner() {
                   </TableHeader>
                   <TableBody>
                     {paginatedQuotes.map((q) => (
-                      <TableRow key={q._id} className="border-gray6">
+                      <TableRow
+                        key={q._id}
+                        onClick={() => {
+                          setSelectedQuote(q);
+                          setIsDetailOpen(true);
+                          setSliderView("detail");
+                        }}
+                        className="cursor-pointer border-gray6"
+                      >
                         <TableCell className="text-base text-gray1 py-4">
                           {getBuyerName(q)}
                         </TableCell>
@@ -780,7 +788,8 @@ function DistributorQuotesPageInner() {
                         <TableCell className="text-right py-4">
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
                               setSelectedQuote(q);
                               setIsDetailOpen(true);
                               setSliderView("detail");

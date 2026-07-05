@@ -231,7 +231,11 @@ export default function AdminKycManagement() {
                   </TableRow>
                 ) : (
                   rows.map((row) => (
-                    <TableRow key={row._id}>
+                    <TableRow
+                      key={row._id}
+                      onClick={() => void openSubmission(row._id)}
+                      className="cursor-pointer"
+                    >
                       <TableCell className="min-w-[130px] md:min-w-[180px]">
                         <div className="flex items-center gap-3">
                           <span className="hidden size-8 shrink-0 rounded-full bg-gray5 md:block" />
@@ -254,7 +258,10 @@ export default function AdminKycManagement() {
                           size="sm"
                           iconLeft={<Eye size={14} />}
                           className="w-auto"
-                          onClick={() => void openSubmission(row._id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openSubmission(row._id);
+                          }}
                         />
                       </TableCell>
                     </TableRow>

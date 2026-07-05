@@ -202,7 +202,10 @@ function ActionIcons({ onView }: { onView: () => void }) {
       <button
         type="button"
         aria-label="View details"
-        onClick={onView}
+        onClick={(event) => {
+          event.stopPropagation();
+          onView();
+        }}
         className="text-success hover:text-success/80"
       >
         <Eye size={18} />
@@ -691,7 +694,11 @@ export default function AdminPlatformUsersPage() {
                           <EmptyRow colSpan={7} />
                         ) : (
                           usersPage.docs.map((row) => (
-                            <TableRow key={row.id}>
+                            <TableRow
+                              key={row.id}
+                              onClick={() => setSelectedUser(row)}
+                              className="cursor-pointer"
+                            >
                               <TableCell className="min-w-[220px]">
                                 <UserAvatar row={row} />
                               </TableCell>
@@ -728,7 +735,11 @@ export default function AdminPlatformUsersPage() {
                           <EmptyRow colSpan={7} />
                         ) : (
                           usersPage.docs.map((row) => (
-                            <TableRow key={row.id}>
+                            <TableRow
+                              key={row.id}
+                              onClick={() => setSelectedUser(row)}
+                              className="cursor-pointer"
+                            >
                               <TableCell className="min-w-[220px]">
                                 <UserAvatar row={row} />
                               </TableCell>
@@ -766,7 +777,11 @@ export default function AdminPlatformUsersPage() {
                           <EmptyRow colSpan={6} />
                         ) : (
                           usersPage.docs.map((row) => (
-                            <TableRow key={row.id}>
+                            <TableRow
+                              key={row.id}
+                              onClick={() => setSelectedUser(row)}
+                              className="cursor-pointer"
+                            >
                               <TableCell className="min-w-[220px]">
                                 <UserAvatar row={row} />
                               </TableCell>
@@ -809,7 +824,11 @@ export default function AdminPlatformUsersPage() {
                           <EmptyRow colSpan={6} />
                         ) : (
                           usersPage.docs.map((row) => (
-                            <TableRow key={row.id}>
+                            <TableRow
+                              key={row.id}
+                              onClick={() => setSelectedUser(row)}
+                              className="cursor-pointer"
+                            >
                               <TableCell className="min-w-[220px]">
                                 <UserAvatar row={row} />
                               </TableCell>
@@ -909,7 +928,11 @@ export default function AdminPlatformUsersPage() {
                   </TableHeader>
                   <TableBody>
                     {ONBOARDING_ROWS.map((row) => (
-                      <TableRow key={row.id}>
+                      <TableRow
+                        key={row.id}
+                        onClick={() => setSelectedOnboarding(row)}
+                        className="cursor-pointer"
+                      >
                         <TableCell className="min-w-[260px]">
                           <div className="flex items-center gap-3">
                             <span className="size-8 rounded-lg bg-[#D9D9D9]" />
@@ -925,7 +948,10 @@ export default function AdminPlatformUsersPage() {
                         <TableCell>
                           <button
                             type="button"
-                            onClick={() => setSelectedOnboarding(row)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedOnboarding(row);
+                            }}
                             className="inline-flex items-center gap-2 text-success hover:text-success/80"
                           >
                             <Eye size={18} />

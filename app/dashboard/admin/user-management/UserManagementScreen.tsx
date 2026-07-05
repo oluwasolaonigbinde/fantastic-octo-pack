@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Archive, Edit2, Eye, Plus, Trash2 } from "lucide-react";
 
 import Header from "../../component/header";
@@ -180,11 +181,20 @@ function IconActionButton({
   );
 
   if (href) {
-    return <Link href={href}>{content}</Link>;
+    return (
+      <Link href={href} onClick={(event) => event.stopPropagation()}>
+        {content}
+      </Link>
+    );
   }
 
   return (
-    <button type="button" aria-label={label} title={label}>
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={(event) => event.stopPropagation()}
+    >
       {content}
     </button>
   );
@@ -216,6 +226,7 @@ export function UserManagementScreen({
 }: {
   initialTab?: UserManagementTab;
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<UserManagementTab>(initialTab);
 
   return (
@@ -342,7 +353,11 @@ export function UserManagementScreen({
                 </TableHeader>
                 <TableBody>
                   {ROLE_ROWS.map((row) => (
-                    <TableRow key={row.id}>
+                    <TableRow
+                      key={row.id}
+                      onClick={() => router.push("/dashboard/admin/user-management/roles")}
+                      className="cursor-pointer"
+                    >
                       <TableCell className="min-w-[420px] py-6">
                         <div className="space-y-1">
                           <p className="font-medium text-gray1">{row.name}</p>

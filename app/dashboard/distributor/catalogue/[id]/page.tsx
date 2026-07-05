@@ -209,20 +209,37 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          <div className="border-t border-gray5 pt-6">
+          <div className="space-y-3 border-t border-gray5 pt-6">
+            {product.hasPendingRevision ? (
+              <div className="rounded-xl border border-[#FDE8C8] bg-[#FFF8EE] px-4 py-3 text-sm text-[#8A5A00]">
+                An edit to this listing is awaiting admin review. Your current
+                listing stays live until the update is approved.
+              </div>
+            ) : null}
+
             {isEditable ? (
-              <Button
-                title="Edit Product"
-                size="md"
-                iconLeft={<Pencil className="size-4" />}
-                className="w-full rounded-xl md:w-auto md:min-w-[180px]"
-                onClick={() => {
-                  router.push(`/dashboard/distributor/catalogue/new`);
-                }}
-              />
+              <>
+                <Button
+                  title="Edit Product"
+                  size="md"
+                  iconLeft={<Pencil className="size-4" />}
+                  className="w-full rounded-xl md:w-auto md:min-w-[180px]"
+                  onClick={() => {
+                    router.push(
+                      `/dashboard/distributor/catalogue/${product._id}/edit`,
+                    );
+                  }}
+                />
+                {product.status === "approved" ? (
+                  <p className="text-sm text-gray3">
+                    Edits to a live product are reviewed by an admin before they
+                    go live.
+                  </p>
+                ) : null}
+              </>
             ) : (
               <p className="text-sm text-gray3">
-                Editing is locked once a product has been submitted for review.
+                Editing is locked while this product is under review.
               </p>
             )}
           </div>

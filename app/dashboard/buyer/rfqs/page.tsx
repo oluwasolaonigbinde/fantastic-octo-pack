@@ -1295,7 +1295,8 @@ export default function BuyerRfqsPage() {
                     {filteredSentRfqs.map((rfq) => (
                       <TableRow
                         key={rfq._id}
-                        className="border-b border-[#f3f4f6] hover:!bg-transparent data-[state=selected]:bg-white"
+                        onClick={() => handleViewSentRfq(rfq)}
+                        className="cursor-pointer border-b border-[#f3f4f6] hover:!bg-transparent data-[state=selected]:bg-white"
                       >
                         <TableCell className="h-12 py-0 leading-6">
                           <div className="flex items-center gap-3">
@@ -1342,7 +1343,10 @@ export default function BuyerRfqsPage() {
                         <TableCell className="h-12 py-0">
                           <button
                             type="button"
-                            onClick={() => handleViewSentRfq(rfq)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleViewSentRfq(rfq);
+                            }}
                             className="inline-flex cursor-pointer items-center gap-2 text-base font-normal text-[#13a83b]"
                           >
                             <Eye className="size-6 shrink-0" strokeWidth={1.75} aria-hidden />{" "}
@@ -1411,7 +1415,8 @@ export default function BuyerRfqsPage() {
                       return (
                         <TableRow
                           key={q._id}
-                          className="border-b border-[#f3f4f6] hover:!bg-transparent"
+                          onClick={() => handleViewQuote(q)}
+                          className="cursor-pointer border-b border-[#f3f4f6] hover:!bg-transparent"
                         >
                           <TableCell className="h-12 py-0">
                             <div className="flex items-center gap-3">
@@ -1449,7 +1454,10 @@ export default function BuyerRfqsPage() {
                           <TableCell className="h-12 py-0">
                             <button
                               type="button"
-                              onClick={() => handleViewQuote(q)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleViewQuote(q);
+                              }}
                               className="inline-flex cursor-pointer items-center gap-2 text-base font-normal text-[#13a83b]"
                             >
                               <Eye className="size-6 shrink-0" strokeWidth={1.75} aria-hidden />{" "}

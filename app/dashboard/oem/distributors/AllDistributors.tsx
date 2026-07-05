@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Eye, SlidersHorizontal } from "lucide-react";
 
@@ -31,6 +32,7 @@ export default function AllDistributors({
   distributors,
   loading,
 }: AllDistributorsProps) {
+  const router = useRouter();
   const [currentPage, setCurrentPage] = useState(1);
   const [distributorNameFilter, setDistributorNameFilter] = useState("");
   const [verificationStatus, setVerificationStatus] = useState("");
@@ -134,7 +136,11 @@ export default function AllDistributors({
                 const status = getDistributorVerificationMeta(distributor.verificationStatus);
 
                 return (
-                  <TableRow key={distributor.id}>
+                  <TableRow
+                    key={distributor.id}
+                    onClick={() => router.push(`/dashboard/oem/distributors/${distributor.id}`)}
+                    className="cursor-pointer"
+                  >
                     <TableCell className="whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <div className="size-7 rounded-md bg-gray5" />
@@ -152,6 +158,7 @@ export default function AllDistributors({
                     <TableCell>
                       <Link
                         href={`/dashboard/oem/distributors/${distributor.id}`}
+                        onClick={(event) => event.stopPropagation()}
                         className="inline-flex items-center gap-2 text-sm font-medium text-[#2BA84A]"
                       >
                         <Eye size={16} />
