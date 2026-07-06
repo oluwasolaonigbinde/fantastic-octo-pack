@@ -7,8 +7,8 @@ import { ArrowLeft, CheckCircle2, CreditCard, ShieldCheck } from "lucide-react";
 import { PublicLayout } from "@/components/layout";
 import Banner from "@/components/features/public/Banner";
 import { BigLoader } from "@/components/base";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchOrderDetail } from "@/store/slices/order-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { useOrderQuery } from "@/hooks/queries/orders";
 import { useWallet } from "@/hooks/useWallet";
 import { useOrderPayment } from "@/hooks/useOrderPayment";
 import { koboToNaira } from "@/lib/wallet-format";
@@ -53,15 +53,16 @@ const getSellerId = (order: Order | null): string => {
 export default function CheckoutPage() {
   const params = useParams();
   const router = useRouter();
-  const dispatch = useAppDispatch();
 
   const orderId = params.orderId as string;
 
-  const { currentOrder, isLoading, message } = useAppSelector(
-    (state) => state.order,
-  );
+  const {
+    data: currentOrder,
+    isLoading,
+    error,
+  } = useOrderQuery(orderId);
+  const message = error instanceof Error ? error.message : "";
   const { data: authData } = useAppSelector((state) => state.auth);
-  const token = authData?.tokens?.accessToken;
   const role = authData?.role;
 
   const { wallet } = useWallet();
@@ -80,13 +81,7 @@ export default function CheckoutPage() {
   const [selectedPayment, setSelectedPayment] = useState(paymentMethods[0].label);
   const [showReceipt, setShowReceipt] = useState(false);
 
-  useEffect(() => {
-    if (token && orderId) {
-      dispatch(fetchOrderDetail({ token, orderId }));
-    }
-  }, [token, orderId, dispatch]);
-
-  const order = currentOrder;
+  const order = currentOrder ?? null;
   const paid = isOrderPaid(order?.status);
 
   // Surface the receipt the moment a payment settles (wallet inline or on the

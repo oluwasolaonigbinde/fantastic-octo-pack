@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Eye, SlidersHorizontal, Banknote, Layers, Percent } from "lucide-react";
 
 import Header from "../../component/header";
@@ -23,6 +24,7 @@ function OrderStatusBadge({ status }: { status: OrderStatus }) {
 }
 
 export default function AgentOrdersPage() {
+  const router = useRouter();
   const [search, setSearch] = useState({ businessType: "", orderId: "", status: "" });
 
   const filtered = agentOrders.filter((o) => {
@@ -134,7 +136,11 @@ export default function AgentOrdersPage() {
               </thead>
               <tbody>
                 {filtered.map((order, idx) => (
-                  <tr key={`${order.id}-${idx}`} className="border-b border-[#F9FAFB]">
+                  <tr
+                    key={`${order.id}-${idx}`}
+                    onClick={() => router.push(`/dashboard/agent/orders/${order.id}-${idx}`)}
+                    className="cursor-pointer border-b border-[#F9FAFB]"
+                  >
                     <td className="py-5 text-[#111827]">{order.id}</td>
                     <td className="py-5 text-[#111827]">{order.itemName}</td>
                     <td className="hidden py-5 text-[#111827] sm:table-cell">{order.sellerName}</td>
@@ -147,6 +153,7 @@ export default function AgentOrdersPage() {
                     <td className="hidden py-5 md:table-cell">
                       <Link
                         href={`/dashboard/agent/orders/${order.id}-${idx}`}
+                        onClick={(event) => event.stopPropagation()}
                         className="inline-flex items-center gap-1 text-sm font-medium text-[#0669D9]"
                       >
                         <Eye size={16} />

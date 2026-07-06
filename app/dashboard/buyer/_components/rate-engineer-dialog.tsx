@@ -13,7 +13,7 @@ import {
 } from "@/components/base/Dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useAppSelector } from "@/hooks/useAppSelector";
-import { reviewService } from "@/services/reviewService";
+import { useSubmitReviewMutation } from "@/hooks/queries/reviews";
 
 interface RateEngineerDialogProps {
   open: boolean;
@@ -65,9 +65,10 @@ export default function RateEngineerDialog({
   onSuccess,
 }: RateEngineerDialogProps) {
   const { data } = useAppSelector((state) => state.auth);
+  const submitReview = useSubmitReviewMutation();
+  const submitting = submitReview.isPending;
   const [rating, setRating] = useState(0);
   const [comment, setComment] = useState("");
-  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -82,11 +83,10 @@ export default function RateEngineerDialog({
       return;
     }
 
-    setSubmitting(true);
     setError("");
 
     try {
-      await reviewService.createReview(data.tokens.accessToken, {
+      await submitReview.mutateAsync({
         serviceRequestId,
         rating,
         comment: comment.trim() || undefined,
@@ -95,8 +95,6 @@ export default function RateEngineerDialog({
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit review");
-    } finally {
-      setSubmitting(false);
     }
   };
 

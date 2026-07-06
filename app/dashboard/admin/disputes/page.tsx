@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -21,14 +21,30 @@ import {
 import Header from "../../component/header";
 import { Button, SummaryCard } from "@/components/base";
 import { ProtectedRoute } from "@/components/dashboard/protected-routes";
-import { useAppSelector } from "@/hooks/useAppSelector";
-import { serviceDisputeService } from "@/services/serviceDisputeService";
+import {
+  useAddServiceDisputeCommentMutation,
+  useRequestServiceDisputeEvidenceMutation,
+  useResolveServiceDisputeMutation,
+  useServiceDisputeQuery,
+  useServiceDisputesQuery,
+} from "@/hooks/queries/service-disputes";
+import { useAdminOrderDisputesQuery } from "@/hooks/queries/order-disputes";
+import {
+  getDisputeAmount,
+  getDisputeBuyerName,
+  getDisputeDisplayId,
+  getDisputeOrder,
+  getDisputeSellerName,
+} from "@/lib/order-dispute-presenter";
+import { getOrderDisplayId } from "@/constants/demoBuyerOrders";
+import { formatNaira } from "@/lib/wallet-format";
 import { ServiceRequestData } from "@/types/service-request";
 import {
   ServiceDisputeData,
   ServiceDisputeResolutionOutcome,
   ServiceDisputeStatus,
 } from "@/types/service-dispute";
+import type { OrderDisputeStatus } from "@/types/order-dispute";
 import { UserRole } from "@/types/user";
 
 const DISPUTE_NOTE_ACCENTS = ["bg-[#2F6BFF]", "bg-[#F6B90A]", "bg-[#22C55E]"] as const;
@@ -366,108 +382,266 @@ function DisputeNoteCard({
   );
 }
 
+type DisputeTab = "order" | "service";
+
+function DisputeTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: DisputeTab;
+  onChange: (tab: DisputeTab) => void;
+}) {
+  const tabs: Array<{ id: DisputeTab; label: string }> = [
+    { id: "order", label: "Order Disputes" },
+    { id: "service", label: "Service Disputes" },
+  ];
+
+  return (
+    <div className="inline-flex gap-1 rounded-2xl border border-[#E6ECF2] bg-white p-1">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          onClick={() => onChange(tab.id)}
+          className={`rounded-xl px-3 py-2 text-sm font-medium transition ${
+            activeTab === tab.id ? "bg-primary text-white" : "text-gray3"
+          }`}
+        >
+          {tab.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function orderDisputeStatusLabel(status: OrderDisputeStatus): string {
+  switch (status) {
+    case "under_review":
+      return "Under review";
+    case "awaiting_evidence":
+      return "Awaiting evidence";
+    case "resolved":
+      return "Resolved";
+    default:
+      return status;
+  }
+}
+
+function orderDisputeStatusClassName(status: OrderDisputeStatus): string {
+  switch (status) {
+    case "resolved":
+      return "text-success";
+    case "awaiting_evidence":
+      return "text-warning";
+    default:
+      return "text-primary";
+  }
+}
+
+/**
+ * The "Order Disputes" tab — escrow disputes raised against orders. Each row
+ * links to the standalone admin order-dispute detail page. Data comes straight
+ * from `GET /order-disputes`.
+ */
+function OrderDisputesTab() {
+  const router = useRouter();
+  const query = useAdminOrderDisputesQuery();
+  const disputes = useMemo(() => query.data ?? [], [query.data]);
+  const loading = query.isPending;
+  const error = query.isError
+    ? query.error instanceof Error
+      ? query.error.message
+      : "Failed to load order disputes."
+    : "";
+
+  const summary = useMemo(
+    () => ({
+      total: disputes.length,
+      awaitingEvidence: disputes.filter((d) => d.status === "awaiting_evidence")
+        .length,
+      resolved: disputes.filter((d) => d.status === "resolved").length,
+      pendingReview: disputes.filter((d) => d.status === "under_review").length,
+    }),
+    [disputes],
+  );
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <SummaryCard
+          title="Total disputes"
+          value={String(summary.total)}
+          icon={<CircleDollarSign size={18} className="text-primary" />}
+          iconBg="bg-[#E7F1FF]"
+          subtitle={`${summary.total} records in queue`}
+        />
+        <SummaryCard
+          title="Awaiting evidence"
+          value={String(summary.awaitingEvidence)}
+          icon={<SearchCheck size={18} className="text-[#F08A32]" />}
+          iconBg="bg-[#FFF3E8]"
+          subtitle={`${summary.awaitingEvidence} need evidence`}
+        />
+        <SummaryCard
+          title="Resolved disputes"
+          value={String(summary.resolved)}
+          icon={<CheckCircle2 size={18} className="text-[#13A83B]" />}
+          iconBg="bg-[#E8FAEE]"
+          subtitle={`${summary.resolved} resolved cases`}
+        />
+        <SummaryCard
+          title="Pending review"
+          value={String(summary.pendingReview)}
+          icon={<FileText size={18} className="text-[#F6B90A]" />}
+          iconBg="bg-[#FFF5DB]"
+          subtitle={`${summary.pendingReview} under review`}
+        />
+      </div>
+
+      <section className="card space-y-6">
+        <div>
+          <h3 className="medium3 text-gray1">All Order Disputes</h3>
+          <p className="mt-1 text-sm text-gray3">View all escrow dispute logs</p>
+        </div>
+
+        {loading ? (
+          <div className="rounded-2xl border border-[#E6ECF2] bg-white p-6 text-sm text-[#6B7280]">
+            Loading order disputes...
+          </div>
+        ) : error ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+            {error}
+          </div>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-[#EEF2F7] text-xs font-medium text-gray3">
+                  <th className="pb-3 pr-4">Dispute ID</th>
+                  <th className="pb-3 pr-4">Order ID</th>
+                  <th className="pb-3 pr-4">Raised by</th>
+                  <th className="pb-3 pr-4">Against</th>
+                  <th className="pb-3 pr-4">Amount</th>
+                  <th className="pb-3 pr-4">Status</th>
+                  <th className="pb-3 pr-4">Date raised</th>
+                  <th className="pb-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disputes.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="py-8 text-center text-sm text-gray3">
+                      No order disputes found.
+                    </td>
+                  </tr>
+                ) : (
+                  disputes.map((dispute) => {
+                    const order = getDisputeOrder(dispute);
+                    const orderId = getOrderDisplayId(
+                      order?._id ??
+                        (typeof dispute.order === "string"
+                          ? dispute.order
+                          : undefined),
+                    );
+                    return (
+                      <tr
+                        key={dispute._id}
+                        onClick={() => router.push(`/dashboard/admin/order-disputes/${dispute._id}`)}
+                        className="cursor-pointer border-t border-[#EEF2F7]"
+                      >
+                        <td className="py-4 pr-4 font-medium text-gray1">
+                          <span className="inline-block max-w-[120px] truncate align-bottom">
+                            {getDisputeDisplayId(dispute._id)}
+                          </span>
+                        </td>
+                        <td className="py-4 pr-4">{orderId}</td>
+                        <td className="py-4 pr-4">{getDisputeBuyerName(dispute)}</td>
+                        <td className="py-4 pr-4">{getDisputeSellerName(dispute)}</td>
+                        <td className="py-4 pr-4 whitespace-nowrap">
+                          {formatNaira(getDisputeAmount(dispute))}
+                        </td>
+                        <td className="py-4 pr-4">
+                          <span
+                            className={`text-xs font-medium ${orderDisputeStatusClassName(dispute.status)}`}
+                          >
+                            {orderDisputeStatusLabel(dispute.status)}
+                          </span>
+                        </td>
+                        <td className="py-4 pr-4 whitespace-nowrap">
+                          {formatDate(dispute.createdAt)}
+                        </td>
+                        <td className="py-4">
+                          <Link
+                            href={`/dashboard/admin/order-disputes/${dispute._id}`}
+                            onClick={(event) => event.stopPropagation()}
+                            className="inline-flex items-center gap-2 text-sm font-medium text-primary"
+                          >
+                            <Eye size={14} />
+                            View
+                          </Link>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
 export default function AdminDisputesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const selectedDisputeId = searchParams.get("disputeId");
 
-  const [disputes, setDisputes] = useState<ServiceDisputeData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
+  const [activeTab, setActiveTab] = useState<DisputeTab>("order");
   const [statusFilter, setStatusFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [dateInputValue, setDateInputValue] = useState("");
-  const [selectedDispute, setSelectedDispute] = useState<ServiceDisputeData | null>(
-    null,
-  );
-  const [selectedLoading, setSelectedLoading] = useState(false);
-  const [selectedError, setSelectedError] = useState("");
-
   const [commentDraft, setCommentDraft] = useState("");
-  const [commentBusy, setCommentBusy] = useState(false);
-  const [resolveBusy, setResolveBusy] = useState(false);
-  const [requestEvidenceBusy, setRequestEvidenceBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
 
-  const loadDisputes = useCallback(async () => {
-    if (!token) {
-      return;
-    }
+  const disputesQuery = useServiceDisputesQuery(true);
+  const disputes = useMemo(
+    () => disputesQuery.data ?? [],
+    [disputesQuery.data],
+  );
+  const loading = disputesQuery.isPending;
+  const error = disputesQuery.isError
+    ? disputesQuery.error instanceof Error
+      ? disputesQuery.error.message
+      : "Failed to load dispute records."
+    : "";
 
-    setLoading(true);
-    setError("");
+  const selectedDisputeQuery = useServiceDisputeQuery(
+    selectedDisputeId ?? undefined,
+    true,
+  );
+  const selectedDispute = selectedDisputeQuery.data ?? null;
+  const selectedLoading = Boolean(selectedDisputeId) && selectedDisputeQuery.isPending;
+  const selectedError =
+    actionError ||
+    (selectedDisputeQuery.isError
+      ? selectedDisputeQuery.error instanceof Error
+        ? selectedDisputeQuery.error.message
+        : "Failed to load dispute detail."
+      : "");
 
-    try {
-      const nextDisputes = await serviceDisputeService.fetchServiceDisputes(
-        token,
-        true,
-      );
-      setDisputes(nextDisputes);
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Failed to load dispute records.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
+  const addCommentMutation = useAddServiceDisputeCommentMutation();
+  const resolveMutation = useResolveServiceDisputeMutation();
+  const requestEvidenceMutation = useRequestServiceDisputeEvidenceMutation();
 
-  useEffect(() => {
-    queueMicrotask(() => {
-      void loadDisputes();
-    });
-  }, [loadDisputes]);
+  const commentBusy = addCommentMutation.isPending;
+  const resolveBusy = resolveMutation.isPending;
+  const requestEvidenceBusy = requestEvidenceMutation.isPending;
 
-  useEffect(() => {
-    if (!token || !selectedDisputeId) {
-      queueMicrotask(() => {
-        setSelectedDispute(null);
-        setSelectedError("");
-        setSelectedLoading(false);
-      });
-      return;
-    }
-
-    let isMounted = true;
-
-    const loadSelectedDispute = async () => {
-      setSelectedLoading(true);
-      setSelectedError("");
-
-      try {
-        const nextDispute = await serviceDisputeService.fetchServiceDisputeById(
-          token,
-          selectedDisputeId,
-          true,
-        );
-
-        if (isMounted) {
-          setSelectedDispute(nextDispute);
-        }
-      } catch (nextError) {
-        if (isMounted) {
-          setSelectedError(
-            nextError instanceof Error
-              ? nextError.message
-              : "Failed to load dispute detail.",
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setSelectedLoading(false);
-        }
-      }
-    };
-
-    void loadSelectedDispute();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedDisputeId, token]);
+  const loadDisputes = () => {
+    void disputesQuery.refetch();
+  };
 
   const filteredDisputes = useMemo(() => {
     return disputes.filter((dispute) => {
@@ -509,90 +683,67 @@ export default function AdminDisputesPage() {
   }, [disputes, filteredDisputes]);
 
   const handleAddComment = async () => {
-    if (!token || !selectedDispute || !commentDraft.trim()) {
+    if (!selectedDispute || !commentDraft.trim()) {
       return;
     }
 
-    setCommentBusy(true);
-    setSelectedError("");
+    setActionError("");
 
     try {
-      const updatedDispute = await serviceDisputeService.addServiceDisputeComment(
-        token,
-        selectedDispute._id,
-        commentDraft.trim(),
-      );
-
-      setSelectedDispute(updatedDispute);
+      await addCommentMutation.mutateAsync({
+        disputeId: selectedDispute._id,
+        text: commentDraft.trim(),
+      });
       setCommentDraft("");
-      await loadDisputes();
     } catch (nextError) {
-      setSelectedError(
+      setActionError(
         nextError instanceof Error
           ? nextError.message
           : "Failed to add dispute comment.",
       );
-    } finally {
-      setCommentBusy(false);
     }
   };
 
   const handleRequestEvidence = async () => {
-    if (!token || !selectedDispute) {
+    if (!selectedDispute) {
       return;
     }
 
-    setRequestEvidenceBusy(true);
-    setSelectedError("");
+    setActionError("");
 
     try {
-      const response = await serviceDisputeService.requestServiceDisputeEvidence(
-        token,
-        selectedDispute._id,
-      );
-
-      setSelectedDispute(response.data.dispute);
-      await loadDisputes();
+      await requestEvidenceMutation.mutateAsync({
+        disputeId: selectedDispute._id,
+      });
     } catch (nextError) {
-      setSelectedError(
+      setActionError(
         nextError instanceof Error
           ? nextError.message
           : "Failed to request more evidence.",
       );
-    } finally {
-      setRequestEvidenceBusy(false);
     }
   };
 
   const handleResolve = async (
     outcome: ServiceDisputeResolutionOutcome,
   ) => {
-    if (!token || !selectedDispute) {
+    if (!selectedDispute) {
       return;
     }
 
-    setResolveBusy(true);
-    setSelectedError("");
+    setActionError("");
 
     try {
-      const response = await serviceDisputeService.resolveServiceDispute(
-        token,
-        selectedDispute._id,
-        {
-          resolutionOutcome: outcome,
-        },
-      );
-
-      setSelectedDispute(response.data.dispute);
-      await loadDisputes();
+      await resolveMutation.mutateAsync({
+        disputeId: selectedDispute._id,
+        payload: { resolutionOutcome: outcome },
+      });
     } catch (nextError) {
-      setSelectedError(
+      setActionError(
         nextError instanceof Error
           ? nextError.message
           : "Failed to resolve the dispute.",
       );
-    } finally {
-      setResolveBusy(false);
     }
   };
 
@@ -634,7 +785,7 @@ export default function AdminDisputesPage() {
 
   const handleCloseDisputeDetail = () => {
     setCommentDraft("");
-    setSelectedError("");
+    setActionError("");
     router.push("/dashboard/admin/disputes");
   };
 
@@ -653,6 +804,11 @@ export default function AdminDisputesPage() {
         <div className="space-y-8 p-4 md:p-6">
           {!detailView ? (
             <>
+              <DisputeTabs activeTab={activeTab} onChange={setActiveTab} />
+              {activeTab === "order" ? (
+                <OrderDisputesTab />
+              ) : (
+                <>
               <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
                 <SummaryCard
                   title="Total disputes"
@@ -790,7 +946,11 @@ export default function AdminDisputesPage() {
                           </tr>
                         ) : (
                           filteredDisputes.map((dispute) => (
-                            <tr key={dispute._id} className="border-t border-[#EEF2F7]">
+                            <tr
+                              key={dispute._id}
+                              onClick={() => handleOpenDisputeDetail(dispute._id)}
+                              className="cursor-pointer border-t border-[#EEF2F7]"
+                            >
                               <td className="py-4 pr-4 font-medium text-gray1">
                                 <span className="inline-block max-w-[120px] truncate align-bottom">
                                   {dispute._id}
@@ -823,7 +983,10 @@ export default function AdminDisputesPage() {
                               <td className="py-4">
                                 <button
                                   type="button"
-                                  onClick={() => handleOpenDisputeDetail(dispute._id)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleOpenDisputeDetail(dispute._id);
+                                  }}
                                   className="inline-flex items-center gap-2 text-sm font-medium text-primary"
                                 >
                                   <Eye size={14} />
@@ -838,6 +1001,8 @@ export default function AdminDisputesPage() {
                   </div>
                 )}
               </section>
+                </>
+              )}
             </>
           ) : (
             <>

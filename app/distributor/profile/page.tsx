@@ -7,6 +7,9 @@ import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+
+import { useProductsQuery } from "@/hooks/queries/products";
+import { useUserQuery } from "@/hooks/queries/users";
 import {
   ArrowRight,
   BadgeCheck,
@@ -22,8 +25,6 @@ import {
 
 import { PublicLayout } from "@/components/layout";
 import { useAppSelector } from "@/hooks/useAppSelector";
-import productService from "@/services/productService";
-import { userService } from "@/services/userService";
 import type { Product } from "@/types/product";
 import type { PublicProfileData } from "@/types/user";
 import {
@@ -252,60 +253,28 @@ function DistributorProfileContent() {
   const selectedId = searchParams.get("id") || "";
   const authData = useAppSelector((state) => state.auth.data);
 
-  const [profile, setProfile] = useState<PublicProfileData | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
+  const profileQuery = useUserQuery(selectedId || undefined);
+  const productsQuery = useProductsQuery(
+    { createdBy: selectedId, status: "approved", limit: 40 },
+    { enabled: Boolean(selectedId) },
+  );
+
+  const profile = profileQuery.data ?? null;
+  const products: Product[] = productsQuery.data?.products ?? [];
+  const loading =
+    Boolean(selectedId) && (profileQuery.isLoading || productsQuery.isLoading);
+  const error = !selectedId
+    ? "No distributor ID provided."
+    : profileQuery.isError
+      ? profileQuery.error instanceof Error
+        ? profileQuery.error.message
+        : "Unable to load distributor profile."
+      : null;
+
   useEffect(() => {
-    let active = true;
-
-    async function loadProfile() {
-      if (!selectedId) {
-        setError("No distributor ID provided.");
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError(null);
-
-        const [profileResponse, productResponse] = await Promise.all([
-          userService.getPublicProfileById(selectedId),
-          productService.fetchWithFilter({
-            createdBy: selectedId,
-            status: "approved",
-            limit: 40,
-          }),
-        ]);
-
-        if (!active) {
-          return;
-        }
-
-        setProfile(profileResponse);
-        setProducts(productResponse.data?.docs ?? []);
-        setCurrentPage(1);
-      } catch (loadError) {
-        if (!active) {
-          return;
-        }
-
-        setError(loadError instanceof Error ? loadError.message : "Unable to load distributor profile.");
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadProfile();
-
-    return () => {
-      active = false;
-    };
+    setCurrentPage(1);
   }, [selectedId]);
 
   const distributorName = buildName(profile);

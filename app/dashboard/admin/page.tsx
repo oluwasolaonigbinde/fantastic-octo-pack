@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { type ReactNode, useMemo } from "react";
 import {
   ArrowRight,
   Banknote,
@@ -24,8 +24,8 @@ import {
   TableRow,
 } from "@/components/base";
 import { ADMIN_DASHBOARD_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
-import { useAppSelector } from "@/hooks/useAppSelector";
-import adminService, { type AdminDashboardSummary } from "@/services/adminService";
+import { useAdminDashboardSummaryQuery } from "@/hooks/queries/admin";
+import { type AdminDashboardSummary } from "@/services/adminService";
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -495,45 +495,17 @@ function StaticTableCard({
 }
 
 export default function AdminDashboardPage() {
-  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
-  const [summary, setSummary] = useState<AdminDashboardSummary>(EMPTY_SUMMARY);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const loadSummary = useCallback(async () => {
-    if (!token) return;
-
-    setLoading(true);
-    setError("");
-
-    try {
-      setSummary(await adminService.getDashboardSummary(token));
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Unable to load admin dashboard summary."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    if (!token) return;
-
-    const runLoadSummary = () => void loadSummary();
-    const initialLoadId = window.setTimeout(runLoadSummary, 0);
-    const intervalId = window.setInterval(runLoadSummary, POLL_INTERVAL_MS);
-    const onFocus = () => runLoadSummary();
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      window.clearTimeout(initialLoadId);
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [loadSummary, token]);
+  const summaryQuery = useAdminDashboardSummaryQuery({
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchOnWindowFocus: true,
+  });
+  const summary = summaryQuery.data ?? EMPTY_SUMMARY;
+  const loading = summaryQuery.isPending;
+  const error = summaryQuery.isError
+    ? summaryQuery.error instanceof Error
+      ? summaryQuery.error.message
+      : "Unable to load admin dashboard summary."
+    : "";
 
   const topProductRows = useMemo(
     () =>

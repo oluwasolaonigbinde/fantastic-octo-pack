@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -22,8 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchOemListingRequests } from "@/store/slices/product-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { useOemListingRequestsQuery } from "@/hooks/queries/products";
 
 import {
   buildCategoryBreakdown,
@@ -37,27 +38,19 @@ import {
 const PAGE_SIZE = 10;
 
 export default function OemListingRequests() {
-  const dispatch = useAppDispatch();
+  const router = useRouter();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { oemListingRequests, isLoading } = useAppSelector((state) => state.product);
+  const { data: oemListing, isLoading } = useOemListingRequestsQuery(
+    { assignedOem: authData?._id, populate: "createdBy" },
+    { enabled: Boolean(authData?._id && authData?.tokens?.accessToken) },
+  );
+  const oemListingRequests = oemListing?.requests ?? null;
 
   const [currentPage, setCurrentPage] = useState(1);
   const [distributorName, setDistributorName] = useState("");
   const [productName, setProductName] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
-
-  useEffect(() => {
-    if (authData?._id && authData?.tokens?.accessToken) {
-      dispatch(
-        fetchOemListingRequests({
-          assignedOem: authData._id,
-          token: authData.tokens.accessToken,
-          populate: "createdBy",
-        }),
-      );
-    }
-  }, [dispatch, authData?._id, authData?.tokens?.accessToken]);
 
   const products = useMemo(() => oemListingRequests ?? [], [oemListingRequests]);
   const approvedProducts = useMemo(
@@ -290,7 +283,11 @@ export default function OemListingRequests() {
                     const statusMeta = getOemStatusMeta(status);
 
                     return (
-                      <TableRow key={product._id}>
+                      <TableRow
+                        key={product._id}
+                        onClick={() => router.push(`/dashboard/oem/requests/${product._id}`)}
+                        className="cursor-pointer"
+                      >
                         <TableCell className="whitespace-nowrap">
                           <div className="flex items-center gap-3">
                             <div className="size-7 rounded-md bg-gray5" />
@@ -311,6 +308,7 @@ export default function OemListingRequests() {
                         <TableCell>
                           <Link
                             href={`/dashboard/oem/requests/${product._id}`}
+                            onClick={(event) => event.stopPropagation()}
                             className="inline-flex items-center gap-2 text-sm font-medium text-primary"
                           >
                             <Eye size={16} />

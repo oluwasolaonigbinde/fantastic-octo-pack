@@ -8,7 +8,7 @@ import { ArrowLeft, Check } from "lucide-react";
 import Header from "../../../component/header";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchUserProducts } from "@/store/slices/product-slice";
+import { useMyProductsQuery } from "@/hooks/queries/products";
 import { fetchPublicProfileById } from "@/store/slices/user-slice";
 import {
   buildDistributorVerificationSnapshot,
@@ -21,7 +21,8 @@ export default function OemDistributorProfilePage() {
 
   const dispatch = useAppDispatch();
   const selectedUser = useAppSelector((state) => state.user.selectedUser);
-  const { myProducts, isLoading } = useAppSelector((state) => state.product);
+  const { data: myProductsData, isLoading } = useMyProductsQuery(id);
+  const myProducts = myProductsData?.products ?? null;
 
   useEffect(() => {
     if (!id) {
@@ -29,7 +30,6 @@ export default function OemDistributorProfilePage() {
     }
 
     dispatch(fetchPublicProfileById(id));
-    dispatch(fetchUserProducts(id));
   }, [dispatch, id]);
 
   const distributorName = useMemo(() => {

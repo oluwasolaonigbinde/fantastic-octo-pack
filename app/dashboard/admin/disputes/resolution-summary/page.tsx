@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { X } from "lucide-react";
 
 import { ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
-import { useAppSelector } from "@/hooks/useAppSelector";
-import { serviceDisputeService } from "@/services/serviceDisputeService";
+import { useServiceDisputeQuery } from "@/hooks/queries/service-disputes";
 import { ServiceDisputeData } from "@/types/service-dispute";
 import { ServiceRequestData, ServiceRequestParty } from "@/types/service-request";
 
@@ -147,8 +146,6 @@ function deriveQuantity(serviceRequest: ServiceRequestData | null): string | nul
 
 export default function AdminDisputeResolutionSummaryPage() {
   const searchParams = useSearchParams();
-  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
-  const [liveDispute, setLiveDispute] = useState<ServiceDisputeData | null>(null);
 
   const routedSnapshot = useMemo(
     () => ({
@@ -168,37 +165,11 @@ export default function AdminDisputeResolutionSummaryPage() {
     [searchParams],
   );
 
-  useEffect(() => {
-    if (!token || !routedSnapshot.disputeId) {
-      return;
-    }
-
-    let isMounted = true;
-
-    const loadDispute = async () => {
-      try {
-        const nextDispute = await serviceDisputeService.fetchServiceDisputeById(
-          token,
-          routedSnapshot.disputeId,
-          true,
-        );
-
-        if (isMounted) {
-          setLiveDispute(nextDispute);
-        }
-      } catch {
-        if (isMounted) {
-          setLiveDispute(null);
-        }
-      }
-    };
-
-    void loadDispute();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [routedSnapshot.disputeId, token]);
+  const disputeQuery = useServiceDisputeQuery(
+    routedSnapshot.disputeId || undefined,
+    true,
+  );
+  const liveDispute: ServiceDisputeData | null = disputeQuery.data ?? null;
 
   const closeHref = routedSnapshot.disputeId
     ? `/dashboard/admin/disputes?disputeId=${encodeURIComponent(routedSnapshot.disputeId)}`

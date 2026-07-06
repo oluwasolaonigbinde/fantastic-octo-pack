@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { ArrowRight, ChevronDown } from "lucide-react";
 
-import { useAppSelector } from "@/hooks/useAppSelector";
+import { useEngineerServiceRequestsQuery } from "@/hooks/queries/service-requests";
 import {
   ServiceRequestData,
   ServiceRequestStatus,
@@ -217,7 +217,8 @@ function buildDonutGradient(segments: OverviewSegment[]): string {
 export function EngineerDashboardDesktopOverview({
   requests,
 }: EngineerDashboardDesktopOverviewProps) {
-  const statusCounts = useAppSelector((state) => state.serviceRequest.statusCounts);
+  const { data } = useEngineerServiceRequestsQuery();
+  const statusCounts = data?.statusCounts ?? null;
 
   const segments = useMemo<OverviewSegment[]>(() => {
     const newRequests =

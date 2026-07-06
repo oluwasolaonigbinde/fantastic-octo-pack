@@ -34,5 +34,20 @@ export const getOemReviewStatusMeta = (
   }
 };
 
-export const canEditProduct = (status: ProductStatus): boolean => status === "draft";
+/**
+ * A distributor may edit a product while it is a `draft` (direct edit) or once
+ * it is `approved`/live (the edit is held as a pending revision until an admin
+ * approves it). Products actively `pending` first review, or `rejected`, stay
+ * locked in this slice.
+ */
+export const canEditProduct = (status: ProductStatus): boolean =>
+  status === "draft" || status === "approved";
+
+/**
+ * Editing an approved product does not change the live listing — it produces a
+ * pending revision awaiting admin approval. Draft edits save directly.
+ */
+export const editCreatesRevision = (status: ProductStatus): boolean =>
+  status === "approved";
+
 export const hasOemBadge = (status: OemApprovalStatus): boolean => status === "approved";

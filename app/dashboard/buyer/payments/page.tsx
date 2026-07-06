@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
   CalendarDays,
@@ -14,13 +14,12 @@ import {
 } from "lucide-react";
 
 import Header from "../../component/header";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchMyWallet } from "@/store/slices/wallet-slice";
-import { fetchMyPayments } from "@/store/slices/payment-slice";
+import { useMyPaymentsQuery } from "@/hooks/queries/payments";
+import { useWallet } from "@/hooks/useWallet";
 import { useWalletTopup } from "@/hooks/useWalletTopup";
 import { useEscrowSummary } from "@/hooks/useEscrowSummary";
 import { TopUpDrawer, TopUpReturnBanner } from "@/components/wallet/wallet-topup";
-import type { PaymentIntent, PaymentStatus } from "@/types/payment";
+import type { PaymentChannel, PaymentIntent, PaymentStatus } from "@/types/payment";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -66,6 +65,19 @@ const statusColor: Record<PaymentStatus, string> = {
   refunded: "text-[#017BED]",
 };
 
+const channelLabel: Record<PaymentChannel, string> = {
+  card: "Card",
+  bank: "Bank",
+  bank_transfer: "Bank transfer",
+  dedicated_virtual_account: "Virtual account",
+  ussd: "USSD",
+  qr: "QR",
+  mobile_money: "Mobile money",
+  eft: "EFT",
+  wallet: "Wallet",
+  internal: "Internal",
+};
+
 // ─── Subcomponents ───────────────────────────────────────────────────────────
 
 type WalletMetric = {
@@ -104,19 +116,16 @@ function WalletMetricCard({ metric }: { metric: WalletMetric }) {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function BuyerPayments() {
-  const dispatch = useAppDispatch();
-  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
-
   const {
     wallet,
     isLoading: walletLoading,
     isError: walletError,
     message: walletMessage,
-  } = useAppSelector((state) => state.wallet);
+  } = useWallet();
 
-  const { myPayments, isLoading: paymentsLoading } = useAppSelector(
-    (state) => state.payment,
-  );
+  const { data: paymentsData, isLoading: paymentsLoading } =
+    useMyPaymentsQuery();
+  const myPayments = paymentsData?.payments ?? null;
 
   const [copied, setCopied] = useState(false);
 
@@ -133,13 +142,6 @@ export default function BuyerPayments() {
     dismissReturnStatus,
     panelProps,
   } = useWalletTopup({ callbackPath: "/dashboard/buyer/payments" });
-
-  useEffect(() => {
-    if (token) {
-      dispatch(fetchMyWallet(token));
-      dispatch(fetchMyPayments({ token }));
-    }
-  }, [dispatch, token]);
 
   const walletBalanceNaira = wallet
     ? koboToNaira(wallet.availableBalance)
@@ -400,12 +402,13 @@ export default function BuyerPayments() {
                 No transactions found.
               </div>
             ) : (
-              <table className="min-w-[1020px] w-full text-left text-base">
+              <table className="min-w-[1180px] w-full text-left text-base">
                 <thead>
                   <tr className="border-b border-[#F0F2F5] text-[#6B7280]">
                     <th className="py-3 pr-6 font-medium">Transaction ID</th>
                     <th className="py-3 pr-6 font-medium">Description</th>
                     <th className="py-3 pr-6 font-medium">Transaction type</th>
+                    <th className="py-3 pr-6 font-medium">Channel</th>
                     <th className="py-3 pr-6 font-medium">Amount</th>
                     <th className="py-3 pr-6 font-medium">Date &amp; Time</th>
                     <th className="py-3 font-medium">Status</th>
@@ -421,13 +424,17 @@ export default function BuyerPayments() {
                         {transaction.reference}
                       </td>
                       <td className="py-4 pr-6 text-[#000000]">
-                        {intentLabel[transaction.intent] ?? transaction.intent}{" "}
-                        transaction
+                        {transaction.description ?? "-"}
                       </td>
                       <td
                         className={`py-4 pr-6 ${intentColor[transaction.intent] ?? "text-[#111827]"}`}
                       >
                         {intentLabel[transaction.intent] ?? transaction.intent}
+                      </td>
+                      <td className="py-4 pr-6 text-[#111827]">
+                        {transaction.channel
+                          ? (channelLabel[transaction.channel] ?? transaction.channel)
+                          : "-"}
                       </td>
                       <td className="py-4 pr-6 font-medium text-[#111827]">
                         {formatNaira(koboToNaira(transaction.amount))}

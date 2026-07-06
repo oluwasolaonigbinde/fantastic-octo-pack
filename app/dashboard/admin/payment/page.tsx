@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CreditCard, Eye, Filter, Wallet } from "lucide-react";
 import Header from "../../component/header";
 import { Button, Input, SummaryCard } from "@/components/base";
@@ -19,6 +20,7 @@ import orderService from "@/services/orderService";
 import paymentService from "@/services/paymentService";
 import type { EscrowSummary } from "@/types/order";
 import type {
+  PaymentChannel,
   PaymentListPagination,
   PaymentStatus,
   PaymentTransaction,
@@ -53,6 +55,19 @@ const statusLabel: Record<PaymentStatus, string> = {
   rejected: "Rejected",
   abandoned: "Abandoned",
   refunded: "Refunded",
+};
+
+const channelLabel: Record<PaymentChannel, string> = {
+  card: "Card",
+  bank: "Bank",
+  bank_transfer: "Bank transfer",
+  dedicated_virtual_account: "Virtual account",
+  ussd: "USSD",
+  qr: "QR",
+  mobile_money: "Mobile money",
+  eft: "EFT",
+  wallet: "Wallet",
+  internal: "Internal",
 };
 
 const formatKobo = (amount?: number | null, currency = "NGN") =>
@@ -136,6 +151,7 @@ const buildPaymentDetailHref = (transaction: PaymentTransaction) => {
 };
 
 export default function AdminPaymentPage() {
+  const router = useRouter();
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const [paymentsPage, setPaymentsPage] = useState<PaymentListPagination | null>(null);
   const [escrowSummary, setEscrowSummary] = useState<EscrowSummary | null>(null);
@@ -305,10 +321,12 @@ export default function AdminPaymentPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Order ID</TableHead>
+                  <TableHead>Description</TableHead>
                   <TableHead>Buyer ID</TableHead>
                   <TableHead>Seller ID</TableHead>
                   <TableHead>Name of item</TableHead>
                   <TableHead>Engineer ID</TableHead>
+                  <TableHead>Channel</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date & time</TableHead>
                   <TableHead>Action</TableHead>
@@ -317,22 +335,27 @@ export default function AdminPaymentPage() {
               <TableBody>
                 {loading && !paymentsPage ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-12 text-center text-gray3">
+                    <TableCell colSpan={10} className="py-12 text-center text-gray3">
                       Loading payment records...
                     </TableCell>
                   </TableRow>
                 ) : filteredPayments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-12 text-center text-gray3">
+                    <TableCell colSpan={10} className="py-12 text-center text-gray3">
                       No payment records found.
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredPayments.map((transaction) => (
-                    <TableRow key={transaction._id}>
+                    <TableRow
+                      key={transaction._id}
+                      onClick={() => router.push(buildPaymentDetailHref(transaction))}
+                      className="cursor-pointer"
+                    >
                       <TableCell className="font-medium text-gray1">
                         {transaction.entityId}
                       </TableCell>
+                      <TableCell>{transaction.description ?? "-"}</TableCell>
                       <TableCell>{getPartyLabel(transaction.payer)}</TableCell>
                       <TableCell>{getPartyLabel(transaction.payee)}</TableCell>
                       <TableCell>
@@ -348,6 +371,11 @@ export default function AdminPaymentPage() {
                           : "-"}
                       </TableCell>
                       <TableCell>
+                        {transaction.channel
+                          ? (channelLabel[transaction.channel] ?? transaction.channel)
+                          : "-"}
+                      </TableCell>
+                      <TableCell>
                         <span
                           className={`text-xs font-medium ${statusColor[transaction.status]}`}
                         >
@@ -358,7 +386,10 @@ export default function AdminPaymentPage() {
                         {formatDateTime(transaction.createdAt)}
                       </TableCell>
                       <TableCell>
-                        <Link href={buildPaymentDetailHref(transaction)}>
+                        <Link
+                          href={buildPaymentDetailHref(transaction)}
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <Button
                             title="View"
                             variant="primaryLight"

@@ -19,8 +19,10 @@ import {
   distributorDemoOrderMeta,
   getOrderStatusTone,
 } from "@/constants/demoDistributorOrders";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchOrderDetail, fulfillOrder } from "@/store/slices/order-slice";
+import {
+  useFulfillOrderMutation,
+  useOrderQuery,
+} from "@/hooks/queries/orders";
 import type { FulfillmentStage, Order } from "@/types/order";
 import {
   formatDeliveryAddress,
@@ -169,11 +171,6 @@ function CountdownTimer({ target }: { target?: Date }) {
 export default function DistributorDeliveryStatusPage() {
   const params = useParams();
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const { currentOrder, isLoading, isFulfilling, fulfillError } = useAppSelector(
-    (state) => state.order,
-  );
-  const { data: authData } = useAppSelector((state) => state.auth);
   const [notice, setNotice] = useState("");
   const [modal, setModal] = useState<ModalKind>(null);
   const [evidence, setEvidence] = useState<File[]>([]);
@@ -183,13 +180,13 @@ export default function DistributorDeliveryStatusPage() {
   const orderId = params.orderId as string;
   const demoOrder = distributorDemoOrders.find((item) => item.id === orderId);
 
-  useEffect(() => {
-    if (authData?.tokens?.accessToken && orderId && !demoOrder) {
-      dispatch(fetchOrderDetail({ token: authData.tokens.accessToken, orderId }));
-    }
-  }, [authData?.tokens?.accessToken, demoOrder, dispatch, orderId]);
+  const { data: currentOrder, isLoading } = useOrderQuery(orderId, {
+    enabled: !demoOrder,
+  });
+  const fulfillMutation = useFulfillOrderMutation();
+  const isFulfilling = fulfillMutation.isPending;
 
-  const order = currentOrder;
+  const order = currentOrder ?? null;
 
   if (isLoading || (!order && !demoOrder)) {
     return (
@@ -311,29 +308,22 @@ export default function DistributorDeliveryStatusPage() {
       return;
     }
     if (isFulfilling) return;
-    const token = authData?.tokens?.accessToken;
-    if (!token) {
-      setActionError("Your session has expired. Please sign in again to continue.");
-      return;
-    }
     if (!nextStage || !stageCopy) {
       setActionError("This order has already reached its final delivery stage.");
       return;
     }
-    const result = await dispatch(
-      fulfillOrder({ token, orderId, stage: nextStage }),
-    );
-    if (fulfillOrder.fulfilled.match(result)) {
+    try {
+      // The mutation invalidates the order cache on success, so the stepper
+      // advances and the next stage's action becomes available immediately.
+      await fulfillMutation.mutateAsync({ orderId, stage: nextStage });
       setSuccessMessage(stageCopy.successBody);
       setModal("success");
       setEvidence([]);
-      // Refresh the order so the stepper advances and the next stage's action
-      // becomes available immediately (and can be repeated for the next step).
-      void dispatch(fetchOrderDetail({ token, orderId }));
-    } else {
+    } catch (err) {
       setActionError(
-        (result.payload as string) ||
-          "Could not update delivery status. Please try again.",
+        err instanceof Error
+          ? err.message
+          : "Could not update delivery status. Please try again.",
       );
     }
   };
@@ -464,9 +454,11 @@ export default function DistributorDeliveryStatusPage() {
               </div>
             )}
 
-            {fulfillError ? (
+            {fulfillMutation.error ? (
               <p className="mt-4 rounded-lg border border-[#E33C13] bg-[#FFF5F3] px-4 py-3 text-sm text-[#E33C13]">
-                {fulfillError}
+                {fulfillMutation.error instanceof Error
+                  ? fulfillMutation.error.message
+                  : "Could not update delivery status. Please try again."}
               </p>
             ) : null}
           </section>

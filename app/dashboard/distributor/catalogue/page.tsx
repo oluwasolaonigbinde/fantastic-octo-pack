@@ -8,6 +8,11 @@ import Header from "../../component/header";
 import { Button, Input, SingleSelect, Skeleton } from "@/components/base";
 import SafeProductImage from "@/components/product/SafeProductImage";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Table,
   TableBody,
   TableCell,
@@ -15,10 +20,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import productService from "@/services/productService";
-import { fetchCategories } from "@/store/slices/category-slice";
-import { fetchProducts } from "@/store/slices/product-slice";
+import { useCategoriesQuery } from "@/hooks/queries/categories";
+import { useProductsQuery } from "@/hooks/queries/products";
 import { canEditProduct, getListingStatusMeta } from "@/utils/productStatus";
 import {
   getProductDefaultImageUrl,
@@ -60,21 +65,13 @@ const formatCurrency = (amount: number): string =>
 
 export default function DistributorCatalogue() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
   const {
-    products,
-    isLoading,
-    isError,
-    message,
-    totalPages,
-  } = useAppSelector((state) => state.product);
-  const {
-    categories,
+    data: categories = [],
     isLoading: categoriesLoading,
     isError: categoriesError,
-    message: categoriesMessage,
-  } = useAppSelector((state) => state.category);
+    error: categoriesQueryError,
+  } = useCategoriesQuery({ page: 1, limit: 50 });
 
   const [draftFilters, setDraftFilters] = useState<CatalogueFilters>(
     DEFAULT_FILTERS,
@@ -89,21 +86,25 @@ export default function DistributorCatalogue() {
 
   const token = authData?.tokens?.accessToken;
 
-  useEffect(() => {
-    if (!token) return;
-
-    void dispatch(
-      fetchProducts({
-        token,
-        page: currentPage,
-        limit: PAGE_SIZE,
-        search: appliedFilters.productName.trim() || undefined,
-        category: appliedFilters.category || undefined,
-        status: appliedFilters.status || undefined,
-        statuses: appliedFilters.status ? undefined : LISTED_STATUSES,
-      }),
-    );
-  }, [appliedFilters, currentPage, dispatch, token]);
+  const {
+    data: productsData,
+    isLoading,
+    isError,
+    error,
+  } = useProductsQuery(
+    {
+      page: currentPage,
+      limit: PAGE_SIZE,
+      search: appliedFilters.productName.trim() || undefined,
+      category: appliedFilters.category || undefined,
+      status: appliedFilters.status || undefined,
+      statuses: appliedFilters.status ? undefined : LISTED_STATUSES,
+    },
+    { enabled: Boolean(token) },
+  );
+  const products = productsData?.products ?? null;
+  const totalPages = productsData?.meta.totalPages ?? 0;
+  const message = error instanceof Error ? error.message : "";
 
   useEffect(() => {
     let ignore = false;
@@ -150,12 +151,6 @@ export default function DistributorCatalogue() {
     };
   }, [token]);
 
-  useEffect(() => {
-    if (categories.length === 0 && !categoriesLoading) {
-      dispatch(fetchCategories({ page: 1, limit: 50 }));
-    }
-  }, [categories.length, categoriesLoading, dispatch]);
-
   const visibleProducts = useMemo(
     () => (products ?? []).filter((product) => isListedStatus(product.status)),
     [products],
@@ -176,7 +171,8 @@ export default function DistributorCatalogue() {
 
   const categoryLoadError =
     !categoriesLoading && categoriesError
-      ? categoriesMessage || "Unable to load categories for filtering right now."
+      ? (categoriesQueryError instanceof Error && categoriesQueryError.message) ||
+        "Unable to load categories for filtering right now."
       : "";
 
   const applyFilters = () => {
@@ -314,7 +310,13 @@ export default function DistributorCatalogue() {
                   {visibleProducts.map((product) => {
                     const statusMeta = getListingStatusMeta(product.status);
                     return (
-                      <TableRow key={product._id}>
+                      <TableRow
+                        key={product._id}
+                        onClick={() =>
+                          router.push(`/dashboard/distributor/catalogue/${product._id}`)
+                        }
+                        className="cursor-pointer"
+                      >
                         <TableCell className="min-w-[240px]">
                           <div className="flex items-center gap-3">
                             <SafeProductImage
@@ -332,11 +334,26 @@ export default function DistributorCatalogue() {
                         <TableCell>{formatCurrency(product.pricePerUnit)}</TableCell>
                         <TableCell>{getProductStockTableValue(product)}</TableCell>
                         <TableCell>
-                          <span
-                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}
-                          >
-                            {statusMeta.label}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${statusMeta.className}`}
+                            >
+                              {statusMeta.label}
+                            </span>
+                            {product.hasPendingRevision ? (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    className="inline-flex size-2.5 shrink-0 cursor-default rounded-full bg-yellow-400"
+                                    aria-label="Changes awaiting approval"
+                                  />
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  Changes awaiting approval
+                                </TooltipContent>
+                              </Tooltip>
+                            ) : null}
+                          </div>
                         </TableCell>
                         <TableCell>{product.category}</TableCell>
                         <TableCell>
@@ -344,27 +361,45 @@ export default function DistributorCatalogue() {
                             <button
                               type="button"
                               aria-label={`View ${product.name}`}
-                              onClick={() =>
+                              onClick={(event) => {
+                                event.stopPropagation();
                                 router.push(
                                   `/dashboard/distributor/catalogue/${product._id}`,
-                                )
-                              }
+                                );
+                              }}
                             >
                               <Eye size={16} />
                             </button>
-                            <button
-                              type="button"
-                              aria-label={`Edit ${product.name}`}
-                              disabled
-                              title={
-                                canEditProduct(product.status)
-                                  ? "Edit flow is being re-aligned to the approved lifecycle."
-                                  : "Editing is locked once a product is submitted for review."
-                              }
-                              className="cursor-not-allowed text-primary/40"
-                            >
-                              <Pencil size={16} />
-                            </button>
+                            {canEditProduct(product.status) ? (
+                              <button
+                                type="button"
+                                aria-label={`Edit ${product.name}`}
+                                title={
+                                  product.status === "approved"
+                                    ? "Edit this listing — changes go live after admin approval."
+                                    : "Edit this product."
+                                }
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  router.push(
+                                    `/dashboard/distributor/catalogue/${product._id}/edit`,
+                                  );
+                                }}
+                                className="text-primary hover:text-primary/80"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                aria-label={`Edit ${product.name}`}
+                                disabled
+                                title="Editing is locked while this product is under review."
+                                className="cursor-not-allowed text-primary/40"
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>

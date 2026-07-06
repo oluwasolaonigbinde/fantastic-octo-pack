@@ -1,15 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import {
-  clearOrderPayment,
-  fetchOrderDetail,
-  payOrder,
-} from "@/store/slices/order-slice";
-import { fetchMyWallet } from "@/store/slices/wallet-slice";
-import type { OrderPaymentMethod } from "@/types/order";
+import { usePayOrderMutation } from "@/hooks/queries/orders";
+import { useWalletQuery } from "@/hooks/queries/wallet";
+import { queryKeys } from "@/lib/query-keys";
+import type { OrderPaymentMethod, OrderPaymentResult } from "@/types/order";
 
 export type PayReturnStatus = "success" | "cancelled" | null;
 
@@ -53,11 +50,11 @@ export function useOrderPayment({
   orderId: string;
   callbackPath: string;
 }) {
-  const dispatch = useAppDispatch();
-  const token = useAppSelector((s) => s.auth.data?.tokens?.accessToken);
-  const { wallet } = useAppSelector((s) => s.wallet);
-  const { payResult, paySuccess, isPaying } = useAppSelector((s) => s.order);
+  const qc = useQueryClient();
+  const { data: wallet } = useWalletQuery();
+  const payMutation = usePayOrderMutation();
 
+  const [payResult, setPayResult] = useState<OrderPaymentResult | null>(null);
   const [payError, setPayError] = useState("");
 
   // Read Paystack callback params before any effect runs so the redirect effect
@@ -74,9 +71,9 @@ export function useOrderPayment({
   useEffect(() => {
     if (returnStatus !== null) {
       window.history.replaceState(null, "", callbackPath);
-      if (returnStatus === "success" && token) {
-        dispatch(fetchOrderDetail({ token, orderId }));
-        dispatch(fetchMyWallet(token));
+      if (returnStatus === "success") {
+        qc.invalidateQueries({ queryKey: queryKeys.orders.detail(orderId) });
+        qc.invalidateQueries({ queryKey: queryKeys.wallet.all });
       }
     }
     // Runs once on mount — returnStatus is derived from the initial URL.
@@ -95,13 +92,12 @@ export function useOrderPayment({
         window.location.href = checkoutUrl;
         return;
       }
-      dispatch(clearOrderPayment());
+      setPayResult(null);
     }
-  }, [checkoutUrl, dispatch, returnStatus]);
+  }, [checkoutUrl, returnStatus]);
 
   const pay = async (method: OrderPaymentMethod) => {
     setPayError("");
-    if (!token) return;
     // Fresh attempt — drop any lingering Paystack-return status so the redirect
     // effect's `returnStatus === null` guard doesn't block this payment.
     setReturnStatus(null);
@@ -112,14 +108,16 @@ export function useOrderPayment({
         : undefined;
 
     try {
-      await dispatch(
-        payOrder({ token, orderId, payload: { method, callbackUrl } })
-      ).unwrap();
+      const data = await payMutation.mutateAsync({
+        orderId,
+        payload: { method, callbackUrl },
+      });
+      setPayResult(data.data ?? null);
       if (method === "wallet") {
-        // Wallet settles inline — refresh balance and the order so the screen
-        // reflects the new paid status / stage immediately.
-        dispatch(fetchMyWallet(token));
-        dispatch(fetchOrderDetail({ token, orderId }));
+        // Wallet settles inline — the mutation already invalidated the order and
+        // wallet caches, so mounted queries refetch with the new paid status.
+        qc.invalidateQueries({ queryKey: queryKeys.orders.detail(orderId) });
+        qc.invalidateQueries({ queryKey: queryKeys.wallet.all });
       }
     } catch (err) {
       setPayError(
@@ -127,18 +125,19 @@ export function useOrderPayment({
           ? err.message
           : typeof err === "string"
             ? err
-            : "Payment failed. Please try again."
+            : "Payment failed. Please try again.",
       );
     }
   };
 
-  // A wallet payment is "done" once the thunk fulfils without handing back a
+  // A wallet payment is "done" once the mutation succeeds without handing back a
   // Paystack redirect URL (the wallet rail may return an empty `data` payload).
-  const walletPaid = paySuccess && !checkoutUrl && returnStatus === null;
+  const walletPaid =
+    payMutation.isSuccess && !checkoutUrl && returnStatus === null;
 
   return {
-    wallet,
-    isPaying,
+    wallet: wallet ?? null,
+    isPaying: payMutation.isPending,
     payError,
     payResult,
     /** True once a payment has succeeded (wallet inline OR Paystack return). */
@@ -148,7 +147,8 @@ export function useOrderPayment({
     reset: () => {
       setPayError("");
       setReturnStatus(null);
-      dispatch(clearOrderPayment());
+      setPayResult(null);
+      payMutation.reset();
     },
   };
 }

@@ -48,6 +48,17 @@ export interface CustomSpecification {
   value: string;
 }
 
+/**
+ * Snapshot of an edit made to an already-approved product. The change is held
+ * here (not applied to the live listing) until an admin approves it.
+ */
+export interface ProductPendingRevision {
+  baseVersion?: number;
+  revisionStatus?: "pending" | "rejected";
+  submittedAt?: string;
+  visibilityRejectionReason?: string | null;
+}
+
 export interface Product {
   _id: string;
   name: string;
@@ -78,6 +89,10 @@ export interface Product {
   featured?: boolean;
   oemApprovalStatus: OemApprovalStatus;
   hasOemBadge?: boolean;
+  /** True when an edit to this approved product is awaiting admin review. */
+  hasPendingRevision?: boolean;
+  /** The proposed edit awaiting admin review (approved-product edits). Null when none. */
+  pendingRevision?: ProductPendingRevision | null;
   visibilityRejectionReason?: string;
   oemRejectionReason?: string;
   createdBy: string | UserData;

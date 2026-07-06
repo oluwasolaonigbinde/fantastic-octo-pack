@@ -1,29 +1,37 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   ArrowLeft,
   CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
   Clock,
-  Edit3,
+  ExternalLink,
+  FileText,
   Loader2,
   Package,
-  Tag,
+  ShieldCheck,
   XCircle,
 } from "lucide-react";
 import Header from "../../../component/header";
 import { Button, Textarea } from "@/components/base";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import ProductImageGallery from "@/app/products/[id]/ProductImageGallery";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import {
-  fetchProductById,
-  reviewProductVisibilityById,
-} from "@/store/slices/product-slice";
+  useProductQuery,
+  useReviewProductVisibilityMutation,
+} from "@/hooks/queries/products";
+import { useCategoriesQuery } from "@/hooks/queries/categories";
 import type { UserData } from "@/types/user";
 import { getListingStatusMeta } from "@/utils/productStatus";
+import {
+  getProductAvailabilityLabel,
+  getProductDefaultImageUrl,
+  getProductImageUrls,
+  getProductSpecificationItems,
+  getPricingModeLabel,
+} from "@/utils/productDisplay";
 
 const formatMoney = (amount: number): string =>
   new Intl.NumberFormat("en-NG", {
@@ -36,11 +44,21 @@ const formatMoney = (amount: number): string =>
 const formatDate = (iso?: string | null): string => {
   if (!iso) return "-";
   const date = new Date(iso);
-  return `${date.toLocaleDateString("en-GB")} - ${date.toLocaleTimeString("en-GB", {
+  return `${date.toLocaleDateString("en-GB")} · ${date.toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
   })}`;
+};
+
+const sentenceCase = (value?: string | null): string => {
+  const trimmed = value?.trim();
+  if (!trimmed) return "";
+  return trimmed
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
 };
 
 const getUserName = (value?: string | UserData): string => {
@@ -49,13 +67,13 @@ const getUserName = (value?: string | UserData): string => {
   return `${value.firstName ?? ""} ${value.lastName ?? ""}`.trim() || value.email;
 };
 
+type DetailItem = { label: string; value: string };
+
 export default function AdminProductDetailPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  const dispatch = useAppDispatch();
 
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { product, isLoading, isError, message } = useAppSelector((state) => state.product);
 
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectForm, setShowRejectForm] = useState(false);
@@ -64,57 +82,69 @@ export default function AdminProductDetailPage() {
 
   const token = authData?.tokens?.accessToken;
 
-  useEffect(() => {
-    if (id && token) {
-      dispatch(fetchProductById({ id, token }));
-    }
-  }, [dispatch, id, token]);
+  const {
+    data: product,
+    isLoading,
+    isError,
+    error,
+  } = useProductQuery(id, { enabled: Boolean(id && token) });
+  const message = error instanceof Error ? error.message : "";
+  const reviewVisibility = useReviewProductVisibilityMutation();
+
+  // The single-product fetch does not populate `category`, so `product.category`
+  // is the raw ObjectId. Resolve the display name from the shared category list.
+  const { data: categories } = useCategoriesQuery(
+    {},
+    { enabled: Boolean(token) },
+  );
+  const categoryName = useMemo(() => {
+    if (!product?.category) return "-";
+    const match = categories?.find((c) => c._id === product.category);
+    return match?.name ?? product.category;
+  }, [categories, product]);
 
   const statusMeta = product ? getListingStatusMeta(product.status) : null;
-  const defaultImage = product?.images.find((image) => image.isDefault)?.url;
+  // An approved (live) product can carry a pending edit that must be reviewed
+  // before it goes live. The same visibility approve/reject endpoint governs it.
+  const hasPendingRevision = Boolean(product?.hasPendingRevision);
+  const canReview = product?.status === "pending" || hasPendingRevision;
 
-  const keySpecifications = useMemo(
-    () => {
-      const fromText =
-        product?.keySpecifications
-        ?.split("; ")
-        .filter(Boolean)
-        .map((entry) => {
-          const [label, value] = entry.split(": ");
-          return { label: label ?? entry, value: value ?? "" };
-        }) ?? [];
+  const specificationItems = getProductSpecificationItems(product);
 
-      const fromAttributes = [
-        ...(product?.key_attributes?.industry_specific ?? []),
-        ...(product?.key_attributes?.other ?? []),
-      ].map((item) => ({
-        label: item.spec ?? item.label ?? "Specification",
-        value: item.detail ?? item.value ?? "",
-      }));
-
-      const merged = [...fromText, ...fromAttributes].filter(
-        (item, index, list) =>
-          item.label &&
-          list.findIndex((candidate) => candidate.label === item.label) === index
-      );
-
-      return merged.length > 0
-        ? merged
-        : [
-            { label: "Category", value: product?.category ?? "-" },
-            { label: "Condition", value: product?.condition ?? "-" },
-            { label: "Unit of measure", value: product?.unit_of_measure ?? "-" },
-            { label: "Delivery time", value: product?.delivery_time ?? "-" },
-          ];
-    },
-    [product]
-  );
-
-  const refresh = () => {
-    if (id && token) {
-      dispatch(fetchProductById({ id, token }));
-    }
-  };
+  const details = useMemo<DetailItem[]>(() => {
+    if (!product) return [];
+    const subCategory = Array.isArray(product.sub_category)
+      ? product.sub_category.filter(Boolean).join(", ")
+      : "";
+    const items: DetailItem[] = [
+      { label: "Category", value: categoryName },
+      { label: "Sub-category", value: subCategory },
+      { label: "Condition", value: sentenceCase(product.condition) },
+      { label: "Pricing type", value: getPricingModeLabel(product) },
+      { label: "Availability", value: getProductAvailabilityLabel(product) },
+      { label: "Unit of measure", value: product.unit_of_measure ?? "" },
+      {
+        label: "Manufacturing country",
+        value: product.manufacturing_country ?? "",
+      },
+      { label: "SKU", value: product.sku ?? "" },
+      { label: "Brand / OEM", value: product.brand_oem ?? "" },
+      { label: "Delivery time", value: product.delivery_time ?? "" },
+      {
+        label: "Installation",
+        value:
+          product.requiresInstallation === true
+            ? product.installation_time
+              ? `Required · ${product.installation_time}`
+              : "Required"
+            : product.requiresInstallation === false
+              ? "Not required"
+              : "",
+      },
+      { label: "Return policy", value: product.return_policy ?? "" },
+    ];
+    return items.filter((item) => item.value && item.value !== "-");
+  }, [product, categoryName]);
 
   const handleApprove = async () => {
     if (!product || !token) return;
@@ -122,14 +152,10 @@ export default function AdminProductDetailPage() {
     setActionError("");
 
     try {
-      await dispatch(
-        reviewProductVisibilityById({
-          token,
-          id: product._id,
-          dto: { action: "approve" },
-        })
-      ).unwrap();
-      refresh();
+      await reviewVisibility.mutateAsync({
+        id: product._id,
+        dto: { action: "approve" },
+      });
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Approval failed");
     } finally {
@@ -144,14 +170,11 @@ export default function AdminProductDetailPage() {
     setActionError("");
 
     try {
-      await dispatch(
-        reviewProductVisibilityById({
-          token,
-          id: product._id,
-          dto: { action: "reject", rejectionReason: rejectReason.trim() },
-        })
-      ).unwrap();
-      refresh();
+      await reviewVisibility.mutateAsync({
+        id: product._id,
+        dto: { action: "reject", rejectionReason: rejectReason.trim() },
+      });
+      setRejectReason("");
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Rejection failed");
     } finally {
@@ -193,6 +216,8 @@ export default function AdminProductDetailPage() {
     );
   }
 
+  const certifications = (product.certifications ?? []).filter((c) => c?.url);
+
   return (
     <div>
       <Header
@@ -200,78 +225,84 @@ export default function AdminProductDetailPage() {
         description="View all products and listing requests"
       />
 
-      <div className="space-y-6 p-5 lg:p-6">
+      <div className="mx-auto max-w-5xl space-y-4 p-4 md:p-6">
         <Link
           href="/dashboard/admin/products"
-          className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+          className="inline-flex items-center gap-2 text-sm font-medium text-gray2 hover:text-primary"
         >
           <ArrowLeft size={14} />
           Go Back
         </Link>
 
-        <section className="rounded-2xl border border-gray5 bg-white p-4 lg:p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        {/* Review action bar */}
+        <section className="rounded-2xl border border-gray5 bg-white p-4 md:p-5">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex size-12 items-center justify-center rounded-2xl bg-[#E7F1FF]">
-                <Package size={20} className="text-primary" />
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#E7F1FF]">
+                <Package size={18} className="text-primary" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold leading-8 text-gray1">
+                <p className="text-sm font-semibold text-gray1">
                   {getUserName(product.createdBy)}
-                </h2>
-                <p className="text-sm text-gray3">
+                </p>
+                <p className="text-xs text-gray3">
                   Submitted {formatDate(product.submittedAt ?? product.createdAt)}
                 </p>
               </div>
             </div>
 
-            {statusMeta && (
-              <div className="flex flex-col gap-3 rounded-2xl border border-[#FFE079] bg-[#FFF6D9] p-4 sm:flex-row sm:items-center sm:justify-between lg:min-w-[360px]">
-                <div className="flex items-center justify-between gap-4 sm:flex-1">
-                  <p className="text-base font-medium text-[#272B36]">Product status</p>
-                  <span
-                    className={`inline-flex rounded-lg px-4 py-2 text-sm font-medium ${
-                      product.status === "pending"
-                        ? "bg-[#FFC000] text-white"
-                        : statusMeta.className
-                    }`}
-                  >
-                    {statusMeta.label}
-                  </span>
+            <div className="flex flex-wrap items-center gap-3">
+              {statusMeta && (
+                <span
+                  className={`inline-flex items-center rounded-full px-3 py-1.5 text-xs font-semibold ${
+                    hasPendingRevision
+                      ? "bg-[#FFF1CC] text-[#9A6700]"
+                      : statusMeta.className
+                  }`}
+                >
+                  {hasPendingRevision ? "Edit awaiting review" : statusMeta.label}
+                </span>
+              )}
+              {canReview && (
+                <div className="flex gap-2">
+                  <Button
+                    title={
+                      submitting
+                        ? "Processing..."
+                        : hasPendingRevision
+                          ? "Approve edit"
+                          : "Approve"
+                    }
+                    size="sm"
+                    onClick={handleApprove}
+                    disabled={submitting}
+                    className="h-9 w-auto rounded-lg px-4"
+                  />
+                  <Button
+                    title="Reject"
+                    variant="secondaryLight"
+                    size="sm"
+                    className="h-9 w-auto rounded-lg border-danger! px-4 text-danger!"
+                    onClick={() => setShowRejectForm((open) => !open)}
+                    disabled={submitting}
+                  />
                 </div>
-                {product.status === "pending" ? (
-                  <div className="flex gap-2">
-                    <Button
-                      title={submitting ? "Processing..." : "Approve"}
-                      size="sm"
-                      onClick={handleApprove}
-                      disabled={submitting}
-                      className="h-10 w-auto rounded-lg px-4"
-                    />
-                    <Button
-                      title="Reject"
-                      variant="secondaryLight"
-                      size="sm"
-                      className="h-10 w-auto rounded-lg border-danger! px-4 text-danger!"
-                      onClick={() => setShowRejectForm((open) => !open)}
-                      disabled={submitting}
-                    />
-                  </div>
-                ) : null}
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </section>
 
-        <section className="rounded-2xl border border-gray5 bg-white p-5 lg:p-10">
-          {showRejectForm ? (
-            <div className="mb-8 space-y-3 rounded-2xl border border-danger/20 bg-red-50 p-4">
+          {showRejectForm && (
+            <div className="mt-4 space-y-3 rounded-xl border border-danger/20 bg-red-50 p-4">
               <Textarea
                 label="Rejection reason"
-                placeholder="Explain why this listing should remain hidden from the public website..."
+                placeholder={
+                  hasPendingRevision
+                    ? "Explain why this edit should not go live. The current listing stays as-is."
+                    : "Explain why this listing should remain hidden from the public website..."
+                }
                 value={rejectReason}
                 onChange={(event) => setRejectReason(event.target.value)}
-                className="min-h-[120px]"
+                className="min-h-[100px]"
               />
               <Button
                 title={submitting ? "Processing..." : "Confirm Rejection"}
@@ -280,153 +311,194 @@ export default function AdminProductDetailPage() {
                 onClick={handleReject}
               />
             </div>
-          ) : null}
+          )}
 
-          <div className="grid gap-8 xl:grid-cols-[minmax(0,556px)_minmax(0,1fr)]">
-            <div className="relative flex aspect-[556/414] min-h-[238px] items-center justify-center overflow-hidden rounded-lg border border-gray5 bg-gray7">
-              {defaultImage ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={defaultImage}
-                  alt={product.name}
-                  className="size-full object-cover"
-                />
-              ) : (
-                <Package size={52} className="text-gray3" />
-              )}
-              <button
-                type="button"
-                aria-label="Previous product image"
-                className="absolute left-4 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray1 shadow"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              <button
-                type="button"
-                aria-label="Next product image"
-                className="absolute right-4 top-1/2 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 text-gray1 shadow"
-              >
-                <ChevronRight size={20} />
-              </button>
-            </div>
+          {actionError && (
+            <p className="mt-3 text-sm text-danger">{actionError}</p>
+          )}
+        </section>
 
-            <div className="flex flex-col justify-center">
-              <h3 className="text-[28px] font-semibold leading-[1.35] text-gray1 lg:text-[32px] lg:leading-[48px]">
-                {product.name}
-              </h3>
-              <div className="mt-4 inline-flex w-fit rounded-lg bg-[#C7EEFF] px-5 py-3 text-xl font-medium leading-8 text-primary lg:text-2xl lg:leading-10">
-                {product.quantityAvailable ?? 0} In stock
-              </div>
-              <p className="mt-6 text-[34px] font-semibold leading-[1.25] text-[#03265C] lg:text-[40px]">
-                {formatMoney(product.pricePerUnit)}
-              </p>
+        {/* Status / lifecycle banner */}
+        {hasPendingRevision ? (
+          <div className="flex items-start gap-2 rounded-2xl border border-[#FDE8C8] bg-[#FFF8EE] p-4 text-sm text-[#8A5A00]">
+            <Clock size={16} className="mt-0.5 shrink-0" />
+            <span>
+              The distributor edited this live listing. Approve to publish the
+              changes, or reject to keep the current listing unchanged.
+              {product.pendingRevision?.submittedAt
+                ? ` Submitted ${formatDate(product.pendingRevision.submittedAt)}.`
+                : ""}
+            </span>
+          </div>
+        ) : product.status === "pending" ? (
+          <div className="flex items-start gap-2 rounded-2xl border border-[#FDE8C8] bg-[#FFF8EE] p-4 text-sm text-[#8A5A00]">
+            <Clock size={16} className="mt-0.5 shrink-0" />
+            <span>This submitted listing is awaiting admin review.</span>
+          </div>
+        ) : product.status === "approved" ? (
+          <div className="flex items-start gap-2 rounded-2xl border border-[#C8F2D8] bg-[#F1FFF6] p-4 text-sm text-[#2A7A4B]">
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+            <span>
+              This listing is approved and visible on the public website.
+            </span>
+          </div>
+        ) : product.status === "rejected" ? (
+          <div className="flex items-start gap-2 rounded-2xl border border-danger/20 bg-red-50 p-4 text-sm text-red-700">
+            <XCircle size={16} className="mt-0.5 shrink-0" />
+            <span>
+              This listing was rejected and remains hidden from the public
+              website.
+              {product.visibilityRejectionReason
+                ? ` Reason: ${product.visibilityRejectionReason}`
+                : ""}
+            </span>
+          </div>
+        ) : null}
 
-              <div className="mt-5 flex flex-wrap items-center gap-2 text-sm text-gray3">
-                <span className="inline-flex items-center gap-1">
-                  <Tag size={14} />
-                  {product.category}
+        {/* Product overview */}
+        <section className="space-y-6 rounded-2xl border border-gray5 bg-white p-4 md:p-6">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+            <ProductImageGallery
+              mainImage={getProductDefaultImageUrl(product)}
+              thumbnails={getProductImageUrls(product)}
+              title={product.name}
+            />
+
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <h1 className="text-2xl font-semibold leading-snug text-gray1">
+                  {product.name}
+                </h1>
+                <span className="inline-flex rounded-md bg-[#E8F3FF] px-3 py-1.5 text-sm font-medium text-primary">
+                  {getProductAvailabilityLabel(product)}
                 </span>
-                {product.sub_category ? (
-                  <span className="rounded-full bg-gray7 px-3 py-1">
-                    {product.sub_category}
-                  </span>
-                ) : null}
+                <p className="text-3xl font-bold text-[#12355B]">
+                  {formatMoney(product.pricePerUnit || 0)}
+                </p>
               </div>
+
+              {product.oemApprovalStatus && (
+                <div className="flex items-center gap-2 rounded-xl border border-gray5 bg-[#F9FBFD] px-3 py-2.5 text-sm">
+                  <ShieldCheck size={16} className="shrink-0 text-primary" />
+                  <span className="text-gray2">
+                    OEM badge:{" "}
+                    <span className="font-medium text-gray1">
+                      {product.oemApprovalStatus === "approved"
+                        ? "Verified"
+                        : product.oemApprovalStatus === "pending"
+                          ? "Awaiting review"
+                          : product.oemApprovalStatus === "rejected"
+                            ? "Rejected"
+                            : "Not requested"}
+                    </span>
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
-          <section className="mt-10">
-            <div className="flex items-center justify-between gap-4">
-              <h3 className="text-2xl font-semibold leading-10 text-gray1">
-                Description
-              </h3>
-              <button
-                type="button"
-                aria-label="Edit description"
-                className="flex size-12 items-center justify-center rounded-xl bg-gray7 text-gray2"
-              >
-                <Edit3 size={18} />
-              </button>
-            </div>
-            <p className="mt-3 max-w-[1080px] text-base leading-8 text-gray2 lg:text-xl">
+          {/* Description */}
+          <div className="border-t border-gray5 pt-5">
+            <h2 className="text-base font-semibold text-gray1">Description</h2>
+            <p className="mt-2 whitespace-pre-line text-sm leading-7 text-gray2">
               {product.description || "No description provided for this product."}
             </p>
-          </section>
-
-          <section className="mt-10">
-            <div className="flex items-center justify-between gap-4">
-              <h3 className="text-2xl font-semibold leading-10 text-gray1">
-                Key Specifications
-              </h3>
-              <button
-                type="button"
-                aria-label="Edit key specifications"
-                className="flex size-12 items-center justify-center rounded-xl bg-gray7 text-gray2"
-              >
-                <Edit3 size={18} />
-              </button>
-            </div>
-            <div className="mt-4 overflow-x-auto rounded-xl border border-gray5">
-              <table className="w-full min-w-[620px] table-fixed text-left">
-                <thead>
-                  <tr>
-                    <th className="w-1/2 border-b border-r border-gray5 bg-[#EEF0F4] px-5 py-5 text-base font-semibold text-gray2 lg:text-2xl">
-                      Specifications
-                    </th>
-                    <th className="border-b border-gray5 bg-[#F0F1F6] px-5 py-5 text-base font-semibold text-gray2 lg:text-2xl">
-                      Details
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {keySpecifications.map((item, index) => (
-                    <tr
-                      key={`${item.label}-${index}`}
-                      className={index % 2 === 0 ? "bg-[#F8F8FA]" : "bg-[#FEFDFE]"}
-                    >
-                      <th className="w-1/2 border-r border-gray5 px-5 py-5 text-base font-medium text-gray2 lg:text-2xl">
-                        {item.label}
-                      </th>
-                      <td className="px-5 py-5 text-base font-medium text-gray2 lg:text-2xl">
-                        {item.value || "-"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <div className="mt-6 space-y-3">
-            {product.status === "approved" && (
-              <div className="flex items-start gap-2 rounded-2xl bg-green-50 p-4 text-sm text-green-700">
-                <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-                <span>
-                  This listing has been approved and is now visible on the public
-                  website.
-                </span>
-              </div>
-            )}
-            {product.status === "rejected" && (
-              <div className="flex items-start gap-2 rounded-2xl bg-red-50 p-4 text-sm text-red-700">
-                <XCircle size={16} className="mt-0.5 shrink-0" />
-                <span>
-                  This listing has been rejected and remains hidden from the public
-                  website.
-                  {product.visibilityRejectionReason
-                    ? ` Reason: ${product.visibilityRejectionReason}`
-                    : ""}
-                </span>
-              </div>
-            )}
-            {product.status === "pending" && (
-              <div className="flex items-start gap-2 rounded-2xl bg-[#FFF5DB] p-4 text-sm text-[#9A6700]">
-                <Clock size={16} className="mt-0.5 shrink-0" />
-                <span>This submitted listing is awaiting admin review.</span>
-              </div>
-            )}
-            {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
           </div>
+
+          {/* Details grid */}
+          {details.length > 0 && (
+            <div className="border-t border-gray5 pt-5">
+              <h2 className="text-base font-semibold text-gray1">
+                Product Details
+              </h2>
+              <dl className="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+                {details.map((item) => (
+                  <div
+                    key={item.label}
+                    className="flex justify-between gap-4 border-b border-gray5/60 pb-2 text-sm"
+                  >
+                    <dt className="text-gray3">{item.label}</dt>
+                    <dd className="text-right font-medium text-gray1">
+                      {item.value}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          )}
+
+          {/* Specifications */}
+          <div className="border-t border-gray5 pt-5">
+            <h2 className="text-base font-semibold text-gray1">
+              Key Specifications
+            </h2>
+            {specificationItems.length > 0 ? (
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                {specificationItems.map((spec, index) => (
+                  <li
+                    key={`${spec.label}-${index}`}
+                    className="flex justify-between gap-4 rounded-lg bg-[#F8F8FA] px-3 py-2 text-sm"
+                  >
+                    <span className="text-gray3">{spec.label}</span>
+                    <span className="text-right font-medium text-gray1">
+                      {spec.value || "-"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-2 text-sm text-gray3">
+                No key specifications provided.
+              </p>
+            )}
+          </div>
+
+          {/* Attachments & links */}
+          {(certifications.length > 0 ||
+            product.brochure?.url ||
+            product.video_link) && (
+            <div className="border-t border-gray5 pt-5">
+              <h2 className="text-base font-semibold text-gray1">
+                Attachments &amp; Links
+              </h2>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {product.video_link && (
+                  <a
+                    href={product.video_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray5 bg-white px-3 py-2 text-sm text-gray2 hover:border-primary hover:text-primary"
+                  >
+                    <ExternalLink size={14} />
+                    Video
+                  </a>
+                )}
+                {product.brochure?.url && (
+                  <a
+                    href={product.brochure.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray5 bg-white px-3 py-2 text-sm text-gray2 hover:border-primary hover:text-primary"
+                  >
+                    <FileText size={14} />
+                    {product.brochure.name || "Brochure"}
+                  </a>
+                )}
+                {certifications.map((cert, index) => (
+                  <a
+                    key={`${cert.url}-${index}`}
+                    href={cert.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray5 bg-white px-3 py-2 text-sm text-gray2 hover:border-primary hover:text-primary"
+                  >
+                    <FileText size={14} />
+                    {cert.name || `Certification ${index + 1}`}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       </div>
     </div>

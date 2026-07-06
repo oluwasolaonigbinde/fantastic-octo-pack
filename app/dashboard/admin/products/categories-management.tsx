@@ -303,7 +303,11 @@ function CategoriesTable({
           </TableRow>
         ) : (
           categories.map((category) => (
-            <TableRow key={category._id}>
+            <TableRow
+              key={category._id}
+              onClick={() => onView(category)}
+              className="cursor-pointer"
+            >
               <TableCell>
                 <div className="flex items-center gap-3">
                   <span className="size-8 shrink-0 rounded-md bg-gray6" />
@@ -351,7 +355,11 @@ function SubcategoriesTable({
           </TableRow>
         ) : (
           subs.map((sub, index) => (
-            <TableRow key={`${sub}-${index}`}>
+            <TableRow
+              key={`${sub}-${index}`}
+              onClick={() => onView(sub)}
+              className="cursor-pointer"
+            >
               <TableCell>
                 <div className="flex items-center gap-3">
                   <span className="size-8 shrink-0 rounded-md bg-gray6" />
@@ -395,7 +403,11 @@ function SpecsTable({
           </TableRow>
         ) : (
           specs.map((spec, index) => (
-            <TableRow key={`${spec.key}-${index}`}>
+            <TableRow
+              key={`${spec.key}-${index}`}
+              onClick={() => onView(index)}
+              className="cursor-pointer"
+            >
               <TableCell>
                 <div className="flex items-center gap-3">
                   <span className="size-8 shrink-0 rounded-md bg-gray6" />
@@ -419,7 +431,10 @@ function ViewButton({ onClick }: { onClick: () => void }) {
     <div className="flex justify-end">
       <button
         type="button"
-        onClick={onClick}
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick();
+        }}
         className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
       >
         <Eye size={16} /> View

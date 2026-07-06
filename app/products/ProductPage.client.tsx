@@ -12,12 +12,10 @@ import FilterSidebar, {
 import FilterChipBar from "./FilterChipBar";
 import ProductGrid from "./ProductGrid";
 
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchProducts } from "@/store/slices/product-slice";
+import { useProductsQuery } from "@/hooks/queries/products";
 
 import { BigLoader } from "@/components/base";
 import { Product } from "@/types/product";
-import type { FetchProductsParams } from "@/services/productService";
 import { isProductAvailable } from "@/utils/productDisplay";
 import SearchAutocomplete from "@/components/features/search/SearchAutocomplete";
 
@@ -40,13 +38,22 @@ const EMPTY_FILTERS: FilterCriteria = {
 };
 
 const ProductPage = () => {
-  const dispatch = useAppDispatch();
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const { products, isLoading, isError, message } = useAppSelector(
-    (state) => state.product
-  );
+  // Cached read: on remount this serves instantly and revalidates in the
+  // background instead of re-showing a spinner. Client-side faceting below
+  // still needs the full set, so we keep the wide `limit` for now — moving to
+  // server-side pagination is tracked as a separate follow-up.
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+  } = useProductsQuery({ populate: "createdBy", limit: 1000 });
+
+  const products = data?.products ?? null;
+  const message = error instanceof Error ? error.message : "";
 
   const normalizeCategory = useCallback((cat?: string | null) => {
     if (!cat || cat === "all") return null;
@@ -60,19 +67,6 @@ const ProductPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
 
   const productsPerPage = 9;
-
-  const fetchAllProducts = useCallback(async () => {
-    const params: FetchProductsParams = {
-      populate: "createdBy",
-      limit: 1000,
-    };
-
-    await dispatch(fetchProducts(params));
-  }, [dispatch]);
-
-  useEffect(() => {
-    fetchAllProducts();
-  }, [fetchAllProducts]);
 
   useEffect(() => {
     const nextFilters: FilterCriteria = {

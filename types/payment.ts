@@ -15,6 +15,18 @@ export type PaymentIntent =
   | "escrow_release"
   | "refund";
 
+export type PaymentChannel =
+  | "card"
+  | "bank"
+  | "bank_transfer"
+  | "dedicated_virtual_account"
+  | "ussd"
+  | "qr"
+  | "mobile_money"
+  | "eft"
+  | "wallet"
+  | "internal";
+
 export interface PaymentParty {
   _id: string;
   firstName?: string;
@@ -57,6 +69,10 @@ export interface PaymentTransaction {
   gatewayFee?: number;
   currency: string;
   processor: string;
+  /** The rail the money moved over. Absent for hosted-checkout transactions until the gateway reports it. */
+  channel?: PaymentChannel | null;
+  /** Human-readable summary of the transaction, as reported by the backend. */
+  description?: string;
   reference: string;
   status: PaymentStatus;
   destinationBank?: PaymentDestinationBank | null;

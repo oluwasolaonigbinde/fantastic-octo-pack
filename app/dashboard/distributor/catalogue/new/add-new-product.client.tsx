@@ -31,15 +31,17 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchCategories } from "@/store/slices/category-slice";
+import { useCategoriesQuery } from "@/hooks/queries/categories";
 import {
-  createNewProduct,
-  resetProducts,
-  submitProductById,
-} from "@/store/slices/product-slice";
+  useCreateProductMutation,
+  useProductQuery,
+  useSubmitProductMutation,
+  useUpdateProductMutation,
+} from "@/hooks/queries/products";
 import { fetchPublicProfiles } from "@/store/slices/user-slice";
 import { UserRole } from "@/types/user";
 import type { BaseSpecification } from "@/types/categories";
+import type { ProductImage } from "@/types/product";
 
 /** Seeded OEM accounts use this display name (e.g. oem@local.test) so `assignedOem` matches OEM review guards. */
 const PLAYWRIGHT_OEM_DISPLAY_LABEL = "Playwright OEM";
@@ -230,6 +232,23 @@ const formatDuration = (value: string, unit: DurationUnit): string | undefined =
   }
 
   return `${normalizedValue} ${unit}`;
+};
+
+/** Reverses `formatDuration` — turns a stored "3 days" string back into the
+ * wizard's value + unit fields. Unknown/absent input falls back to empty/days. */
+const parseDuration = (value?: string): [string, DurationUnit] => {
+  if (!value) {
+    return ["", "days"];
+  }
+
+  const [rawValue, rawUnit] = normalizeText(value).split(/\s+/);
+  const unit = (["days", "weeks", "months"] as DurationUnit[]).includes(
+    rawUnit as DurationUnit,
+  )
+    ? (rawUnit as DurationUnit)
+    : "days";
+
+  return [/^\d+$/.test(rawValue ?? "") && rawValue !== "0" ? rawValue : "", unit];
 };
 
 const isPositiveWholeNumber = (value: string): boolean =>
@@ -508,7 +527,7 @@ function MergedDurationField({
           aria-invalid={hasError}
           disabled={disabled}
           onChange={(event) => onValueChange(event.target.value)}
-          className="min-w-0 flex-1 border-0 bg-transparent px-4 py-3 text-sm text-gray1 outline-none placeholder:text-gray4 focus:ring-0 disabled:cursor-not-allowed disabled:bg-gray7"
+          className="min-w-0 flex-[2] border-0 bg-transparent px-4 py-3 text-sm text-gray1 outline-none placeholder:text-gray4 focus:ring-0 disabled:cursor-not-allowed disabled:bg-gray7"
         />
         <div className="w-px shrink-0 self-stretch bg-gray5" aria-hidden />
         <Select
@@ -521,7 +540,7 @@ function MergedDurationField({
             aria-invalid={hasError}
             disabled={disabled}
             className={cn(
-              "h-12 min-h-12 w-[140px] shrink-0 rounded-none rounded-r-xl border-0 bg-transparent px-3 text-sm text-gray1 shadow-none outline-none",
+              "h-12 min-h-12 w-[92px] shrink-0 rounded-none rounded-r-xl border-0 bg-transparent px-2 text-sm text-gray1 shadow-none outline-none",
               "focus-visible:ring-0 focus-visible:ring-offset-0",
               "data-[size=default]:h-12 data-[size=default]:min-h-12"
             )}
@@ -549,21 +568,36 @@ function MergedDurationField({
   );
 }
 
-export default function AddNewProduct() {
+type AddNewProductProps = {
+  /** When set, the wizard runs in edit mode: it prefills from this draft
+   * product and PATCHes it instead of creating a new one. */
+  productId?: string;
+};
+
+export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
+  const isEditing = Boolean(productId);
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const createProduct = useCreateProductMutation();
+  const updateProduct = useUpdateProductMutation();
+  const submitProduct = useSubmitProductMutation();
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const certificationInputRef = useRef<HTMLInputElement>(null);
   const devOemAutoPickDoneRef = useRef(false);
 
   const { data: authData } = useAppSelector((state) => state.auth);
+  const { data: existingProduct } = useProductQuery(productId, {
+    enabled: isEditing,
+  });
   const {
-    categories,
+    data: categories = [],
     isLoading: categoriesLoading,
     isError: categoriesError,
-    message: categoriesMessage,
-  } = useAppSelector((state) => state.category);
+    error: categoriesQueryError,
+  } = useCategoriesQuery({ page: 1, limit: 50 });
+  const categoriesMessage =
+    categoriesQueryError instanceof Error ? categoriesQueryError.message : "";
   const {
     users: oemUsers,
     loading: oemUsersLoading,
@@ -574,7 +608,10 @@ export default function AddNewProduct() {
   // (e.g. after logout/login in the same tab) never rehydrates someone else's
   // in-progress product. Empty until the user id is known.
   const userId = authData?._id ?? "";
-  const storageKey = userId ? `${WIZARD_STORAGE_KEY}:${userId}` : "";
+  // Edit mode never touches the "new product" draft cache — it hydrates from the
+  // fetched product instead, and must not overwrite an in-progress new listing.
+  const storageKey =
+    !isEditing && userId ? `${WIZARD_STORAGE_KEY}:${userId}` : "";
 
   const [currentStep, setCurrentStep] = useState<StepId>(1);
   const [form, setForm] = useState<WizardState>(INITIAL_STATE);
@@ -591,12 +628,11 @@ export default function AddNewProduct() {
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [defaultImageIndex, setDefaultImageIndex] = useState(0);
   const [certificationFile, setCertificationFile] = useState<File | null>(null);
-
-  useEffect(() => {
-    if (categories.length === 0 && !categoriesLoading) {
-      dispatch(fetchCategories({ page: 1, limit: 50 }));
-    }
-  }, [categories.length, categoriesLoading, dispatch]);
+  // Images already stored on the listing (edit mode). Kept read-only in this
+  // slice — the update endpoint has no per-image delete, so newly uploaded
+  // files are appended and existing images remain unless the whole set is sent.
+  const [existingImages, setExistingImages] = useState<ProductImage[]>([]);
+  const prefilledRef = useRef(false);
 
   useEffect(() => {
     dispatch(fetchPublicProfiles({ page: 1, limit: 50, roles: [UserRole.OEM] }));
@@ -666,6 +702,63 @@ export default function AddNewProduct() {
     };
   }, [imagePreviews]);
 
+  // Edit mode: seed the wizard from the fetched draft exactly once.
+  useEffect(() => {
+    if (!isEditing || prefilledRef.current || !existingProduct) {
+      return;
+    }
+    prefilledRef.current = true;
+
+    const product = existingProduct;
+    const [installationValue, installationUnit] = parseDuration(
+      product.installation_time,
+    );
+    const [deliveryValue, deliveryUnit] = parseDuration(product.delivery_time);
+    const oemId =
+      typeof product.assignedOem === "object" && product.assignedOem
+        ? product.assignedOem._id
+        : (product.assignedOem as string | undefined) ?? "";
+    const customRows = (product.customSpecifications ?? []).map((spec) => ({
+      spec: spec.key,
+      detail: spec.value,
+    }));
+
+    setForm({
+      category: product.category ?? "",
+      sub_category: product.sub_category?.[0] ?? "",
+      name: product.name ?? "",
+      assignedOem: oemId,
+      manufacturing_country: product.manufacturing_country ?? "",
+      condition: (product.condition as Condition) ?? "",
+      description: product.description ?? "",
+      availability_status:
+        (product.availability_status as AvailabilityStatus) ?? "",
+      requiresInstallation: Boolean(product.requiresInstallation),
+      installation_time_value: installationValue,
+      installation_time_unit: installationUnit,
+      delivery_time_value: deliveryValue,
+      delivery_time_unit: deliveryUnit,
+      categorySpecValues: Object.fromEntries(
+        (product.categorySpecifications ?? []).map((spec) => [
+          spec.key,
+          spec.value,
+        ]),
+      ),
+      otherAttributes:
+        customRows.length > 0 ? customRows : buildEmptyAttributes(),
+      pricing_type: (product.pricing_type as PricingType) ?? "",
+      pricePerUnit:
+        typeof product.pricePerUnit === "number"
+          ? String(product.pricePerUnit)
+          : "",
+      unit_of_measure: product.unit_of_measure ?? "",
+      return_policy: product.return_policy ?? "",
+      sku: product.sku ?? "",
+      video_link: product.video_link ?? "",
+    });
+    setExistingImages(product.images ?? []);
+  }, [isEditing, existingProduct]);
+
   const categoryOptions = useMemo(
     () =>
       categories.map((category) => ({
@@ -721,6 +814,7 @@ export default function AddNewProduct() {
 
   useEffect(() => {
     if (process.env.NODE_ENV !== "development") return;
+    if (isEditing) return;
     if (!hasHydrated || devOemAutoPickDoneRef.current) return;
     if (sortedOemUsers.length === 0) return;
 
@@ -737,7 +831,7 @@ export default function AddNewProduct() {
       devOemAutoPickDoneRef.current = true;
       return match ? { ...prev, assignedOem: match._id } : prev;
     });
-  }, [hasHydrated, sortedOemUsers]);
+  }, [hasHydrated, isEditing, sortedOemUsers]);
 
   const categoryLoadError = useMemo(() => {
     if (categoriesLoading) {
@@ -1082,7 +1176,7 @@ export default function AddNewProduct() {
     }
 
     if (step === 5) {
-      if (images.length === 0) {
+      if (images.length === 0 && existingImages.length === 0) {
         nextErrors.images = "Upload at least one product image before submitting.";
       }
 
@@ -1205,11 +1299,15 @@ export default function AddNewProduct() {
       formData.append("customSpecifications", JSON.stringify(customSpecifications));
     }
 
-    images.forEach((image) => formData.append("images", image));
-    formData.append(
-      "defaultImageIndex",
-      String(Math.min(defaultImageIndex, images.length - 1)),
-    );
+    // Only send images when the user actually attached new files. In edit mode
+    // an untouched listing keeps its existing images (no images field sent).
+    if (images.length > 0) {
+      images.forEach((image) => formData.append("images", image));
+      formData.append(
+        "defaultImageIndex",
+        String(Math.min(defaultImageIndex, images.length - 1)),
+      );
+    }
 
     if (certificationFile) {
       formData.append("certifications", certificationFile);
@@ -1218,40 +1316,40 @@ export default function AddNewProduct() {
     setIsSubmitting(true);
     setSubmitError("");
 
-    let createdProductId = "";
-
     try {
-      const created = await dispatch(
-        createNewProduct({ token, productData: formData }),
-      ).unwrap();
-      createdProductId = created.data._id;
+      if (isEditing && productId) {
+        // Persist the edit. A draft re-enters admin review via submit; an
+        // approved product's edit is stored as a pending revision by the PATCH
+        // itself (the live listing is unchanged until an admin approves it), so
+        // it must NOT be resubmitted (submit only accepts drafts → 422).
+        await updateProduct.mutateAsync({ id: productId, productData: formData });
+        if (existingProduct?.status === "draft") {
+          await submitProduct.mutateAsync(productId);
+        }
+      } else {
+        const created = await createProduct.mutateAsync(formData);
+        await submitProduct.mutateAsync(created.data._id);
 
-      await dispatch(
-        submitProductById({ token, id: createdProductId }),
-      ).unwrap();
+        if (typeof window !== "undefined" && storageKey) {
+          window.sessionStorage.removeItem(storageKey);
+        }
+      }
 
       setSuccessOpen(true);
-      dispatch(resetProducts());
-
-      if (typeof window !== "undefined" && storageKey) {
-        window.sessionStorage.removeItem(storageKey);
-      }
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : typeof error === "string"
           ? error
+          : isEditing
+          ? "Unable to save your changes."
           : "Unable to submit the product.";
 
-      // Subscription/plan gating error — surface the backend message and point
-      // the distributor to their subscription page to upgrade.
-      if (!createdProductId && /plan|subscription|limit|upgrade/i.test(message)) {
+      // Subscription/plan gating only applies to new listings; surface the
+      // backend message and point the distributor to their subscription page.
+      if (!isEditing && /plan|subscription|limit|upgrade/i.test(message)) {
         setSubscriptionError(message);
-      } else if (createdProductId) {
-        setSubmitError(
-          `${message} The product was created but could not be submitted for review.`,
-        );
       } else {
         setSubmitError(message);
       }
@@ -1279,9 +1377,13 @@ export default function AddNewProduct() {
         </Link>
 
         <section className="card space-y-2">
-          <h2 className="medium3 text-gray1">Add New Product</h2>
+          <h2 className="medium3 text-gray1">
+            {isEditing ? "Edit Product" : "Add New Product"}
+          </h2>
           <p className="text-sm text-gray3">
-            Kindly provide all required information and submit, to add a new product
+            {isEditing
+              ? "Update the product details below, then resubmit it for review."
+              : "Kindly provide all required information and submit, to add a new product"}
           </p>
         </section>
 
@@ -1468,7 +1570,12 @@ export default function AddNewProduct() {
                   />
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-3 md:items-start">
+                <div
+                  className={cn(
+                    "grid gap-4 md:items-start",
+                    form.requiresInstallation ? "md:grid-cols-3" : "md:grid-cols-2",
+                  )}
+                >
                   <div className="flex min-w-0 flex-col gap-1">
                     <label
                       htmlFor="availability_status"
@@ -1521,22 +1628,19 @@ export default function AddNewProduct() {
                     onUnitChange={(u) => setField("delivery_time_unit", u)}
                   />
 
-                  <MergedDurationField
-                    id="installation_time_value"
-                    label="Estimated Installation Duration"
-                    hint={
-                      form.requiresInstallation
-                        ? "How long does on-site installation take?"
-                        : "Enable on-site installation above to set this."
-                    }
-                    value={form.installation_time_value}
-                    unit={form.installation_time_unit}
-                    valueError={fieldErrors.installation_time_value}
-                    unitError={fieldErrors.installation_time_unit}
-                    disabled={!form.requiresInstallation}
-                    onValueChange={(v) => setField("installation_time_value", v)}
-                    onUnitChange={(u) => setField("installation_time_unit", u)}
-                  />
+                  {form.requiresInstallation ? (
+                    <MergedDurationField
+                      id="installation_time_value"
+                      label="Estimated Installation Duration"
+                      hint="How long does on-site installation take?"
+                      value={form.installation_time_value}
+                      unit={form.installation_time_unit}
+                      valueError={fieldErrors.installation_time_value}
+                      unitError={fieldErrors.installation_time_unit}
+                      onValueChange={(v) => setField("installation_time_value", v)}
+                      onUnitChange={(u) => setField("installation_time_unit", u)}
+                    />
+                  ) : null}
                 </div>
 
                 <div className="space-y-3">
@@ -1675,6 +1779,38 @@ export default function AddNewProduct() {
                   onChange={(event) => setField("video_link", event.target.value)}
                 />
 
+                {existingImages.length > 0 ? (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-gray1">
+                      Current images
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      {existingImages.map((image, index) => (
+                        <div
+                          key={image.url}
+                          className="relative aspect-[4/3] overflow-hidden rounded-xl bg-gray5"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={image.url}
+                            alt={`Current product image ${index + 1}`}
+                            className="size-full object-cover"
+                          />
+                          {image.isDefault ? (
+                            <span className="absolute left-2 top-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-gray2">
+                              Default
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="pl-1 text-xs text-gray3">
+                      These images are already on your listing. Upload new images
+                      below to add more.
+                    </p>
+                  </div>
+                ) : null}
+
                 <div className="space-y-3">
                   <label className="block pl-3 text-sm text-gray1">Upload images</label>
                   <p className="pl-3 text-xs text-gray3">
@@ -1776,7 +1912,15 @@ export default function AddNewProduct() {
                 />
               ) : (
                 <Button
-                  title={isSubmitting ? "Submitting..." : "Submit"}
+                  title={
+                    isSubmitting
+                      ? isEditing
+                        ? "Saving..."
+                        : "Submitting..."
+                      : isEditing
+                      ? "Save Changes"
+                      : "Submit"
+                  }
                   size="md"
                   iconRight={!isSubmitting ? <ArrowRight size={14} /> : undefined}
                   onClick={handleSubmit}
@@ -1793,7 +1937,11 @@ export default function AddNewProduct() {
         open={successOpen}
         type="success"
         title="Congratulations"
-        description="Your submission was successful. Please hold on while it is been reviewed"
+        description={
+          isEditing && existingProduct?.status === "approved"
+            ? "Your changes were submitted. Your current listing stays live and unchanged until an admin approves the update."
+            : "Your submission was successful. Please hold on while it is being reviewed."
+        }
         primaryButtonText="Okay"
         onClose={() => setSuccessOpen(false)}
         onPrimaryAction={() => {

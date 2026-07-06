@@ -15,9 +15,9 @@ import Header from "../../../../component/header";
 import { Skeleton } from "@/components/base";
 import { AddDisputeResponse } from "@/components/disputes/AddDisputeResponse";
 import { DisputeActivityTimeline } from "@/components/disputes/DisputeActivityTimeline";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import { useOrderDispute } from "@/hooks/useOrderDisputes";
-import { addOrderDisputeEvidence } from "@/store/slices/order-dispute-slice";
+import { useAddOrderDisputeEvidenceMutation } from "@/hooks/queries/order-disputes";
 import { formatNaira } from "@/lib/wallet-format";
 import { getOrderDisplayId } from "@/constants/demoBuyerOrders";
 import {
@@ -294,12 +294,12 @@ function ResolvedBanner({ dispute }: { dispute: OrderDispute }) {
 export default function BuyerOrderDisputeDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const token = useAppSelector((s) => s.auth.data?.tokens?.accessToken);
   const currentUserId = useAppSelector((s) => s.auth.data?._id);
   const disputeId = params.disputeId as string;
   const { dispute: loadedDispute, isLoading, isError, message } =
     useOrderDispute(disputeId);
+  const addEvidence = useAddOrderDisputeEvidenceMutation();
 
   // Ignore a stale `currentDispute` left over from a previously viewed dispute
   // while the requested one is still being fetched.
@@ -327,9 +327,7 @@ export default function BuyerOrderDisputeDetailPage() {
     if (!file || !token || !dispute) return;
     setUploading(true);
     try {
-      await dispatch(
-        addOrderDisputeEvidence({ token, disputeId: dispute._id, file }),
-      ).unwrap();
+      await addEvidence.mutateAsync({ disputeId: dispute._id, file });
     } finally {
       setUploading(false);
     }

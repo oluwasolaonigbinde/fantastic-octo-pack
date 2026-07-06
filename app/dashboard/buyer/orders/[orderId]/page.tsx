@@ -29,14 +29,13 @@ import {
   type BuyerOrderRow,
   type BuyerOrderStage,
 } from "@/constants/demoBuyerOrders";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import {
-  clearDraftSave,
-  confirmOrderReceipt,
-  fetchOrderDetail,
-  updateOrderDraft,
-} from "@/store/slices/order-slice";
-import { createOrderDispute } from "@/store/slices/order-dispute-slice";
+  useConfirmOrderReceiptMutation,
+  useOrderQuery,
+  useUpdateOrderDraftMutation,
+} from "@/hooks/queries/orders";
+import { useCreateOrderDisputeMutation } from "@/hooks/queries/order-disputes";
 import { useWallet } from "@/hooks/useWallet";
 import { useOrderPayment } from "@/hooks/useOrderPayment";
 import { koboToNaira } from "@/lib/wallet-format";
@@ -271,25 +270,38 @@ export default function BuyerOrderDetailPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const dispatch = useAppDispatch();
-  const {
-    currentOrder,
-    isLoading,
-    isError,
-    message,
-    isConfirming,
-    confirmError,
-    isSavingDraft,
-    draftError,
-  } = useAppSelector((state) => state.order);
   const { data: authData } = useAppSelector((state) => state.auth);
   const [selectedPayment, setSelectedPayment] = useState(paymentMethods[0].label);
   const [modal, setModal] = useState<ModalKind>(null);
   const [notice, setNotice] = useState("");
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
   const [disputeError, setDisputeError] = useState("");
+  const createDispute = useCreateOrderDisputeMutation();
 
   const orderId = params.orderId as string;
+  const demoOrder = useMemo(
+    () => buyerDemoOrders.find((item) => item.sourceId === orderId || item.id === orderId),
+    [orderId],
+  );
+
+  const {
+    data: currentOrder,
+    isLoading,
+    isError,
+    error,
+  } = useOrderQuery(orderId, { enabled: !demoOrder });
+  const message = error instanceof Error ? error.message : "";
+
+  const confirmMutation = useConfirmOrderReceiptMutation();
+  const isConfirming = confirmMutation.isPending;
+  const confirmError =
+    confirmMutation.error instanceof Error ? confirmMutation.error.message : "";
+
+  const draftMutation = useUpdateOrderDraftMutation();
+  const isSavingDraft = draftMutation.isPending;
+  const draftError =
+    draftMutation.error instanceof Error ? draftMutation.error.message : "";
+
   const { wallet } = useWallet();
   const {
     isPaying,
@@ -302,18 +314,8 @@ export default function BuyerOrderDetailPage() {
     orderId,
     callbackPath: `/dashboard/buyer/orders/${orderId}?view=payment`,
   });
-  const demoOrder = useMemo(
-    () => buyerDemoOrders.find((item) => item.sourceId === orderId || item.id === orderId),
-    [orderId],
-  );
 
-  useEffect(() => {
-    if (authData?.tokens?.accessToken && orderId && !demoOrder) {
-      dispatch(fetchOrderDetail({ token: authData.tokens.accessToken, orderId }));
-    }
-  }, [authData?.tokens?.accessToken, demoOrder, dispatch, orderId]);
-
-  const liveOrder: Order | null = demoOrder ? null : currentOrder;
+  const liveOrder: Order | null = demoOrder ? null : currentOrder ?? null;
   const order = useMemo<BuyerOrderRow | null>(() => {
     if (demoOrder) return demoOrder;
     return liveOrder ? toBuyerOrderRow(liveOrder) : null;
@@ -461,17 +463,18 @@ export default function BuyerOrderDetailPage() {
   // action (?view=edit) on a live draft order.
   useEffect(() => {
     if (!demoOrder && isDraft && requestedView === "edit") {
-      dispatch(clearDraftSave());
+      draftMutation.reset();
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setModal("editDraft");
     }
-  }, [demoOrder, isDraft, requestedView, dispatch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoOrder, isDraft, requestedView]);
 
   const handleSubmitPayment = () => {
     if (!selectedOption?.method || insufficientWallet) return;
     // A draft order must carry a delivery address before it can be paid for.
     if (needsDeliveryAddress) {
-      dispatch(clearDraftSave());
+      draftMutation.reset();
       setModal("editDraft");
       return;
     }
@@ -479,23 +482,22 @@ export default function BuyerOrderDetailPage() {
   };
 
   // Persist edits to a draft order (PATCH /orders/:id/draft). On success the
-  // refreshed order flows back through Redux; we close the editor.
+  // refreshed order flows back through the query cache; we close the editor.
   const handleSaveDraft = async (payload: {
     quantity?: number;
     notes?: string;
     deliveryAddress?: string;
   }) => {
-    const token = authData?.tokens?.accessToken;
-    if (!token || isSavingDraft) return;
-    const result = await dispatch(
-      updateOrderDraft({ token, orderId, payload }),
-    );
-    if (updateOrderDraft.fulfilled.match(result)) {
+    if (isSavingDraft) return;
+    try {
+      await draftMutation.mutateAsync({ orderId, payload });
       setModal(null);
       // Drop ?view=edit so the editor doesn't immediately reopen.
       if (requestedView === "edit") {
         router.replace(`/dashboard/buyer/orders/${orderId}`);
       }
+    } catch {
+      // Error surfaced via draftError in the editor.
     }
   };
 
@@ -508,11 +510,12 @@ export default function BuyerOrderDetailPage() {
       setModal("installation");
       return;
     }
-    const token = authData?.tokens?.accessToken;
-    if (!token || isConfirming) return;
-    const result = await dispatch(confirmOrderReceipt({ token, orderId }));
-    if (confirmOrderReceipt.fulfilled.match(result)) {
+    if (isConfirming) return;
+    try {
+      await confirmMutation.mutateAsync({ orderId });
       setModal("installation");
+    } catch {
+      // Error surfaced via confirmError below.
     }
   };
 
@@ -535,21 +538,21 @@ export default function BuyerOrderDetailPage() {
       return;
     }
     setIsSubmittingDispute(true);
-    const result = await dispatch(
-      createOrderDispute({
-        token,
+    try {
+      await createDispute.mutateAsync({
         orderId,
         payload: { reason, description },
         file,
-      }),
-    );
-    setIsSubmittingDispute(false);
-    if (createOrderDispute.fulfilled.match(result)) {
+      });
       setModal("disputeSuccess");
-    } else {
+    } catch (error) {
       setDisputeError(
-        (result.payload as string) || "Failed to raise dispute. Please try again.",
+        error instanceof Error
+          ? error.message
+          : "Failed to raise dispute. Please try again.",
       );
+    } finally {
+      setIsSubmittingDispute(false);
     }
   };
 
@@ -558,7 +561,7 @@ export default function BuyerOrderDetailPage() {
     if (modal === "payment") resetPayment();
     if (modal === "dispute") setDisputeError("");
     if (modal === "editDraft") {
-      dispatch(clearDraftSave());
+      draftMutation.reset();
       if (requestedView === "edit") {
         router.replace(`/dashboard/buyer/orders/${orderId}`);
       }
@@ -759,7 +762,7 @@ export default function BuyerOrderDetailPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        dispatch(clearDraftSave());
+                        draftMutation.reset();
                         setModal("editDraft");
                       }}
                       className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-[#FF6B00] bg-[#FFF7F0] px-6 text-sm font-medium text-[#FF6B00]"
@@ -771,7 +774,7 @@ export default function BuyerOrderDetailPage() {
                     type="button"
                     onClick={() =>
                       needsDeliveryAddress
-                        ? (dispatch(clearDraftSave()), setModal("editDraft"))
+                        ? (draftMutation.reset(), setModal("editDraft"))
                         : navigateStage("payment")
                     }
                     className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#FF6B00] px-6 text-sm font-medium text-white"

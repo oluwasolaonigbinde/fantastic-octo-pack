@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Eye, SlidersHorizontal, Banknote, Layers, Percent, Info } from "lucide-react";
 
 import Header from "../../component/header";
@@ -10,6 +11,7 @@ import { UserRole } from "@/types/user";
 import { agentEscrowOrders } from "../mockdata";
 
 export default function AgentEscrowPage() {
+  const router = useRouter();
   const [search, setSearch] = useState({ businessType: "", orderId: "", status: "" });
 
   return (
@@ -124,7 +126,11 @@ export default function AgentEscrowPage() {
               </thead>
               <tbody>
                 {agentEscrowOrders.map((row, idx) => (
-                  <tr key={`${row.id}-${idx}`} className="border-b border-[#F9FAFB]">
+                  <tr
+                    key={`${row.id}-${idx}`}
+                    onClick={() => router.push(`/dashboard/agent/orders/${row.id}-${idx}`)}
+                    className="cursor-pointer border-b border-[#F9FAFB]"
+                  >
                     <td className="py-5 text-[#111827]">{row.id}</td>
                     <td className="py-5 text-[#111827]">{row.itemName}</td>
                     <td className="py-5 text-[#111827]">{row.sellerName}</td>
@@ -136,6 +142,7 @@ export default function AgentEscrowPage() {
                     <td className="hidden py-5 md:table-cell">
                       <Link
                         href={`/dashboard/agent/orders/${row.id}-${idx}`}
+                        onClick={(event) => event.stopPropagation()}
                         className="inline-flex items-center gap-1 text-sm font-medium text-[#0669D9]"
                       >
                         <Eye size={16} />

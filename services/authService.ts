@@ -17,11 +17,13 @@ import { RegisterFormData as RegisterData } from "@/app/(auth)/register/register
 import { UpdatePasswordData } from "@/app/dashboard/distributor/profile/schemas/password.schema";
 import { apiUrl } from "@/utils/api-base-url";
 import {
+  broadcastLogout,
   clearAuthSessionUser,
   readAuthSessionUser,
   writeAuthSessionUser,
 } from "@/utils/authSession";
 import { clearLocalRoleAuthState } from "@/utils/localRoleAuth";
+import { clearAuthRoleCookie } from "@/utils/authRoleCookie";
 
 export class AuthApiError extends Error {
   public readonly statusCode: number;
@@ -402,6 +404,8 @@ const logout = async (): Promise<void> => {
   } finally {
     clearAuthSessionUser();
     clearLocalRoleAuthState();
+    clearAuthRoleCookie();
+    broadcastLogout();
   }
 };
 

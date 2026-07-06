@@ -432,7 +432,11 @@ export default function AdminServicesPage() {
                       </tr>
                     ) : (
                       filteredRequests.map((request) => (
-                        <tr key={request._id} className="border-t border-[#EEF2F7]">
+                        <tr
+                          key={request._id}
+                          onClick={() => setSelectedRequestId(request._id)}
+                          className="cursor-pointer border-t border-[#EEF2F7]"
+                        >
                           <td className="py-4 pr-4">
                             <div className="flex items-center gap-3">
                               <span className="size-8 shrink-0 rounded-xl bg-gray5" />
@@ -462,7 +466,10 @@ export default function AdminServicesPage() {
                           <td className="py-4">
                             <button
                               type="button"
-                              onClick={() => setSelectedRequestId(request._id)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedRequestId(request._id);
+                              }}
                               className="inline-flex items-center gap-2 text-sm font-medium text-primary"
                             >
                               <Eye size={14} />

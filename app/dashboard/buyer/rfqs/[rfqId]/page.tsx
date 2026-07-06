@@ -5,8 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Download, FileText } from "lucide-react";
 import Header from "../../../component/header";
 import { Button, Skeleton } from "@/components/base";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchRfqDetail } from "@/store/slices/rfq-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { useRfqDetailQuery } from "@/hooks/queries/rfqs";
 import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS } from "@/types/rfq";
 import type { Quote, UserRef } from "@/types/rfq";
 import rfqService from "@/services/rfqService";
@@ -34,9 +34,9 @@ function DetailRow({
 export default function BuyerRfqDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const { currentRfq, isLoading } = useAppSelector((state) => state.rfq);
   const { data: authData } = useAppSelector((state) => state.auth);
+  const rfqId = params.rfqId as string;
+  const { data: currentRfq, isLoading } = useRfqDetailQuery(rfqId);
 
   const [isActing, setIsActing] = useState<string | null>(null); // quoteId being acted on
   const [isSendingReminder, setIsSendingReminder] = useState(false);
@@ -44,14 +44,6 @@ export default function BuyerRfqDetailPage() {
   const [localQuoteStatuses, setLocalQuoteStatuses] = useState<
     Record<string, Quote["status"]>
   >({});
-
-  const rfqId = params.rfqId as string;
-
-  useEffect(() => {
-    if (authData?.tokens?.accessToken && rfqId) {
-      dispatch(fetchRfqDetail({ token: authData.tokens.accessToken, rfqId }));
-    }
-  }, [dispatch, authData?.tokens?.accessToken, rfqId]);
 
   const handleAcceptOffer = useCallback(
     async (quoteId: string) => {

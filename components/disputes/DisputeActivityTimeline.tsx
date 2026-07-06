@@ -82,12 +82,24 @@ function ActivityIcon({ variant }: { variant: DisputeActivityEvent["variant"] })
 export function DisputeActivityTimeline({
   events,
   showHeader = true,
+  fill = false,
 }: {
   events: DisputeActivityEvent[];
   showHeader?: boolean;
+  /**
+   * When true, the card fills its parent's height (capped on mobile) so it can
+   * be aligned to a sibling column and scroll internally instead of growing.
+   */
+  fill?: boolean;
 }) {
+  const heightClass = fill
+    ? "max-h-[600px] lg:h-full lg:max-h-none"
+    : "max-h-[600px]";
+
   return (
-    <section className="flex max-h-[600px] flex-col rounded-2xl border border-[#DDE0E5] bg-white p-5">
+    <section
+      className={`flex ${heightClass} flex-col rounded-2xl border border-[#DDE0E5] bg-white p-5`}
+    >
       {showHeader ? (
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-[#111827]">Dispute ACTIVITY</h2>

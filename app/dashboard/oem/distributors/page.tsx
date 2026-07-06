@@ -1,30 +1,21 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 
 import Header from "../../component/header";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchOemListingRequests } from "@/store/slices/product-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { useOemListingRequestsQuery } from "@/hooks/queries/products";
 
 import AllDistributors from "./AllDistributors";
 import { buildDistributorSummaries, buildDistributorVerificationCounts } from "../oem-ui";
 
 export default function OEMDistributor() {
-  const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { oemListingRequests, isLoading } = useAppSelector((state) => state.product);
-
-  useEffect(() => {
-    if (authData?._id && authData?.tokens?.accessToken) {
-      dispatch(
-        fetchOemListingRequests({
-          assignedOem: authData._id,
-          token: authData.tokens.accessToken,
-          populate: "createdBy",
-        }),
-      );
-    }
-  }, [dispatch, authData?._id, authData?.tokens?.accessToken]);
+  const { data: oemListing, isLoading } = useOemListingRequestsQuery(
+    { assignedOem: authData?._id, populate: "createdBy" },
+    { enabled: Boolean(authData?._id && authData?.tokens?.accessToken) },
+  );
+  const oemListingRequests = oemListing?.requests ?? null;
 
   const distributors = useMemo(
     () => buildDistributorSummaries(oemListingRequests ?? []),

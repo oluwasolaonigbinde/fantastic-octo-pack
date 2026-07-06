@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import { useMemo, useState } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import {
   CalendarDays,
   ClipboardList,
@@ -22,8 +22,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  useAdminOrdersQuery,
+  useAdminRfqsOrdersSummaryQuery,
+} from "@/hooks/queries/admin";
 import { useAppSelector } from "@/hooks/useAppSelector";
-import adminService, {
+import {
   type AdminOrderRow,
   type AdminPagination,
   type AdminRfqsOrdersSummary,
@@ -253,7 +257,7 @@ function PlainAction({
 }: {
   children: ReactNode;
   icon: ReactNode;
-  onClick?: () => void;
+  onClick?: (event: MouseEvent) => void;
   tone?: "primary" | "success" | "muted";
 }) {
   const toneClass =
@@ -308,56 +312,44 @@ type DetailData = { kind: "order"; data: Order };
 
 export default function AdminOrdersPage() {
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
-  const [summary, setSummary] = useState(EMPTY_SUMMARY);
-  const [ordersPage, setOrdersPage] = useState<AdminPagination<AdminOrderRow>>(
-    emptyPage<AdminOrderRow>()
-  );
   const [draftFilters, setDraftFilters] = useState({ productName: "", distributorName: "" });
   const [appliedFilters, setAppliedFilters] = useState(draftFilters);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [detailTarget, setDetailTarget] = useState<DetailTarget | null>(null);
   const [detailData, setDetailData] = useState<DetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
 
-  const loadData = useCallback(async () => {
-    if (!token) return;
-    setLoading(true);
-    setError("");
-    const params = {
+  const orderParams = useMemo(
+    () => ({
       productName: appliedFilters.productName.trim() || undefined,
       distributorName: appliedFilters.distributorName.trim() || undefined,
       page,
       limit: PAGE_SIZE,
-    };
-    try {
-      const [nextSummary, nextOrders] = await Promise.all([
-        adminService.getRfqsOrdersSummary(token),
-        adminService.getOrders(token, params),
-      ]);
-      setSummary(nextSummary);
-      setOrdersPage(nextOrders as AdminPagination<AdminOrderRow>);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load orders.");
-    } finally {
-      setLoading(false);
-    }
-  }, [appliedFilters, page, token]);
+    }),
+    [appliedFilters, page],
+  );
 
-  useEffect(() => {
-    if (!token) return;
-    const initialId = window.setTimeout(() => void loadData(), 0);
-    const intervalId = window.setInterval(() => void loadData(), POLL_INTERVAL_MS);
-    const onFocus = () => void loadData();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      window.clearTimeout(initialId);
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [loadData, token]);
+  const summaryQuery = useAdminRfqsOrdersSummaryQuery({
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchOnWindowFocus: true,
+  });
+  const ordersQuery = useAdminOrdersQuery(orderParams, {
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchOnWindowFocus: true,
+  });
+
+  const summary = summaryQuery.data ?? EMPTY_SUMMARY;
+  const ordersPage =
+    (ordersQuery.data as AdminPagination<AdminOrderRow> | undefined) ??
+    emptyPage<AdminOrderRow>();
+  const loading = summaryQuery.isPending || ordersQuery.isPending;
+  const error =
+    summaryQuery.isError || ordersQuery.isError
+      ? (summaryQuery.error ?? ordersQuery.error) instanceof Error
+        ? ((summaryQuery.error ?? ordersQuery.error) as Error).message
+        : "Unable to load orders."
+      : "";
 
   const applyFilters = () => {
     setAppliedFilters({ ...draftFilters });
@@ -472,7 +464,11 @@ export default function AdminOrdersPage() {
                   <EmptyRow colSpan={8} />
                 ) : (
                   ordersPage.docs.map((row) => (
-                    <TableRow key={row.id}>
+                    <TableRow
+                      key={row.id}
+                      onClick={() => void openDetail({ kind: "order", row })}
+                      className="cursor-pointer"
+                    >
                       <TableCell className="min-w-[180px]">
                         <div className="flex items-center gap-3">
                           <span className="size-8 shrink-0 rounded-full bg-gray5" />
@@ -492,7 +488,10 @@ export default function AdminOrdersPage() {
                       <TableCell>
                         <PlainAction
                           icon={<Eye size={16} />}
-                          onClick={() => void openDetail({ kind: "order", row })}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void openDetail({ kind: "order", row });
+                          }}
                           tone="success"
                         >
                           View

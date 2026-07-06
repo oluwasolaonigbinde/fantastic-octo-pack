@@ -39,8 +39,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import * as Popover from "@radix-ui/react-popover";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchDistributorInbox } from "@/store/slices/rfq-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { useDistributorInboxQuery } from "@/hooks/queries/rfqs";
 import { QUOTE_STATUS_LABELS } from "@/types/rfq";
 import type { Quote, Rfq, UserRef, ProductRef } from "@/types/rfq";
 import rfqService from "@/services/rfqService";
@@ -82,9 +82,12 @@ type ItemScope = "all" | "bulk" | "standard";
 function DistributorQuotesPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const dispatch = useAppDispatch();
-  const { distributorQuotes, isLoading } = useAppSelector((state) => state.rfq);
   const { data: authData } = useAppSelector((state) => state.auth);
+  const {
+    data: distributorQuotes,
+    isLoading,
+    refetch: refetchInbox,
+  } = useDistributorInboxQuery();
 
   // ── Table / filter state ──────────────────────────────────────────────────
   const [productNameFilter, setProductNameFilter] = useState("");
@@ -114,12 +117,6 @@ function DistributorQuotesPageInner() {
   const [formError, setFormError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // ── Bootstrap ─────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (authData?.tokens?.accessToken && !distributorQuotes) {
-      dispatch(fetchDistributorInbox(authData.tokens.accessToken));
-    }
-  }, [dispatch, authData?.tokens?.accessToken, distributorQuotes]);
 
   useEffect(() => {
     if (searchParams.get("bulk") === "1") {
@@ -168,7 +165,7 @@ function DistributorQuotesPageInner() {
       const result = await rfqService.respondToQuote(authData.tokens.accessToken, selectedQuote._id, {
         response: "unavailable",
       });
-      await dispatch(fetchDistributorInbox(authData.tokens.accessToken)).unwrap();
+      await refetchInbox();
       setToastMessage(result.message || "Offer marked as unavailable.");
       handleCloseSlider();
     } catch (error) {
@@ -181,7 +178,7 @@ function DistributorQuotesPageInner() {
     } finally {
       setIsMarkingUnavailable(false);
     }
-  }, [authData, selectedQuote, dispatch, handleCloseSlider]);
+  }, [authData, selectedQuote, refetchInbox, handleCloseSlider]);
 
   const handleSendOffer = useCallback(async () => {
     if (!authData?.tokens?.accessToken || !selectedQuote || !price) return;
@@ -206,7 +203,7 @@ function DistributorQuotesPageInner() {
           catalogue: catalogue ?? undefined,
         },
       );
-      await dispatch(fetchDistributorInbox(authData.tokens.accessToken)).unwrap();
+      await refetchInbox();
       setFormMessage(result.message || "Offer sent successfully.");
       setToastMessage(result.message || "Offer sent successfully.");
       handleCloseSlider();
@@ -229,7 +226,7 @@ function DistributorQuotesPageInner() {
     stockStatus,
     images,
     catalogue,
-    dispatch,
+    refetchInbox,
     handleCloseSlider,
   ]);
 
@@ -765,7 +762,15 @@ function DistributorQuotesPageInner() {
                   </TableHeader>
                   <TableBody>
                     {paginatedQuotes.map((q) => (
-                      <TableRow key={q._id} className="border-gray6">
+                      <TableRow
+                        key={q._id}
+                        onClick={() => {
+                          setSelectedQuote(q);
+                          setIsDetailOpen(true);
+                          setSliderView("detail");
+                        }}
+                        className="cursor-pointer border-gray6"
+                      >
                         <TableCell className="text-base text-gray1 py-4">
                           {getBuyerName(q)}
                         </TableCell>
@@ -783,7 +788,8 @@ function DistributorQuotesPageInner() {
                         <TableCell className="text-right py-4">
                           <button
                             type="button"
-                            onClick={() => {
+                            onClick={(event) => {
+                              event.stopPropagation();
                               setSelectedQuote(q);
                               setIsDetailOpen(true);
                               setSliderView("detail");

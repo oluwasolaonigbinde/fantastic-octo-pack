@@ -4,8 +4,7 @@ import { useState } from "react";
 
 import Header from "../../component/header";
 import { ProtectedRoute } from "@/components/dashboard/protected-routes";
-import { useAppSelector } from "@/hooks/useAppSelector";
-import { useFetchEngineerServiceRequests } from "@/hooks/useEngineerServiceRequests";
+import { useEngineerServiceRequestsQuery } from "@/hooks/queries/service-requests";
 import { UserRole } from "@/types/user";
 
 import {
@@ -15,8 +14,8 @@ import {
 } from "../_components/engineer-job-requests-content";
 
 export default function EngineerJobRequests() {
-  useFetchEngineerServiceRequests();
-  const { serviceRequests } = useAppSelector((s) => s.serviceRequest);
+  const { data } = useEngineerServiceRequestsQuery();
+  const serviceRequests = data?.requests ?? [];
   const [jobTypeFilter, setJobTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");

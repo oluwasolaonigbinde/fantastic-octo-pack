@@ -8,8 +8,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FileText } from "lucide-react";
 
 import { PopUp } from "@/components/base";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { createServiceRequest } from "@/store/slices/service-request-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { useCreateServiceRequestMutation } from "@/hooks/queries/service-requests";
 import {
   clearPendingAuthIntent,
   readPendingAuthIntent,
@@ -57,12 +57,12 @@ export default function ServiceJobRequestForm({
 }: ServiceJobRequestFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const dispatch = useAppDispatch();
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const resumeHandledRef = useRef(false);
 
   const authData = useAppSelector((state) => state.auth.data);
-  const { isLoading } = useAppSelector((state) => state.serviceRequest);
+  const createServiceRequest = useCreateServiceRequestMutation();
+  const isLoading = createServiceRequest.isPending;
 
   const [showSuccess, setShowSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -227,12 +227,7 @@ export default function ServiceJobRequestForm({
               engineerId,
             };
 
-      await dispatch(
-        createServiceRequest({
-          token: authData.tokens.accessToken,
-          data: payload,
-        }),
-      ).unwrap();
+      await createServiceRequest.mutateAsync(payload);
 
       clearPendingAuthIntent();
       reset();
@@ -241,8 +236,8 @@ export default function ServiceJobRequestForm({
       setShowSuccess(true);
     } catch (error) {
       setErrorMessage(
-        typeof error === "string"
-          ? error
+        error instanceof Error
+          ? error.message
           : "Failed to create service request. Please try again.",
       );
     }

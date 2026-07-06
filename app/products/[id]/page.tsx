@@ -19,8 +19,8 @@ import RelatedProducts from "./RelatedProducts";
 import ConfirmOrderModal from "./ConfirmOrderModal";
 import EditDeliveryAddressModal from "./EditDeliveryAddressModal";
 import SendInquiryModal from "./SendInquiryModal";
-import { fetchProductById } from "@/store/slices/product-slice";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useProductQuery } from "@/hooks/queries/products";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import type { Product } from "@/types/product";
 import type { UserData } from "@/types/user";
 import { BigLoader } from "@/components/base";
@@ -158,12 +158,15 @@ export default function ProductDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const dispatch = useAppDispatch();
   const id = Array.isArray(params.id) ? params.id[0] : (params.id as string);
 
-  const { product, message, isLoading, isError } = useAppSelector(
-    (state) => state.product,
-  );
+  const {
+    data: product,
+    isLoading,
+    isError,
+    error,
+  } = useProductQuery(id);
+  const message = error instanceof Error ? error.message : "";
   const { data: authData } = useAppSelector((state) => state.auth);
   const authRole = authData?.role;
   const authAccessToken = authData?.tokens?.accessToken;
@@ -181,12 +184,6 @@ export default function ProductDetailsPage() {
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [isSavingAddress, setIsSavingAddress] = useState(false);
   const processedResumeKeyRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (id) {
-      dispatch(fetchProductById({ id }));
-    }
-  }, [dispatch, id]);
 
   useEffect(() => {
     let isMounted = true;

@@ -30,13 +30,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { fetchBuyerRfqs } from "@/store/slices/rfq-slice";
+import { useAppSelector } from "@/hooks/useAppSelector";
+import { useBuyerRfqsQuery } from "@/hooks/queries/rfqs";
 import type { Rfq, Quote, UserRef, RfqDetailResponse, BulkRfqItemPayload } from "@/types/rfq";
 import { QUOTE_STATUS_LABELS } from "@/types/rfq";
 import rfqService from "@/services/rfqService";
-import { userService } from "@/services/userService";
 import productService from "@/services/productService";
+import { useUsersQuery } from "@/hooks/queries/users";
 import type { PublicProfileData } from "@/types/user";
 import { UserRole } from "@/types/user";
 
@@ -94,10 +94,13 @@ function getDistributorDisplayName(
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function BuyerRfqsPage() {
-  const dispatch = useAppDispatch();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { rfqs, isLoading } = useAppSelector((state) => state.rfq);
+  const {
+    data: rfqs,
+    isLoading,
+    refetch: refetchBuyerRfqs,
+  } = useBuyerRfqsQuery();
   const { data: authData } = useAppSelector((state) => state.auth);
 
   // ── Tab ───────────────────────────────────────────────────────────────────
@@ -147,7 +150,11 @@ export default function BuyerRfqsPage() {
 
   // ── Dropdown data ─────────────────────────────────────────────────────────
   const [products, setProducts] = useState<Array<{ _id: string; name: string }>>([]);
-  const [distributors, setDistributors] = useState<PublicProfileData[]>([]);
+  const distributorsQuery = useUsersQuery(
+    { page: 1, limit: 100, roles: [UserRole.DISTRIBUTOR] },
+    { enabled: drawerMode === "create" },
+  );
+  const distributors: PublicProfileData[] = distributorsQuery.data?.profiles ?? [];
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -245,10 +252,6 @@ export default function BuyerRfqsPage() {
   }, [authData]);
 
   useEffect(() => {
-    if (authData?.tokens?.accessToken && !rfqs) {
-      dispatch(fetchBuyerRfqs(authData.tokens.accessToken));
-    }
-
     let quoteLoadTimer: number | null = null;
     if (authData?.tokens?.accessToken && allQuotes === null && !quotesLoading) {
       quoteLoadTimer = window.setTimeout(() => void loadAllQuotes(), 0);
@@ -259,7 +262,7 @@ export default function BuyerRfqsPage() {
         window.clearTimeout(quoteLoadTimer);
       }
     };
-  }, [dispatch, authData?.tokens?.accessToken, rfqs, allQuotes, quotesLoading, loadAllQuotes]);
+  }, [authData?.tokens?.accessToken, allQuotes, quotesLoading, loadAllQuotes]);
 
   // Handle ?action=create from product page
   useEffect(() => {
@@ -283,18 +286,10 @@ export default function BuyerRfqsPage() {
   const loadCreateFormData = useCallback(async () => {
     if (!authData?.tokens?.accessToken) return;
     try {
-      const [prodRes, distRes] = await Promise.allSettled([
-        productService.fetchAll(),
-        userService.getPublicProfiles(1, 100, [UserRole.DISTRIBUTOR]),
-      ]);
-      if (prodRes.status === "fulfilled") {
-        setProducts(
-          prodRes.value.data?.docs?.map((p) => ({ _id: p._id, name: p.name })) || []
-        );
-      }
-      if (distRes.status === "fulfilled") {
-        setDistributors(distRes.value.data?.docs || []);
-      }
+      const prodRes = await productService.fetchAll();
+      setProducts(
+        prodRes.data?.docs?.map((p) => ({ _id: p._id, name: p.name })) || []
+      );
     } catch {
       // silent — dropdowns will degrade to text inputs
     }
@@ -371,7 +366,7 @@ export default function BuyerRfqsPage() {
       });
       if (result.success && result.data) {
         await rfqService.submitRfq(authData.tokens.accessToken, result.data._id);
-        dispatch(fetchBuyerRfqs(authData.tokens.accessToken));
+        void refetchBuyerRfqs();
         handleCloseDrawer();
         setCreateForm({
           productName: "",
@@ -390,7 +385,7 @@ export default function BuyerRfqsPage() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [authData, createForm, dispatch, handleCloseDrawer, showToast]);
+  }, [authData, createForm, refetchBuyerRfqs, handleCloseDrawer, showToast]);
 
   const handleSendReminder = useCallback(async () => {
     if (!authData?.tokens?.accessToken || !selectedRfqDetail) return;
@@ -556,7 +551,7 @@ export default function BuyerRfqsPage() {
       });
       if (result.success && result.data) {
         setBulkResult({ created: result.data.created, errors: result.data.errors });
-        dispatch(fetchBuyerRfqs(authData.tokens.accessToken));
+        void refetchBuyerRfqs();
         if (result.data.errors.length === 0) {
           showToast(`${result.data.created} RFQs submitted successfully!`);
         }
@@ -566,7 +561,7 @@ export default function BuyerRfqsPage() {
     } finally {
       setIsBulkSubmitting(false);
     }
-  }, [authData, bulkItems, bulkTitle, dispatch, showToast]);
+  }, [authData, bulkItems, bulkTitle, refetchBuyerRfqs, showToast]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
@@ -1300,7 +1295,8 @@ export default function BuyerRfqsPage() {
                     {filteredSentRfqs.map((rfq) => (
                       <TableRow
                         key={rfq._id}
-                        className="border-b border-[#f3f4f6] hover:!bg-transparent data-[state=selected]:bg-white"
+                        onClick={() => handleViewSentRfq(rfq)}
+                        className="cursor-pointer border-b border-[#f3f4f6] hover:!bg-transparent data-[state=selected]:bg-white"
                       >
                         <TableCell className="h-12 py-0 leading-6">
                           <div className="flex items-center gap-3">
@@ -1347,7 +1343,10 @@ export default function BuyerRfqsPage() {
                         <TableCell className="h-12 py-0">
                           <button
                             type="button"
-                            onClick={() => handleViewSentRfq(rfq)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleViewSentRfq(rfq);
+                            }}
                             className="inline-flex cursor-pointer items-center gap-2 text-base font-normal text-[#13a83b]"
                           >
                             <Eye className="size-6 shrink-0" strokeWidth={1.75} aria-hidden />{" "}
@@ -1416,7 +1415,8 @@ export default function BuyerRfqsPage() {
                       return (
                         <TableRow
                           key={q._id}
-                          className="border-b border-[#f3f4f6] hover:!bg-transparent"
+                          onClick={() => handleViewQuote(q)}
+                          className="cursor-pointer border-b border-[#f3f4f6] hover:!bg-transparent"
                         >
                           <TableCell className="h-12 py-0">
                             <div className="flex items-center gap-3">
@@ -1454,7 +1454,10 @@ export default function BuyerRfqsPage() {
                           <TableCell className="h-12 py-0">
                             <button
                               type="button"
-                              onClick={() => handleViewQuote(q)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleViewQuote(q);
+                              }}
                               className="inline-flex cursor-pointer items-center gap-2 text-base font-normal text-[#13a83b]"
                             >
                               <Eye className="size-6 shrink-0" strokeWidth={1.75} aria-hidden />{" "}

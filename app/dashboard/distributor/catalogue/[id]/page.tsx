@@ -4,12 +4,10 @@
 
 import Header from "../../../component/header";
 import ProductImageGallery from "@/app/products/[id]/ProductImageGallery";
-import { fetchProductById } from "@/store/slices/product-slice";
-import { useEffect } from "react";
-// import { fetchProductById } from "@/store/slices/product-slice";
+import { useProductQuery } from "@/hooks/queries/products";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import { ArrowLeft, Pencil } from "lucide-react";
 import { BigLoader, Button } from "@/components/base";
 import { useRouter } from "next/navigation";
@@ -40,34 +38,16 @@ export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { id } = params;
-  const dispatch = useAppDispatch();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const { product, isLoading, isError, message } = useAppSelector(
-    (state) => state.product,
-  );
-
-  // const product: ProductResponse = await fetchProductById(params.id);
-  // return {
-  //   title: product?.name || "Product Detail",
-  // };
-
-  // const productData: ProductResponse = await fetch(
-  //   `${process.env.NEXT_PUBLIC_API_URL}/products/${params.id}`,
-  //   { cache: "no-store" } // makes it SSR on every request
-  // ).then(res => res.json());
-
-  // const product = productData?.data || {};
-
-  useEffect(() => {
-    if (id && authData?.tokens?.accessToken) {
-      dispatch(
-        fetchProductById({
-          id: id as string,
-          token: authData.tokens.accessToken,
-        }),
-      );
-    }
-  }, [dispatch, id, authData?.tokens?.accessToken]);
+  const {
+    data: product,
+    isLoading,
+    isError,
+    error,
+  } = useProductQuery(id as string, {
+    enabled: Boolean(id && authData?.tokens?.accessToken),
+  });
+  const message = error instanceof Error ? error.message : "";
 
   const statusMeta = product ? getListingStatusMeta(product.status) : null;
   const isEditable = product ? canEditProduct(product.status) : false;
@@ -229,20 +209,37 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          <div className="border-t border-gray5 pt-6">
+          <div className="space-y-3 border-t border-gray5 pt-6">
+            {product.hasPendingRevision ? (
+              <div className="rounded-xl border border-[#FDE8C8] bg-[#FFF8EE] px-4 py-3 text-sm text-[#8A5A00]">
+                An edit to this listing is awaiting admin review. Your current
+                listing stays live until the update is approved.
+              </div>
+            ) : null}
+
             {isEditable ? (
-              <Button
-                title="Edit Product"
-                size="md"
-                iconLeft={<Pencil className="size-4" />}
-                className="w-full rounded-xl md:w-auto md:min-w-[180px]"
-                onClick={() => {
-                  router.push(`/dashboard/distributor/catalogue/new`);
-                }}
-              />
+              <>
+                <Button
+                  title="Edit Product"
+                  size="md"
+                  iconLeft={<Pencil className="size-4" />}
+                  className="w-full rounded-xl md:w-auto md:min-w-[180px]"
+                  onClick={() => {
+                    router.push(
+                      `/dashboard/distributor/catalogue/${product._id}/edit`,
+                    );
+                  }}
+                />
+                {product.status === "approved" ? (
+                  <p className="text-sm text-gray3">
+                    Edits to a live product are reviewed by an admin before they
+                    go live.
+                  </p>
+                ) : null}
+              </>
             ) : (
               <p className="text-sm text-gray3">
-                Editing is locked once a product has been submitted for review.
+                Editing is locked while this product is under review.
               </p>
             )}
           </div>

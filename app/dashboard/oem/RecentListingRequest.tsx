@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Eye, MoveRight } from "lucide-react";
 
 import { Button } from "@/components/base";
@@ -29,6 +30,7 @@ interface RecentListingRequestProps {
 export default function RecentListingRequest({
   products,
 }: RecentListingRequestProps) {
+  const router = useRouter();
   const recent = [...products]
     .sort((left, right) => {
       const leftDate = new Date(left.submittedAt ?? left.createdAt).getTime();
@@ -90,7 +92,11 @@ export default function RecentListingRequest({
                 const statusMeta = getOemStatusMeta(status);
 
                 return (
-                  <TableRow key={product._id}>
+                  <TableRow
+                    key={product._id}
+                    onClick={() => router.push(`/dashboard/oem/requests/${product._id}`)}
+                    className="cursor-pointer"
+                  >
                     <TableCell className="whitespace-nowrap">
                       <div className="flex items-center gap-3">
                         <div className="size-7 rounded-md bg-gray5" />
@@ -113,6 +119,7 @@ export default function RecentListingRequest({
                     <TableCell>
                       <Link
                         href={`/dashboard/oem/requests/${product._id}`}
+                        onClick={(event) => event.stopPropagation()}
                         className="inline-flex items-center gap-2 text-sm font-medium text-[#2BA84A]"
                       >
                         <Eye size={16} />

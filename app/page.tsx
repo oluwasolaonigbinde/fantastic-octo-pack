@@ -19,9 +19,7 @@ import type { Product, ProductImage } from "@/types/product";
 import { PublicLayout } from "@/components/layout";
 import SafeProductImage from "@/components/product/SafeProductImage";
 import { getProductAvailabilityLabel } from "@/utils/productDisplay";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
-import { useEffect } from "react";
-import { fetchProducts } from "@/store/slices/product-slice";
+import { useProductsQuery } from "@/hooks/queries/products";
 import type { UserData } from "@/types/user";
 
 type ProductWithDistributor = Omit<Product, "images"> & {
@@ -183,16 +181,10 @@ function formatProductPrice(product: ProductWithDistributor) {
 
 export default function Home() {
   const router = useRouter();
-  const dispatch = useAppDispatch();
-  const { products, isLoading, isError } = useAppSelector(
-    (state) => state.product,
-  );
-
-  useEffect(() => {
-    if (!products || products.length === 0) {
-      dispatch(fetchProducts({ limit: FEATURED_PRODUCT_COUNT }));
-    }
-  }, [dispatch, products]);
+  const { data, isLoading, isError } = useProductsQuery({
+    limit: FEATURED_PRODUCT_COUNT,
+  });
+  const products = data?.products ?? null;
 
   const featuredProducts =
     products

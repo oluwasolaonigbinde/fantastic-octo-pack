@@ -35,9 +35,13 @@ import {
   TableRow,
 } from "@/components/base";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import {
+  useCreateKycSubmissionMutation,
+  useMyKycQuery,
+  useUploadKycDocumentMutation,
+} from "@/hooks/queries/kyc";
 import { cn } from "@/lib/utils";
 import authService from "@/services/authService";
-import kycService from "@/services/kycService";
 import { setUser } from "@/store/slices/auth-slice";
 import type { KycSubmission, KycTierDefinition } from "@/types/kyc";
 import { UserRole, type UserData } from "@/types/user";
@@ -228,10 +232,6 @@ export default function SubmitterKycView({
   const { data: authUser } = useAppSelector((state) => state.auth);
   const token = authUser?.tokens?.accessToken ?? "";
 
-  const [tiers, setTiers] = useState<KycTierDefinition[]>([]);
-  const [submissions, setSubmissions] = useState<KycSubmission[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTier, setActiveTier] = useState<KycTierDefinition | null>(null);
   const [textValues, setTextValues] = useState<Record<string, string>>({});
@@ -240,6 +240,19 @@ export default function SubmitterKycView({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [inlineCountry, setInlineCountry] = useState("Nigeria");
   const [submissionFeedback, setSubmissionFeedback] = useState<SubmissionFeedback | null>(null);
+
+  const kycQuery = useMyKycQuery();
+  const uploadDocument = useUploadKycDocumentMutation();
+  const createSubmission = useCreateKycSubmissionMutation();
+
+  const tiers: KycTierDefinition[] = kycQuery.data?.tiers ?? [];
+  const submissions: KycSubmission[] = kycQuery.data?.submissions ?? [];
+  const loading = kycQuery.isLoading;
+  const error = kycQuery.isError
+    ? kycQuery.error instanceof Error
+      ? kycQuery.error.message
+      : "Unable to load KYC data"
+    : null;
 
   const refreshAuthProfile = useCallback(async () => {
     if (!token) {
@@ -266,46 +279,15 @@ export default function SubmitterKycView({
     }
   }, [authUser, dispatch, token]);
 
-  const fetchData = useCallback(async (options?: { silent?: boolean }) => {
-    if (!token) {
-      return;
-    }
-
-    const silent = options?.silent ?? false;
-
-    if (!silent) {
-      setLoading(true);
-      setError(null);
-    }
-
-    try {
-      const [tiersResponse, submissionsResponse] = await Promise.all([
-        kycService.getTiers(token),
-        kycService.getSubmissions(token),
-      ]);
-
-      setTiers(tiersResponse.data);
-      setSubmissions(submissionsResponse.data);
-
-      if (submissionsResponse.data.some((submission) => submission.status === "approved")) {
-        await refreshAuthProfile();
-      }
-    } catch (fetchError) {
-      if (!silent) {
-        setError(fetchError instanceof Error ? fetchError.message : "Unable to load KYC data");
-      }
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-    }
-  }, [refreshAuthProfile, token]);
+  const hasApprovedSubmission = submissions.some(
+    (submission) => submission.status === "approved",
+  );
 
   useEffect(() => {
-    queueMicrotask(() => {
-      void fetchData();
-    });
-  }, [fetchData]);
+    if (hasApprovedSubmission) {
+      void refreshAuthProfile();
+    }
+  }, [hasApprovedSubmission, refreshAuthProfile]);
 
   const tierStatuses = useMemo(
     () => orderedStatuses(tiers, submissions),
@@ -319,34 +301,6 @@ export default function SubmitterKycView({
       ) as Record<string, TierStatus>,
     [tierStatuses, tiers],
   );
-
-  const hasPendingSubmission = useMemo(
-    () => submissions.some((submission) => submission.status === "submitted"),
-    [submissions],
-  );
-
-  useEffect(() => {
-    if (!token || !hasPendingSubmission) {
-      return;
-    }
-
-    const refreshPendingStatus = () => {
-      if (document.visibilityState === "visible") {
-        void fetchData({ silent: true });
-      }
-    };
-
-    const intervalId = window.setInterval(refreshPendingStatus, 15000);
-
-    window.addEventListener("focus", refreshPendingStatus);
-    document.addEventListener("visibilitychange", refreshPendingStatus);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", refreshPendingStatus);
-      document.removeEventListener("visibilitychange", refreshPendingStatus);
-    };
-  }, [fetchData, hasPendingSubmission, token]);
 
   const currentAccountTierLabel = useMemo(() => {
     if (role !== UserRole.BUYER && role !== UserRole.ENGINEER) {
@@ -416,7 +370,7 @@ export default function SubmitterKycView({
           throw new Error(`${documentDefinition.label} is required`);
         }
 
-        const uploaded = await kycService.uploadDocument(token, file);
+        const uploaded = await uploadDocument.mutateAsync(file);
         uploadedDocuments.push({
           fieldName: documentDefinition.fieldName,
           fileName: uploaded.data.fileName,
@@ -426,7 +380,7 @@ export default function SubmitterKycView({
         });
       }
 
-      const response = await kycService.createSubmission(token, {
+      const response = await createSubmission.mutateAsync({
         tierKey: tier.tierKey,
         textFields: payloadTextFields,
         documents: uploadedDocuments,
@@ -438,7 +392,6 @@ export default function SubmitterKycView({
         status: response.data.status === "approved" ? "approved" : "submitted",
       });
       setActiveTier(null);
-      await fetchData();
     } catch (submitTierError) {
       setSubmitError(
         submitTierError instanceof Error
@@ -511,7 +464,8 @@ export default function SubmitterKycView({
             return (
               <article
                 key={tier.tierKey}
-                className="flex min-h-[69px] flex-col items-start justify-between gap-3 overflow-hidden rounded-[10px] bg-white px-[10px] py-4 sm:flex-row sm:items-center sm:gap-4 sm:py-0"
+                onClick={() => router.push(detailHref)}
+                className="flex min-h-[69px] cursor-pointer flex-col items-start justify-between gap-3 overflow-hidden rounded-[10px] bg-white px-[10px] py-4 sm:flex-row sm:items-center sm:gap-4 sm:py-0"
               >
                 <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1">
                   <div className="flex shrink-0 items-center gap-[9px]">
@@ -537,6 +491,7 @@ export default function SubmitterKycView({
                   <TierBadge status={status} />
                   <Link
                     href={detailHref}
+                    onClick={(event) => event.stopPropagation()}
                     className="inline-flex items-center gap-2 text-[15px] font-normal leading-6 text-black sm:text-[16px]"
                   >
                     See details
@@ -593,7 +548,8 @@ export default function SubmitterKycView({
                 documents.map((document) => (
                   <tr
                     key={document.fieldName}
-                    className="h-[38px] border-b border-[#EEF1F5] text-[12px] leading-4 text-black last:border-b-0"
+                    onClick={() => window.open(document.fileUrl, "_blank", "noopener,noreferrer")}
+                    className="h-[38px] cursor-pointer border-b border-[#EEF1F5] text-[12px] leading-4 text-black last:border-b-0"
                   >
                     <td className="truncate px-2 md:px-3">{getDocumentLabel(tier, document.fieldName)}</td>
                     <td className="px-2 md:px-3">
@@ -605,6 +561,7 @@ export default function SubmitterKycView({
                         href={document.fileUrl}
                         target="_blank"
                         rel="noreferrer"
+                        onClick={(event) => event.stopPropagation()}
                         className="mx-auto flex size-6 items-center justify-center rounded-full text-[#0669D9]"
                         aria-label={`View ${getDocumentLabel(tier, document.fieldName)}`}
                       >
@@ -651,7 +608,8 @@ export default function SubmitterKycView({
           {submission.documents.map((document) => (
             <tr
               key={document.fieldName}
-              className="h-12 border-b border-[#EEF1F5] text-[15px] font-normal leading-6 text-[#111827] last:border-b-0"
+              onClick={() => window.open(document.fileUrl, "_blank", "noopener,noreferrer")}
+              className="h-12 cursor-pointer border-b border-[#EEF1F5] text-[15px] font-normal leading-6 text-[#111827] last:border-b-0"
             >
               <td className="truncate px-3">{getDocumentLabel(tier, document.fieldName)}</td>
               <td className="px-3">{getKycFileTypeLabel(document.fileType, document.fileName)}</td>
@@ -661,6 +619,7 @@ export default function SubmitterKycView({
                   href={document.fileUrl}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(event) => event.stopPropagation()}
                   className="flex size-8 items-center justify-center text-[#111827]"
                   aria-label={`View ${getDocumentLabel(tier, document.fieldName)}`}
                 >
@@ -986,7 +945,11 @@ export default function SubmitterKycView({
                       </TableHeader>
                       <TableBody>
                         {submission.documents.map((document) => (
-                          <TableRow key={document.fieldName}>
+                          <TableRow
+                            key={document.fieldName}
+                            onClick={() => window.open(document.fileUrl, "_blank", "noopener,noreferrer")}
+                            className="cursor-pointer"
+                          >
                             <TableCell>{document.fileName}</TableCell>
                             <TableCell>
                               {getKycFileTypeLabel(document.fileType, document.fileName)}
@@ -997,6 +960,7 @@ export default function SubmitterKycView({
                                 href={document.fileUrl}
                                 target="_blank"
                                 rel="noreferrer"
+                                onClick={(event) => event.stopPropagation()}
                                 className="text-primary"
                               >
                                 Download

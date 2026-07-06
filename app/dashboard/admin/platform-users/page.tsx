@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Ban,
   ChevronRight,
@@ -24,8 +24,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useAppSelector } from "@/hooks/useAppSelector";
-import adminService, {
+import {
+  useAdminPlatformUsersQuery,
+  useAdminPlatformUsersSummaryQuery,
+} from "@/hooks/queries/admin";
+import {
   type AdminPagination,
   type AdminPlatformUserRow,
   type AdminPlatformUsersSummary,
@@ -199,7 +202,10 @@ function ActionIcons({ onView }: { onView: () => void }) {
       <button
         type="button"
         aria-label="View details"
-        onClick={onView}
+        onClick={(event) => {
+          event.stopPropagation();
+          onView();
+        }}
         className="text-success hover:text-success/80"
       >
         <Eye size={18} />
@@ -406,15 +412,10 @@ function OnboardingDrawer({
 }
 
 export default function AdminPlatformUsersPage() {
-  const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const [topTab, setTopTab] = useState<TopTab>("approved");
   const [roleTab, setRoleTab] = useState<RoleTab>("buyers");
-  const [summary, setSummary] = useState(EMPTY_SUMMARY);
-  const [usersPage, setUsersPage] = useState(EMPTY_PAGE);
   const [selectedUser, setSelectedUser] = useState<AdminPlatformUserRow | null>(null);
   const [selectedOnboarding, setSelectedOnboarding] = useState<OnboardingRow | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [draftFilters, setDraftFilters] = useState({
     search: "",
     date: "",
@@ -429,57 +430,41 @@ export default function AdminPlatformUsersPage() {
     [roleTab]
   );
 
-  const loadData = useCallback(async () => {
-    if (!token) return;
+  const usersParams = useMemo(
+    () => ({
+      role: activeRole,
+      search: appliedFilters.search.trim() || undefined,
+      createdFrom: appliedFilters.date || undefined,
+      createdTo: appliedFilters.date || undefined,
+      country: appliedFilters.country !== "all" ? appliedFilters.country : undefined,
+      category: appliedFilters.category !== "all" ? appliedFilters.category : undefined,
+      page,
+      limit: PAGE_SIZE,
+    }),
+    [activeRole, appliedFilters, page],
+  );
 
-    setLoading(true);
-    setError("");
+  const pollOptions = {
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchOnWindowFocus: true,
+  };
 
-    try {
-      const [nextSummary, nextUsers] = await Promise.all([
-        adminService.getPlatformUsersSummary(token),
-        topTab === "approved"
-          ? adminService.getPlatformUsers(token, {
-              role: activeRole,
-              search: appliedFilters.search.trim() || undefined,
-              createdFrom: appliedFilters.date || undefined,
-              createdTo: appliedFilters.date || undefined,
-              country: appliedFilters.country !== "all" ? appliedFilters.country : undefined,
-              category:
-                appliedFilters.category !== "all" ? appliedFilters.category : undefined,
-              page,
-              limit: PAGE_SIZE,
-            })
-          : Promise.resolve(EMPTY_PAGE),
-      ]);
+  const summaryQuery = useAdminPlatformUsersSummaryQuery(pollOptions);
+  const usersQuery = useAdminPlatformUsersQuery(usersParams, {
+    ...pollOptions,
+    enabled: topTab === "approved",
+  });
 
-      setSummary(nextSummary);
-      setUsersPage(nextUsers);
-    } catch (nextError) {
-      setError(
-        nextError instanceof Error
-          ? nextError.message
-          : "Unable to load platform users."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [activeRole, appliedFilters, page, token, topTab]);
-
-  useEffect(() => {
-    if (!token) return;
-
-    const initialLoadId = window.setTimeout(() => void loadData(), 0);
-    const intervalId = window.setInterval(() => void loadData(), POLL_INTERVAL_MS);
-    const onFocus = () => void loadData();
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      window.clearTimeout(initialLoadId);
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [loadData, token]);
+  const summary = summaryQuery.data ?? EMPTY_SUMMARY;
+  const usersPage = usersQuery.data ?? EMPTY_PAGE;
+  const loading =
+    summaryQuery.isPending || (topTab === "approved" && usersQuery.isPending);
+  const error =
+    summaryQuery.isError || usersQuery.isError
+      ? (summaryQuery.error ?? usersQuery.error) instanceof Error
+        ? ((summaryQuery.error ?? usersQuery.error) as Error).message
+        : "Unable to load platform users."
+      : "";
 
   const applyFilters = () => {
     setAppliedFilters({ ...draftFilters });
@@ -709,7 +694,11 @@ export default function AdminPlatformUsersPage() {
                           <EmptyRow colSpan={7} />
                         ) : (
                           usersPage.docs.map((row) => (
-                            <TableRow key={row.id}>
+                            <TableRow
+                              key={row.id}
+                              onClick={() => setSelectedUser(row)}
+                              className="cursor-pointer"
+                            >
                               <TableCell className="min-w-[220px]">
                                 <UserAvatar row={row} />
                               </TableCell>
@@ -746,7 +735,11 @@ export default function AdminPlatformUsersPage() {
                           <EmptyRow colSpan={7} />
                         ) : (
                           usersPage.docs.map((row) => (
-                            <TableRow key={row.id}>
+                            <TableRow
+                              key={row.id}
+                              onClick={() => setSelectedUser(row)}
+                              className="cursor-pointer"
+                            >
                               <TableCell className="min-w-[220px]">
                                 <UserAvatar row={row} />
                               </TableCell>
@@ -784,7 +777,11 @@ export default function AdminPlatformUsersPage() {
                           <EmptyRow colSpan={6} />
                         ) : (
                           usersPage.docs.map((row) => (
-                            <TableRow key={row.id}>
+                            <TableRow
+                              key={row.id}
+                              onClick={() => setSelectedUser(row)}
+                              className="cursor-pointer"
+                            >
                               <TableCell className="min-w-[220px]">
                                 <UserAvatar row={row} />
                               </TableCell>
@@ -827,7 +824,11 @@ export default function AdminPlatformUsersPage() {
                           <EmptyRow colSpan={6} />
                         ) : (
                           usersPage.docs.map((row) => (
-                            <TableRow key={row.id}>
+                            <TableRow
+                              key={row.id}
+                              onClick={() => setSelectedUser(row)}
+                              className="cursor-pointer"
+                            >
                               <TableCell className="min-w-[220px]">
                                 <UserAvatar row={row} />
                               </TableCell>
@@ -927,7 +928,11 @@ export default function AdminPlatformUsersPage() {
                   </TableHeader>
                   <TableBody>
                     {ONBOARDING_ROWS.map((row) => (
-                      <TableRow key={row.id}>
+                      <TableRow
+                        key={row.id}
+                        onClick={() => setSelectedOnboarding(row)}
+                        className="cursor-pointer"
+                      >
                         <TableCell className="min-w-[260px]">
                           <div className="flex items-center gap-3">
                             <span className="size-8 rounded-lg bg-[#D9D9D9]" />
@@ -943,7 +948,10 @@ export default function AdminPlatformUsersPage() {
                         <TableCell>
                           <button
                             type="button"
-                            onClick={() => setSelectedOnboarding(row)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedOnboarding(row);
+                            }}
                             className="inline-flex items-center gap-2 text-success hover:text-success/80"
                           >
                             <Eye size={18} />
