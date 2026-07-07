@@ -22,6 +22,10 @@ export const queryKeys = {
     detail: (id: string) => [...queryKeys.products.details(), id] as const,
     byCategory: (category: string, limit?: number) =>
       [...queryKeys.products.all, "category", category, limit ?? null] as const,
+    recommended: (params: Record<string, unknown> = {}) =>
+      [...queryKeys.products.all, "recommended", params] as const,
+    movements: (productId: string) =>
+      [...queryKeys.products.all, "movements", productId] as const,
   },
   orders: {
     all: ["orders"] as const,
@@ -53,6 +57,10 @@ export const queryKeys = {
   categories: {
     all: ["categories"] as const,
     list: () => [...queryKeys.categories.all, "list"] as const,
+  },
+  team: {
+    all: ["team"] as const,
+    members: () => [...queryKeys.team.all, "members"] as const,
   },
   rfqs: {
     all: ["rfqs"] as const,
@@ -131,5 +139,6 @@ export const queryKeys = {
       [...queryKeys.admin.all, "quotes", filters] as const,
     orders: (filters: Record<string, unknown>) =>
       [...queryKeys.admin.all, "orders", filters] as const,
+    settings: () => [...queryKeys.admin.all, "settings"] as const,
   },
 } as const;

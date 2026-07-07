@@ -15,6 +15,7 @@ import {
   ShoppingBag,
   Store,
   User,
+  Users,
   Vault,
   Wallet,
   Wrench,
@@ -107,6 +108,11 @@ export const distributorDashboardLinks: DashboardLink[] = [
     name: "Messaging",
     path: "message",
     icon: <MessageCircleMore />,
+  },
+  {
+    name: "Team",
+    path: "team",
+    icon: <Users />,
   },
   {
     name: "System Settings",

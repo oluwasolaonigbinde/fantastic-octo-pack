@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Loader2, Search } from "lucide-react";
 
-import { useProductsQuery } from "@/hooks/queries/products";
+import { useRecommendedProductsQuery } from "@/hooks/queries/products";
 import { useUsersQuery } from "@/hooks/queries/users";
 import type { Product, ProductImage } from "@/types/product";
 import type { PublicProfileData } from "@/types/user";
@@ -137,9 +137,11 @@ export default function SearchAutocomplete({
 
   // Reads are keyed on the debounced term; React Query dedupes and cancels
   // stale requests when the term changes, so no manual request-id tracking.
-  const productsQuery = useProductsQuery(
+  // Public search uses the recommended route (unauthenticated, not role-scoped)
+  // so results are consistent for every visitor regardless of signed-in role.
+  const productsQuery = useRecommendedProductsQuery(
     scopeIsUniversal
-      ? { search: debouncedTerm, status: "approved", limit: UNIVERSAL_GROUP_LIMIT }
+      ? { search: debouncedTerm, limit: UNIVERSAL_GROUP_LIMIT }
       : { search: debouncedTerm, limit: PRODUCT_SCOPE_LIMIT },
     { enabled: searchEnabled },
   );

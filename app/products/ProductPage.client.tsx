@@ -12,7 +12,7 @@ import FilterSidebar, {
 import FilterChipBar from "./FilterChipBar";
 import ProductGrid from "./ProductGrid";
 
-import { useProductsQuery } from "@/hooks/queries/products";
+import { useRecommendedProductsQuery } from "@/hooks/queries/products";
 
 import { BigLoader } from "@/components/base";
 import { Product } from "@/types/product";
@@ -41,8 +41,10 @@ const ProductPage = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Cached read: on remount this serves instantly and revalidates in the
-  // background instead of re-showing a spinner. Client-side faceting below
+  // Public catalog uses the recommended route: it is unauthenticated and not
+  // role-scoped, so a signed-in distributor (or any role) still sees the full
+  // public listing rather than a filtered subset. Cached read serves instantly
+  // on remount and revalidates in the background. Client-side faceting below
   // still needs the full set, so we keep the wide `limit` for now — moving to
   // server-side pagination is tracked as a separate follow-up.
   const {
@@ -50,7 +52,7 @@ const ProductPage = () => {
     isLoading,
     isError,
     error,
-  } = useProductsQuery({ populate: "createdBy", limit: 1000 });
+  } = useRecommendedProductsQuery({ populate: "createdBy", limit: 1000 });
 
   const products = data?.products ?? null;
   const message = error instanceof Error ? error.message : "";

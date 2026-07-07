@@ -42,6 +42,7 @@ export const distributorDemoOrderMeta = {
   paymentStatus: "Not Paid",
   paymentMethod: "ESCROW",
   paymentType: "Bank transfer",
+  paymentReference: "BAIY-TRX-000792",
   invoiceName: "Invoice.pdf",
   paymentDetails: [
     { label: "Items total", value: "N75,000" },

@@ -2,41 +2,28 @@
 
 import { useState } from "react";
 import {
-  FileText,
-  Filter,
   Lock,
   SlidersHorizontal,
   Smartphone,
   Shield,
+  Wallet,
 } from "lucide-react";
 
 import Header from "../../component/header";
-import { Button, Input, SingleSelect } from "@/components/base";
+import { Button, Input, Skeleton } from "@/components/base";
 import { Switch } from "@/components/base";
+import {
+  useAdminPlatformSettingsQuery,
+  useUpdateAdminPlatformSettingsMutation,
+} from "@/hooks/queries/admin";
 
-type SubTab = "security" | "audit" | "preferences";
+type SubTab = "security" | "preferences" | "platform";
 
 const SUB_TABS: { key: SubTab; label: string; icon: React.ReactNode }[] = [
   { key: "security", label: "System Security Settings", icon: <Shield size={18} /> },
-  { key: "audit", label: "Audit Logs", icon: <FileText size={18} /> },
+  { key: "platform", label: "Platform Settings", icon: <Wallet size={18} /> },
   { key: "preferences", label: "Preferences", icon: <SlidersHorizontal size={18} /> },
 ];
-
-const AUDIT_TODAY = Array.from({ length: 4 }).map((_, i) => ({
-  id: `today-${i + 1}`,
-  action: "Verifying onboarding request",
-  user: "Oluwatunma Olujobi",
-  date: "29/09/2025 - 01:00pm",
-  ip: "Successful",
-}));
-
-const AUDIT_YESTERDAY = Array.from({ length: 4 }).map((_, i) => ({
-  id: `yest-${i + 1}`,
-  action: "Verifying onboarding request",
-  user: "Oluwatunma Olujobi",
-  date: "28/09/2025 - 03:10pm",
-  ip: "Successful",
-}));
 
 function SecurityContent() {
   const [twoFaEnabled, setTwoFaEnabled] = useState(false);
@@ -100,71 +87,6 @@ function SecurityContent() {
       </div>
 
       <Button title="Setup 2FA" className="w-auto" type="button" />
-    </div>
-  );
-}
-
-function AuditContent() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="medium3 text-gray1">Audit Logs</h2>
-        <p className="mt-1 text-sm text-gray3">
-          See all activities on this platform
-        </p>
-      </div>
-
-      <p className="text-xs font-medium uppercase tracking-[0.12em] text-gray3">
-        Filter audit logs by:
-      </p>
-      <div className="grid gap-3 lg:grid-cols-[2fr_1fr_auto]">
-        <Input label="User's name" placeholder="Enter user name" />
-        <Input label="Date" type="date" />
-        <Button
-          title="Filter"
-          iconLeft={<Filter size={16} />}
-          className="self-end"
-          type="button"
-        />
-      </div>
-
-      <div>
-        <h3 className="text-sm font-semibold text-gray1">
-          Today - Monday 29th September 2025
-        </h3>
-        <div className="mt-3 space-y-3">
-          {AUDIT_TODAY.map((entry) => (
-            <div
-              key={entry.id}
-              className="grid grid-cols-4 gap-4 border-b border-gray5 pb-3 text-sm last:border-0"
-            >
-              <span className="text-gray2">{entry.action}</span>
-              <span className="text-gray1">{entry.user}</span>
-              <span className="whitespace-nowrap text-gray3">{entry.date}</span>
-              <span className="text-success">{entry.ip}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <h3 className="text-sm font-semibold text-gray1">
-          Yesterday - Sunday 28th September 2025
-        </h3>
-        <div className="mt-3 space-y-3">
-          {AUDIT_YESTERDAY.map((entry) => (
-            <div
-              key={entry.id}
-              className="grid grid-cols-4 gap-4 border-b border-gray5 pb-3 text-sm last:border-0"
-            >
-              <span className="text-gray2">{entry.action}</span>
-              <span className="text-gray1">{entry.user}</span>
-              <span className="whitespace-nowrap text-gray3">{entry.date}</span>
-              <span className="text-success">{entry.ip}</span>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -263,33 +185,202 @@ function PreferencesContent() {
           ))}
         </div>
       </section>
+    </div>
+  );
+}
 
-      <div className="grid gap-4 md:grid-cols-[1fr_320px]">
-        <SingleSelect
-          label="Time zone setting"
-          value="wat"
-          onValueChange={() => {}}
-          options={[{ value: "wat", label: "UTC (+01:00) West Africa Stand..." }]}
-        />
+function PlatformSettingsContent() {
+  const { data: settings, isLoading, isError } = useAdminPlatformSettingsQuery();
+  const updateMutation = useUpdateAdminPlatformSettingsMutation();
+
+  const [platformFeePercent, setPlatformFeePercent] = useState("");
+  const [platformFeeCap, setPlatformFeeCap] = useState("");
+  const [autoReceiveDays, setAutoReceiveDays] = useState("");
+  const [autoReceiveEnabled, setAutoReceiveEnabled] = useState(true);
+  const [subscriptionBillingEnabled, setSubscriptionBillingEnabled] =
+    useState(true);
+  const [subscriptionGraceDays, setSubscriptionGraceDays] = useState("");
+
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  // Seed the form once the settings load (render-time sync, avoids a
+  // setState-in-effect for a value that only changes on first fetch).
+  const [seeded, setSeeded] = useState(false);
+  if (settings && !seeded) {
+    setSeeded(true);
+    setPlatformFeePercent(String(settings.platformFeePercent));
+    setPlatformFeeCap(
+      settings.platformFeeCap === null ? "" : String(settings.platformFeeCap)
+    );
+    setAutoReceiveDays(String(settings.autoReceiveDays));
+    setAutoReceiveEnabled(settings.autoReceiveEnabled);
+    setSubscriptionBillingEnabled(settings.subscriptionBillingEnabled);
+    setSubscriptionGraceDays(String(settings.subscriptionGraceDays));
+  }
+
+  const handleSave = async () => {
+    setError("");
+    setNotice("");
+
+    const feePercent = Number(platformFeePercent);
+    const receiveDays = Number(autoReceiveDays);
+    const graceDays = Number(subscriptionGraceDays);
+
+    if (!Number.isFinite(feePercent) || feePercent < 0 || feePercent > 100) {
+      setError("Platform fee percent must be between 0 and 100.");
+      return;
+    }
+    if (!Number.isFinite(receiveDays) || receiveDays < 1) {
+      setError("Auto-receive window must be at least 1 day.");
+      return;
+    }
+    if (!Number.isFinite(graceDays) || graceDays < 0) {
+      setError("Subscription grace period can't be negative.");
+      return;
+    }
+
+    try {
+      await updateMutation.mutateAsync({
+        platformFeePercent: feePercent,
+        platformFeeCap: platformFeeCap.trim() === "" ? null : Number(platformFeeCap),
+        autoReceiveDays: receiveDays,
+        autoReceiveEnabled,
+        subscriptionBillingEnabled,
+        subscriptionGraceDays: graceDays,
+      });
+      setNotice("Platform settings updated successfully.");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update platform settings."
+      );
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-20" />
+        <Skeleton className="h-20" />
+        <Skeleton className="h-20" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-2xl border border-gray5 bg-white p-10 text-center text-sm text-gray3">
+        We couldn&apos;t load the platform settings. Please try again.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="medium3 text-gray1">Platform Settings</h2>
+        <p className="mt-1 text-sm text-gray3">
+          Configure platform fees, auto-receive windows and subscription
+          billing behaviour
+        </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[1fr_320px]">
-        <SingleSelect
-          label="Language Selection"
-          value="en"
-          onValueChange={() => {}}
-          options={[{ value: "en", label: "English (US)" }]}
-        />
+      {error ? (
+        <div className="rounded-xl border border-[#FCA5A5] bg-[#FEF2F2] p-4 text-sm text-[#B91C1C]">
+          {error}
+        </div>
+      ) : null}
+      {notice ? (
+        <div className="rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] p-4 text-sm text-[#1D4ED8]">
+          {notice}
+        </div>
+      ) : null}
+
+      <div className="rounded-2xl border border-gray5 p-4">
+        <h3 className="text-sm font-semibold text-gray1">Platform Fees</h3>
+        <p className="mt-0.5 text-xs text-gray3">
+          Commission applied on each released order.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <Input
+            label="Platform fee (%)"
+            type="number"
+            min={0}
+            max={100}
+            value={platformFeePercent}
+            onValueChange={setPlatformFeePercent}
+          />
+          <Input
+            label="Fee cap (kobo, optional)"
+            type="number"
+            min={0}
+            placeholder="No cap"
+            value={platformFeeCap}
+            onValueChange={setPlatformFeeCap}
+          />
+        </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-[1fr_320px]">
-        <SingleSelect
-          label="Default landing page"
-          value="dashboard"
-          onValueChange={() => {}}
-          options={[{ value: "dashboard", label: "Dashboard" }]}
-        />
+      <div className="rounded-2xl border border-gray5 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray1">Auto-Receive</h3>
+            <p className="mt-0.5 text-xs text-gray3">
+              Automatically mark unconfirmed orders as received.
+            </p>
+          </div>
+          <Switch
+            checked={autoReceiveEnabled}
+            onCheckedChange={setAutoReceiveEnabled}
+          />
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <Input
+            label="Auto-receive window (days)"
+            type="number"
+            min={1}
+            value={autoReceiveDays}
+            onValueChange={setAutoReceiveDays}
+            disabled={!autoReceiveEnabled}
+          />
+        </div>
       </div>
+
+      <div className="rounded-2xl border border-gray5 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-semibold text-gray1">
+              Subscription Billing
+            </h3>
+            <p className="mt-0.5 text-xs text-gray3">
+              Master switch for the subscription billing background job.
+            </p>
+          </div>
+          <Switch
+            checked={subscriptionBillingEnabled}
+            onCheckedChange={setSubscriptionBillingEnabled}
+          />
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <Input
+            label="Past-due grace period (days)"
+            type="number"
+            min={0}
+            value={subscriptionGraceDays}
+            onValueChange={setSubscriptionGraceDays}
+            disabled={!subscriptionBillingEnabled}
+          />
+        </div>
+      </div>
+
+      <Button
+        title="Save Changes"
+        className="w-auto"
+        type="button"
+        isBusy={updateMutation.isPending}
+        disabled={updateMutation.isPending}
+        onClick={() => void handleSave()}
+      />
     </div>
   );
 }
@@ -335,7 +426,7 @@ export default function AdminSettingsSecurityPage() {
 
           <div className="lg:col-span-3">
             {subTab === "security" && <SecurityContent />}
-            {subTab === "audit" && <AuditContent />}
+            {subTab === "platform" && <PlatformSettingsContent />}
             {subTab === "preferences" && <PreferencesContent />}
           </div>
         </div>

@@ -102,9 +102,12 @@ export interface Product {
   createdAt: string;
   updatedAt: string;
 
-  // --- Legacy compatibility (read-only; no longer sent on create/update) ---
-  /** @deprecated Legacy field. Prefer pricing_type. */
+  /** On-hand stock quantity. `availability_status` is derived from this. */
   quantityAvailable?: number;
+  /** Units currently reserved by open orders (not available for sale). */
+  quantityReserved?: number;
+
+  // --- Legacy compatibility (read-only; no longer sent on create/update) ---
   /** @deprecated Legacy field. Prefer pricing_type. */
   priceMode?: "fixed" | "negotiable";
   /** @deprecated Legacy field. */
@@ -140,6 +143,8 @@ export interface UpdateProduct {
   pricePerUnit?: number;
   pricing_type?: "fixed" | "negotiable" | "rfq";
   unit_of_measure?: string;
+  /** On-hand stock quantity. */
+  quantityAvailable?: number;
   categorySpecifications?: CategorySpecification[];
   customSpecifications?: CustomSpecification[];
   requiresInstallation?: boolean;
@@ -190,6 +195,8 @@ export type CreateProductDto = {
   pricePerUnit: number;
   pricing_type: "fixed" | "negotiable" | "rfq";
   unit_of_measure: string;
+  /** Initial on-hand stock quantity. */
+  quantityAvailable?: number;
   categorySpecifications?: CategorySpecification[];
   customSpecifications?: CustomSpecification[];
   requiresInstallation?: boolean;
@@ -208,6 +215,62 @@ export type ReviewProductDto = {
   action: "approve" | "reject";
   rejectionReason?: string;
 };
+
+/* ---------------------------------------------------------------- */
+/* Stock movements                                                  */
+/* ---------------------------------------------------------------- */
+
+export type StockMovementType =
+  | "opening_stock"
+  | "stock_in"
+  | "stock_out"
+  | "adjustment"
+  | "reservation"
+  | "release"
+  | "sale";
+
+/** A single immutable entry in a product's stock ledger. */
+export interface StockMovement {
+  _id: string;
+  type: StockMovementType;
+  product: string;
+  owner: string;
+  actor?: string;
+  order?: string;
+  quantity: number;
+  availableBefore: number;
+  reservedBefore: number;
+  availableAfter: number;
+  reservedAfter: number;
+  reference?: string;
+  correlationId?: string;
+  reason?: string;
+  createdAt: string;
+}
+
+/** Body for POST /products/{id}/stock-in and /stock-out (delta). */
+export interface StockDeltaDto {
+  quantity: number;
+  reason?: string;
+}
+
+/** Body for POST /products/{id}/adjust (absolute on-hand quantity). */
+export interface StockAdjustDto {
+  quantity: number;
+  reason?: string;
+}
+
+export interface StockMovementResponse {
+  success: boolean;
+  message: string;
+  data: StockMovement;
+}
+
+export interface StockMovementListResponse {
+  success: boolean;
+  message: string;
+  data: StockMovement[];
+}
 
 export type ReviewProductVisibilityDto = {
   action: "approve" | "reject";

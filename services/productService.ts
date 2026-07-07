@@ -5,6 +5,10 @@ import {
   ProductStatus,
   ReviewProductDto,
   ReviewProductVisibilityDto,
+  StockAdjustDto,
+  StockDeltaDto,
+  StockMovementListResponse,
+  StockMovementResponse,
   UpdateProduct,
 } from "@/types/product";
 import { apiUrl } from "@/utils/api-base-url";
@@ -323,6 +327,7 @@ export interface FetchRecommendedParams {
   sort?: string;
   page?: number;
   limit?: number;
+  populate?: string;
 }
 
 // List recommended products — GET /products/recommended
@@ -338,6 +343,7 @@ const fetchRecommended = async (
   if (typeof params.page === "number") queryParams.append("page", String(params.page));
   if (typeof params.limit === "number")
     queryParams.append("limit", String(params.limit));
+  if (params.populate) queryParams.append("populate", params.populate);
 
   const query = queryParams.toString();
   const response = await fetch(
@@ -352,6 +358,101 @@ const fetchRecommended = async (
   if (!response.ok) {
     const errorData = await response.json();
     throw new Error(errorData.message || "Fetching recommended products failed");
+  }
+
+  return await response.json();
+};
+
+/* ------------------------------------------------------------------ */
+/* Stock movements                                                    */
+/* ------------------------------------------------------------------ */
+
+// Add on-hand stock — POST /products/{id}/stock-in
+const stockIn = async (
+  token: string,
+  productId: string,
+  dto: StockDeltaDto
+): Promise<StockMovementResponse> => {
+  const response = await fetch(apiUrl(`/products/${productId}/stock-in`), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(dto),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "Adding stock failed");
+  }
+
+  return await response.json();
+};
+
+// Remove on-hand stock — POST /products/{id}/stock-out
+const stockOut = async (
+  token: string,
+  productId: string,
+  dto: StockDeltaDto
+): Promise<StockMovementResponse> => {
+  const response = await fetch(apiUrl(`/products/${productId}/stock-out`), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(dto),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "Removing stock failed");
+  }
+
+  return await response.json();
+};
+
+// Set on-hand stock to an absolute value — POST /products/{id}/adjust
+const adjustStock = async (
+  token: string,
+  productId: string,
+  dto: StockAdjustDto
+): Promise<StockMovementResponse> => {
+  const response = await fetch(apiUrl(`/products/${productId}/adjust`), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(dto),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "Adjusting stock failed");
+  }
+
+  return await response.json();
+};
+
+// Immutable stock movement history — GET /products/{id}/movements
+const fetchMovements = async (
+  token: string,
+  productId: string
+): Promise<StockMovementListResponse> => {
+  const response = await fetch(apiUrl(`/products/${productId}/movements`), {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "Fetching stock movements failed");
   }
 
   return await response.json();
@@ -401,6 +502,10 @@ const productService = {
   reviewProductVisibility,
   featureProduct,
   fetchRecommended,
+  stockIn,
+  stockOut,
+  adjustStock,
+  fetchMovements,
   deleteProduct,
 };
 

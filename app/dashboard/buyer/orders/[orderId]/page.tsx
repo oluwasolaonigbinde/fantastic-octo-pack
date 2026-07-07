@@ -44,6 +44,7 @@ import {
   formatDeliveryAddress,
   getActiveMilestoneCount,
   getOrderMilestones,
+  getPaymentStatusDisplay,
   isAwaitingBuyerConfirmation,
   isPaidOrderStatus,
 } from "@/types/order";
@@ -120,6 +121,14 @@ const isOrderPaid = (paymentStatus?: string, status?: string) => {
   return isPaidOrderStatus(status);
 };
 
+function CheckBadgeIcon() {
+  return (
+    <span className="flex size-4 items-center justify-center rounded bg-white">
+      <Check size={11} className="text-[#FF6B00]" strokeWidth={3} />
+    </span>
+  );
+}
+
 function DetailStat({
   label,
   value,
@@ -132,7 +141,7 @@ function DetailStat({
   return (
     <div>
       <p className="text-xs text-[#8A94A6]">{label}</p>
-      <p className={`mt-1 text-sm font-medium ${valueClassName}`}>{value}</p>
+      <p className={`mt-1 break-words text-sm font-medium ${valueClassName}`}>{value}</p>
     </div>
   );
 }
@@ -323,6 +332,8 @@ export default function BuyerOrderDetailPage() {
 
   const liveStatus = order?.status ?? "";
   const paid = isOrderPaid(liveOrder?.paymentStatus, liveStatus);
+  // A refunded order is closed for good — no payment is ever collectible again.
+  const isRefunded = liveStatus === "closed";
   const requestedView = searchParams.get("view");
   // A `draft_pending_buyer` order was created by a distributor on the buyer's
   // behalf. The buyer reviews it (notably adding a delivery address) before
@@ -605,7 +616,7 @@ export default function BuyerOrderDetailPage() {
     );
   }
 
-  const paymentStatusLabel = paid ? "Paid" : "Not Paid";
+  const paymentStatus = getPaymentStatusDisplay(liveStatus, paid);
 
   return (
     <div>
@@ -724,15 +735,15 @@ export default function BuyerOrderDetailPage() {
                     <DetailStat label="Date created" value={formatDate(order.createdAt)} />
                     <DetailStat
                       label="Payment status"
-                      value={paymentStatusLabel}
-                      valueClassName={paid ? "text-[#16A34A]" : "text-[#F59E0B]"}
+                      value={paymentStatus.label}
+                      valueClassName={paymentStatus.className}
                     />
                     <DetailStat label="Payment method" value={buyerDemoOrderMeta.paymentMethod} />
                   </div>
 
                   {stage === "completed" ? (
                     <span className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#16A34A] px-5 text-sm font-medium text-white">
-                      <Check size={15} />
+                      <CheckBadgeIcon />
                       Delivered
                     </span>
                   ) : awaitingBuyerConfirmation ? (
@@ -741,6 +752,7 @@ export default function BuyerOrderDetailPage() {
                     </span>
                   ) : paid ? (
                     <span className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#FF6B00] px-5 text-sm font-medium text-white">
+                      <CheckBadgeIcon />
                       Processing
                     </span>
                   ) : (
@@ -756,7 +768,7 @@ export default function BuyerOrderDetailPage() {
               {/* Unpaid orders get a single Make payment action. Paid orders are
                   always in the tracking flow below — no payment / "view status"
                   buttons; the milestone stepper is the navigation. */}
-              {!paid ? (
+              {!paid && !isRefunded ? (
                 <div className="mt-5 flex flex-col gap-3 sm:flex-row">
                   {isDraft ? (
                     <button
@@ -821,11 +833,10 @@ export default function BuyerOrderDetailPage() {
                     <DetailStat label="Payment Method" value={buyerDemoOrderMeta.paymentType} />
                     <DetailStat
                       label="Payment Status"
-                      value={paymentStatusLabel}
-                      valueClassName={paid ? "text-[#16A34A]" : "text-[#F59E0B]"}
+                      value={paymentStatus.label}
+                      valueClassName={paymentStatus.className}
                     />
                     <DetailStat label="Payment Reference" value={payReference} />
-                    <DetailStat label="Documents" value="Invoice.pdf" />
                   </div>
                 </InfoCard>
                 <InfoCard title="Delivery Address">

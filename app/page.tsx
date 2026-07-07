@@ -19,7 +19,7 @@ import type { Product, ProductImage } from "@/types/product";
 import { PublicLayout } from "@/components/layout";
 import SafeProductImage from "@/components/product/SafeProductImage";
 import { getProductAvailabilityLabel } from "@/utils/productDisplay";
-import { useProductsQuery } from "@/hooks/queries/products";
+import { useRecommendedProductsQuery } from "@/hooks/queries/products";
 import type { UserData } from "@/types/user";
 
 type ProductWithDistributor = Omit<Product, "images"> & {
@@ -181,7 +181,9 @@ function formatProductPrice(product: ProductWithDistributor) {
 
 export default function Home() {
   const router = useRouter();
-  const { data, isLoading, isError } = useProductsQuery({
+  // Public home uses the recommended route (unauthenticated, not role-scoped)
+  // so every visitor — including signed-in distributors — sees featured products.
+  const { data, isLoading, isError } = useRecommendedProductsQuery({
     limit: FEATURED_PRODUCT_COUNT,
   });
   const products = data?.products ?? null;

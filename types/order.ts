@@ -199,6 +199,22 @@ export function isPaidOrderStatus(status?: string | null): boolean {
   return Boolean(status) && PAID_ORDER_STATUSES.includes(status as string);
 }
 
+/** Payment-status label driven by the real order status, not a binary flag. */
+export function getPaymentStatusDisplay(status: string | undefined, paid: boolean) {
+  switch (status) {
+    case "payment_failed":
+      return { label: "Payment failed", className: "text-[#DC2626]" };
+    case "cancelled_pre_payment":
+      return { label: "Cancelled", className: "text-[#6B7280]" };
+    case "closed":
+      return { label: "Refunded", className: "text-[#6B7280]" };
+    default:
+      return paid
+        ? { label: "Paid", className: "text-[#16A34A]" }
+        : { label: "Not paid", className: "text-[#F59E0B]" };
+  }
+}
+
 /**
  * How far a paid order has progressed through the logistics stages. A stage is
  * complete when EITHER its per-stage timestamp is present OR the order's status

@@ -26,10 +26,8 @@ export const createDirectOrder = async (
   token: string,
   data: {
     product: string;
-    productName: string;
     quantity: number;
     seller: string;
-    totalPrice: number;
     /**
      * Id of a saved profile address to deliver to. Omit to use the buyer's
      * default saved address. The delivery address is no longer free text — the

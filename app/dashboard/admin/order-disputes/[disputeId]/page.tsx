@@ -40,6 +40,7 @@ import {
 } from "@/lib/order-dispute-presenter";
 import type {
   OrderDispute,
+  OrderDisputeInventoryAction,
   OrderDisputeResolutionOutcome,
 } from "@/types/order-dispute";
 import { UserRole } from "@/types/user";
@@ -282,10 +283,12 @@ function ParticipantsCard({ dispute }: { dispute: OrderDispute }) {
 
 function CaseActionsCard({
   resolved,
+  onConfirmResolution,
   onMarkResolved,
   busy,
 }: {
   resolved: boolean;
+  onConfirmResolution: () => void;
   onMarkResolved: () => void;
   busy: boolean;
 }) {
@@ -293,7 +296,22 @@ function CaseActionsCard({
     <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
       <h2 className="text-base font-semibold text-[#111827]">Case Actions</h2>
       <div className="mt-4 space-y-3">
-        {/* Confirm Resolution (escrow allocation) temporarily removed. */}
+        <button
+          type="button"
+          onClick={onConfirmResolution}
+          disabled={resolved || busy}
+          className="w-full rounded-xl border border-[#017BED] bg-[#EAF3FF] p-4 text-left disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-[#017BED]">
+            <ShieldCheck size={16} />
+            Confirm Resolution
+          </span>
+          <span className="mt-1 block text-xs text-[#6B7280]">
+            Allocate escrow funds between buyer and seller to resolve this
+            dispute.
+          </span>
+        </button>
+
         <button
           type="button"
           onClick={onMarkResolved}
@@ -308,7 +326,6 @@ function CaseActionsCard({
             Mark the case as resolved.
           </span>
         </button>
-
       </div>
     </section>
   );
@@ -321,7 +338,9 @@ function CaseSummaryCard({ dispute }: { dispute: OrderDispute }) {
       ? "Refunded"
       : dispute.resolutionOutcome === "release_to_seller"
         ? "Released"
-        : "Closed"
+        : dispute.resolutionOutcome === "split_funds"
+          ? "Split"
+          : "Closed"
     : "On Hold";
 
   const rows: Array<{ label: string; value: string; tone?: string; icon?: boolean }> = [
@@ -360,6 +379,31 @@ function CaseSummaryCard({ dispute }: { dispute: OrderDispute }) {
   );
 }
 
+const INVENTORY_ACTIONS: Array<{
+  value: OrderDisputeInventoryAction;
+  title: string;
+  describe: (sellerName: string) => string;
+}> = [
+  {
+    value: "release",
+    title: "Return stock to distributor",
+    describe: (sellerName) =>
+      `Return the reserved units to ${sellerName}'s available inventory — use this if the item is going back to them.`,
+  },
+  {
+    value: "consume",
+    title: "Count stock as sold",
+    describe: (sellerName) =>
+      `Finalize the reserved units as a completed sale for ${sellerName} — use this if the item stays with the buyer.`,
+  },
+  {
+    value: "none",
+    title: "Leave stock reserved",
+    describe: () =>
+      "Don't change the order's reserved stock — decide on the inventory separately.",
+  },
+];
+
 function ConfirmResolutionDrawer({
   dispute,
   open,
@@ -371,13 +415,20 @@ function ConfirmResolutionDrawer({
   dispute: OrderDispute;
   open: boolean;
   onClose: () => void;
-  onConfirm: (args: { buyerAmount: number; sellerAmount: number; note: string }) => void;
+  onConfirm: (args: {
+    buyerAmount: number;
+    sellerAmount: number;
+    inventoryAction: OrderDisputeInventoryAction;
+    note: string;
+  }) => void;
   busy: boolean;
   error: string;
 }) {
   const total = getDisputeAmount(dispute);
   const [buyerAmount, setBuyerAmount] = useState(0);
   const [note, setNote] = useState("");
+  const [inventoryAction, setInventoryAction] =
+    useState<OrderDisputeInventoryAction>("release");
   const sellerAmount = Math.max(0, total - buyerAmount);
 
   // Reset the allocation each time the drawer transitions to open — done during
@@ -388,6 +439,7 @@ function ConfirmResolutionDrawer({
     if (open) {
       setBuyerAmount(0);
       setNote("");
+      setInventoryAction("release");
     }
   }
 
@@ -524,6 +576,47 @@ function ConfirmResolutionDrawer({
 
           <div>
             <label className="block text-sm font-medium text-[#111827]">
+              Reserved Stock ({sellerName}&apos;s inventory)
+            </label>
+            <div className="mt-2 space-y-2">
+              {INVENTORY_ACTIONS.map((action) => {
+                const active = inventoryAction === action.value;
+                return (
+                  <button
+                    key={action.value}
+                    type="button"
+                    onClick={() => setInventoryAction(action.value)}
+                    className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left transition ${
+                      active
+                        ? "border-[#017BED] bg-[#F3F8FF]"
+                        : "border-[#DDE0E5] hover:border-[#C4C8CE]"
+                    }`}
+                  >
+                    <span
+                      className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${
+                        active ? "border-[#017BED]" : "border-[#C4C8CE]"
+                      }`}
+                    >
+                      {active ? (
+                        <span className="size-2 rounded-full bg-[#017BED]" />
+                      ) : null}
+                    </span>
+                    <span>
+                      <span className="block text-sm font-semibold text-[#111827]">
+                        {action.title}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-[#6B7280]">
+                        {action.describe(sellerName)}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[#111827]">
               Resolution Note (Optional)
             </label>
             <textarea
@@ -547,7 +640,9 @@ function ConfirmResolutionDrawer({
           </button>
           <button
             type="button"
-            onClick={() => onConfirm({ buyerAmount, sellerAmount, note })}
+            onClick={() =>
+              onConfirm({ buyerAmount, sellerAmount, inventoryAction, note })
+            }
             disabled={busy || total <= 0}
             className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60"
           >
@@ -780,32 +875,27 @@ export default function AdminOrderDisputeDetailPage() {
   const handleConfirmAllocation = async ({
     buyerAmount,
     sellerAmount,
+    inventoryAction,
     note,
   }: {
     buyerAmount: number;
     sellerAmount: number;
+    inventoryAction: OrderDisputeInventoryAction;
     note: string;
   }) => {
     if (!dispute) return;
     setActionError("");
 
-    const total = getDisputeAmount(dispute);
-    const resolutionOutcome =
-      buyerAmount >= total
-        ? "refund_buyer"
-        : sellerAmount >= total
-          ? "release_to_seller"
-          : "closed_after_dispute";
-
-    const breakdown = `Escrow allocation — Buyer: ${formatNaira(
-      buyerAmount,
-    )}, Seller: ${formatNaira(sellerAmount)}`;
-    const resolutionNote = note.trim() ? `${breakdown}. ${note.trim()}` : breakdown;
-
     try {
       await resolveMutation.mutateAsync({
         disputeId: dispute._id,
-        payload: { resolutionOutcome, resolutionNote },
+        payload: {
+          resolutionOutcome: "split_funds",
+          buyerAmount,
+          sellerAmount,
+          inventoryAction,
+          ...(note.trim() ? { resolutionNote: note.trim() } : {}),
+        },
       });
       setDrawerOpen(false);
     } catch (err) {
@@ -946,7 +1036,6 @@ export default function AdminOrderDisputeDetailPage() {
                         >
                           Request more evidence
                         </button>
-                        {/* Confirm resolution (escrow allocation) temporarily removed. */}
                       </div>
                     ) : null}
                   </div>
@@ -990,6 +1079,10 @@ export default function AdminOrderDisputeDetailPage() {
                   <CaseActionsCard
                     resolved={resolved}
                     busy={resolveMutation.isPending}
+                    onConfirmResolution={() => {
+                      setActionNotice("");
+                      setDrawerOpen(true);
+                    }}
                     onMarkResolved={() => {
                       setActionNotice("");
                       setResolveModalOpen(true);
