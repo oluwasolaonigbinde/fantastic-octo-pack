@@ -19,10 +19,11 @@ import RelatedProducts from "./RelatedProducts";
 import ConfirmOrderModal from "./ConfirmOrderModal";
 import EditDeliveryAddressModal from "./EditDeliveryAddressModal";
 import SendInquiryModal from "./SendInquiryModal";
+import BuyerOnlyModal from "./BuyerOnlyModal";
 import { useProductQuery } from "@/hooks/queries/products";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import type { Product } from "@/types/product";
-import type { UserData } from "@/types/user";
+import { UserRole, type UserData } from "@/types/user";
 import { BigLoader } from "@/components/base";
 import {
   getProductAvailabilityLabel,
@@ -96,22 +97,11 @@ function resolveDeliveryAddress(
   );
 }
 
-function buildOrderPaymentHref(role: string | undefined, orderId: string): string {
-  if (role === "buyer") {
-    // Payment stays on the main website. The dashboard order page keeps its own
-    // "Make payment" entry point for orders left in a pending state.
-    return `/checkout/${orderId}`;
-  }
-
-  if (role === "distributor") {
-    return `/dashboard/distributor/orders/${orderId}`;
-  }
-
-  if (role === "engineer") {
-    return "/dashboard/engineer/wallet";
-  }
-
-  return "/dashboard";
+function buildOrderPaymentHref(orderId: string): string {
+  // Only buyers can place a direct (Buy Now) order — the backend rejects every
+  // other role with 403 "Only buyers can place direct orders" — so payment
+  // always continues on the main-site checkout.
+  return `/checkout/${orderId}`;
 }
 
 function RatingStars({
@@ -178,6 +168,8 @@ export default function ProductDetailsPage() {
   const [isConfirmOrderOpen, setIsConfirmOrderOpen] = useState(false);
   const [isAddressEditorOpen, setIsAddressEditorOpen] = useState(false);
   const [isInquiryOpen, setIsInquiryOpen] = useState(false);
+  const [isBuyerOnlyOpen, setIsBuyerOnlyOpen] = useState(false);
+  const [orderError, setOrderError] = useState<string | null>(null);
   const [orderQuantity, setOrderQuantity] = useState(1);
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [addresses, setAddresses] = useState<UserAddress[]>([]);
@@ -383,10 +375,18 @@ export default function ProductDetailsPage() {
       return;
     }
 
+    // Only buyer accounts can place a direct order — block everyone else here
+    // rather than letting the backend reject the request after the fact.
+    if (authData.role !== UserRole.BUYER) {
+      setIsBuyerOnlyOpen(true);
+      return;
+    }
+
     if (!product || !sellerId || !authData.tokens?.accessToken) {
       return;
     }
 
+    setOrderError(null);
     setOrderQuantity(1);
     setDeliveryAddress((currentAddress) => currentAddress || defaultDeliveryAddress);
     setIsConfirmOrderOpen(true);
@@ -406,6 +406,29 @@ export default function ProductDetailsPage() {
       return;
     }
 
+    // Defence in depth: even if the confirm modal was somehow opened, never let
+    // a non-buyer fire the buy-now request (the backend would reject it anyway).
+    if (authData.role !== UserRole.BUYER) {
+      setIsConfirmOrderOpen(false);
+      setIsBuyerOnlyOpen(true);
+      return;
+    }
+
+    // Don't attempt payment when there isn't enough stock — the backend would
+    // reject it with "Insufficient stock". Surface it up front instead.
+    const availableQuantity = product.quantityAvailable;
+    if (typeof availableQuantity === "number" && orderQuantity > availableQuantity) {
+      setOrderError(
+        availableQuantity <= 0
+          ? "This product is out of stock."
+          : `Only ${availableQuantity} unit${
+              availableQuantity === 1 ? "" : "s"
+            } left in stock.`,
+      );
+      return;
+    }
+
+    setOrderError(null);
     setIsOrdering(true);
 
     try {
@@ -413,10 +436,8 @@ export default function ProductDetailsPage() {
         authData.tokens.accessToken,
         {
           product: product._id,
-          productName: product.name,
           quantity: orderQuantity,
           seller: sellerId,
-          totalPrice: (product.pricePerUnit || 0) * orderQuantity,
           // Omit to let the backend fall back to the buyer's default address.
           addressId: selectedAddressId || undefined,
         },
@@ -424,10 +445,16 @@ export default function ProductDetailsPage() {
 
       if (result.success && result.data) {
         setIsConfirmOrderOpen(false);
-        router.push(buildOrderPaymentHref(authData.role, result.data._id));
+        router.push(buildOrderPaymentHref(result.data._id));
+      } else {
+        setOrderError(result.message || "Could not place order. Please try again.");
       }
-    } catch {
-      // Toast feedback is not wired here yet.
+    } catch (error) {
+      setOrderError(
+        error instanceof Error
+          ? error.message
+          : "Could not place order. Please try again.",
+      );
     } finally {
       setIsOrdering(false);
     }
@@ -509,7 +536,18 @@ export default function ProductDetailsPage() {
     processedResumeKeyRef.current = resumeKey;
     clearPendingAuthIntent();
     router.replace(`/products/${id}`);
+
+    // If the user signed in with a non-buyer account, resuming the order flow
+    // would only lead to a rejected buy-now — show the explainer instead.
+    const isBuyerResuming = authData.role === UserRole.BUYER;
+
     const openConfirmTimer = window.setTimeout(() => {
+      if (!isBuyerResuming) {
+        setIsBuyerOnlyOpen(true);
+        return;
+      }
+
+      setOrderError(null);
       setOrderQuantity(1);
       setDeliveryAddress((currentAddress) => currentAddress || defaultDeliveryAddress);
       setIsConfirmOrderOpen(true);
@@ -799,6 +837,12 @@ export default function ProductDetailsPage() {
         onClose={() => setIsInquiryOpen(false)}
       />
 
+      <BuyerOnlyModal
+        isOpen={isBuyerOnlyOpen}
+        role={authRole}
+        onClose={() => setIsBuyerOnlyOpen(false)}
+      />
+
       <ConfirmOrderModal
         isOpen={isConfirmOrderOpen}
         productName={product.name}
@@ -806,6 +850,8 @@ export default function ProductDetailsPage() {
         sellerName={sellerName}
         unitPrice={product.pricePerUnit || 0}
         quantity={orderQuantity}
+        availableQuantity={product.quantityAvailable}
+        errorMessage={orderError}
         isSubmitting={isOrdering}
         addresses={addresses}
         selectedAddressId={selectedAddressId}

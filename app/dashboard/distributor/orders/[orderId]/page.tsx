@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Download, Eye, FileText } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import Header from "../../../component/header";
 import { Skeleton } from "@/components/base";
@@ -13,6 +13,7 @@ import {
 } from "@/constants/demoDistributorOrders";
 import { useOrderQuery } from "@/hooks/queries/orders";
 import type { Order } from "@/types/order";
+import { getPaymentStatusDisplay, isPaidOrderStatus } from "@/types/order";
 import type { ProductRef, UserRef } from "@/types/rfq";
 
 const formatCurrency = (value: number) =>
@@ -65,7 +66,7 @@ function DetailStat({
   return (
     <div>
       <p className="text-xs text-[#8A94A6]">{label}</p>
-      <p className={`mt-1 text-sm font-medium ${valueClassName}`}>{value}</p>
+      <p className={`mt-1 break-words text-sm font-medium ${valueClassName}`}>{value}</p>
     </div>
   );
 }
@@ -88,7 +89,6 @@ function InfoCard({
 export default function DistributorOrderDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const [notice, setNotice] = useState("");
 
   const orderId = params.orderId as string;
   const demoOrder = useMemo(
@@ -134,6 +134,9 @@ export default function DistributorOrderDetailPage() {
 
   const status = order?.status || demoOrder?.status;
   const statusTone = getOrderStatusTone(status);
+  const paid = isPaidOrderStatus(status);
+  const paymentStatus = getPaymentStatusDisplay(status, paid);
+  const payReference = order?.paymentReference || distributorDemoOrderMeta.paymentReference;
   const displayId =
     demoOrder?.id || (order ? getOrderDisplayId(order) : orderId);
   const quantity =
@@ -196,11 +199,10 @@ export default function DistributorOrderDetailPage() {
                   label="Total price"
                   value={formatCurrency(totalPrice)}
                 />
-                {/* to be updated to real values  */}
                 <DetailStat
                   label="Payment status"
-                  value={"Paid"}
-                  valueClassName="text-[#F59E0B]"
+                  value={paymentStatus.label}
+                  valueClassName={paymentStatus.className}
                 />
                 <DetailStat
                   label="Date created"
@@ -220,77 +222,21 @@ export default function DistributorOrderDetailPage() {
               </span>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              router.push(`/dashboard/distributor/orders/${orderId}/delivery`)
-            }
-            className="mt-5 inline-flex h-14 min-w-[214px] items-center justify-center gap-3 rounded-xl border border-primary bg-[#F5FAFF] px-6 text-sm font-medium text-primary transition hover:bg-[#EAF4FF]"
-          >
-            View delivery status
-            <ArrowRight size={17} />
-          </button>
         </section>
-
-        {notice ? (
-          <p className="rounded-xl border border-[#DDEBFF] bg-[#F4F9FF] px-4 py-3 text-sm text-primary">
-            {notice}
-          </p>
-        ) : null}
 
         <div className="grid gap-4 xl:grid-cols-3">
           <InfoCard title="Payment Information">
             <div className="grid gap-6 sm:grid-cols-2">
-              <div>
-                <p className="text-sm text-[#6B7280]">Payment Method</p>
-                <p className="mt-2 text-sm font-medium text-[#111827]">
-                  {distributorDemoOrderMeta.paymentType}
-                </p>
-                <div className="mt-5 space-y-2">
-                  <p className="text-sm text-[#6B7280]">Payment Details</p>
-                  {distributorDemoOrderMeta.paymentDetails.map((item) => (
-                    <p key={item.label} className="text-sm text-[#111827]">
-                      {item.label}: {item.value}
-                    </p>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-sm text-[#6B7280]">Documents</p>
-                <div className="mt-2 flex items-center gap-3 text-sm">
-                  <span className="inline-flex size-7 items-center justify-center rounded-md bg-[#D9FBE7] text-[#16A34A]">
-                    <FileText size={15} />
-                  </span>
-                  <span className="text-[#111827]">
-                    {distributorDemoOrderMeta.invoiceName}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNotice(
-                        "Document preview is demo-only until order documents are available.",
-                      )
-                    }
-                    className="ml-auto text-[#FF6B00]"
-                    aria-label="Preview document"
-                  >
-                    <Eye size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setNotice(
-                        "Document download is demo-only until backend files are available.",
-                      )
-                    }
-                    className="text-[#FF6B00]"
-                    aria-label="Download document"
-                  >
-                    <Download size={15} />
-                  </button>
-                </div>
-              </div>
+              <DetailStat
+                label="Payment Method"
+                value={distributorDemoOrderMeta.paymentType}
+              />
+              <DetailStat
+                label="Payment Status"
+                value={paymentStatus.label}
+                valueClassName={paymentStatus.className}
+              />
+              <DetailStat label="Payment Reference" value={payReference} />
             </div>
           </InfoCard>
 

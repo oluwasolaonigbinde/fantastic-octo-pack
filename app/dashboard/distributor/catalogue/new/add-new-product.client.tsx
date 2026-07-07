@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { useCategoriesQuery } from "@/hooks/queries/categories";
 import {
+  useAdjustStockMutation,
   useCreateProductMutation,
   useProductQuery,
   useSubmitProductMutation,
@@ -48,7 +49,6 @@ const PLAYWRIGHT_OEM_DISPLAY_LABEL = "Playwright OEM";
 
 type StepId = 1 | 2 | 3 | 4 | 5;
 type Condition = "new" | "used" | "refurbished" | "";
-type AvailabilityStatus = "in_stock" | "out_of_stock" | "on_order" | "";
 type PricingType = "fixed" | "negotiable" | "rfq" | "";
 type DurationUnit = "days" | "weeks" | "months";
 type AttributeRowField = "spec" | "detail";
@@ -60,7 +60,7 @@ type FieldErrorKey =
   | "manufacturing_country"
   | "condition"
   | "description"
-  | "availability_status"
+  | "quantity_available"
   | "installation_time_value"
   | "installation_time_unit"
   | "delivery_time_value"
@@ -95,7 +95,7 @@ type WizardState = {
   manufacturing_country: string;
   condition: Condition;
   description: string;
-  availability_status: AvailabilityStatus;
+  quantity_available: string;
   requiresInstallation: boolean;
   installation_time_value: string;
   installation_time_unit: DurationUnit;
@@ -169,12 +169,6 @@ const CONDITION_OPTIONS = [
   { value: "refurbished", label: "Refurbished" },
 ];
 
-const AVAILABILITY_OPTIONS = [
-  { value: "in_stock", label: "In Stock" },
-  { value: "out_of_stock", label: "Out of Stock" },
-  { value: "on_order", label: "On Order" },
-];
-
 const PRICING_TYPE_OPTIONS = [
   { value: "fixed", label: "Fixed price" },
   { value: "negotiable", label: "Negotiable" },
@@ -207,7 +201,7 @@ const INITIAL_STATE: WizardState = {
   manufacturing_country: "",
   condition: "",
   description: "",
-  availability_status: "",
+  quantity_available: "",
   requiresInstallation: false,
   installation_time_value: "",
   installation_time_unit: "days",
@@ -253,6 +247,10 @@ const parseDuration = (value?: string): [string, DurationUnit] => {
 
 const isPositiveWholeNumber = (value: string): boolean =>
   /^[1-9]\d*$/.test(normalizeText(value));
+
+// Stock quantity may legitimately be zero (out of stock), so allow 0..N.
+const isNonNegativeWholeNumber = (value: string): boolean =>
+  /^\d+$/.test(normalizeText(value));
 
 const isValidVideoUrl = (value: string): boolean => {
   const normalized = normalizeText(value);
@@ -581,6 +579,7 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
   const createProduct = useCreateProductMutation();
   const updateProduct = useUpdateProductMutation();
   const submitProduct = useSubmitProductMutation();
+  const adjustStock = useAdjustStockMutation();
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const certificationInputRef = useRef<HTMLInputElement>(null);
@@ -731,8 +730,10 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
       manufacturing_country: product.manufacturing_country ?? "",
       condition: (product.condition as Condition) ?? "",
       description: product.description ?? "",
-      availability_status:
-        (product.availability_status as AvailabilityStatus) ?? "",
+      quantity_available:
+        typeof product.quantityAvailable === "number"
+          ? String(product.quantityAvailable)
+          : "",
       requiresInstallation: Boolean(product.requiresInstallation),
       installation_time_value: installationValue,
       installation_time_unit: installationUnit,
@@ -1126,8 +1127,11 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
     }
 
     if (step === 3) {
-      if (!form.availability_status) {
-        nextErrors.availability_status = "Select the stock status.";
+      if (!normalizeText(form.quantity_available)) {
+        nextErrors.quantity_available = "Enter the stock quantity.";
+      } else if (!isNonNegativeWholeNumber(form.quantity_available)) {
+        nextErrors.quantity_available =
+          "Stock quantity must be a whole number (0 or higher).";
       }
 
       if (!isPositiveWholeNumber(form.delivery_time_value)) {
@@ -1254,7 +1258,14 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
     formData.append("manufacturing_country", form.manufacturing_country);
     formData.append("condition", form.condition);
     formData.append("description", normalizeText(form.description));
-    formData.append("availability_status", form.availability_status);
+    // availability_status is derived from stock on the backend, so it is not
+    // sent from the form. On create the backend seeds opening stock from
+    // quantityAvailable; on edit stock is owned by the ledger and changed via
+    // the adjust route below, so we only send it in the create body.
+    const stockQuantity = Number(form.quantity_available);
+    if (!isEditing && Number.isFinite(stockQuantity)) {
+      formData.append("quantityAvailable", String(stockQuantity));
+    }
     formData.append("requiresInstallation", form.requiresInstallation ? "true" : "false");
 
     formData.append(
@@ -1323,6 +1334,19 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
         // itself (the live listing is unchanged until an admin approves it), so
         // it must NOT be resubmitted (submit only accepts drafts → 422).
         await updateProduct.mutateAsync({ id: productId, productData: formData });
+        // Stock lives in its own ledger, so a changed quantity is persisted via
+        // the adjust route (sets on-hand to the absolute value) rather than the
+        // product PATCH body.
+        const targetStock = Number(form.quantity_available);
+        if (
+          Number.isFinite(targetStock) &&
+          targetStock !== (existingProduct?.quantityAvailable ?? 0)
+        ) {
+          await adjustStock.mutateAsync({
+            id: productId,
+            dto: { quantity: targetStock },
+          });
+        }
         if (existingProduct?.status === "draft") {
           await submitProduct.mutateAsync(productId);
         }
@@ -1570,52 +1594,49 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
                   />
                 </div>
 
+                <div className="flex min-w-0 flex-col gap-1">
+                  <label
+                    htmlFor="quantity_available"
+                    className="block pl-3 text-sm font-medium text-gray2"
+                  >
+                    Stock Quantity
+                  </label>
+                  <p className="pl-3 text-xs text-gray3">
+                    How many units do you currently have on hand? Enter 0 if the
+                    product is out of stock.
+                  </p>
+                  <input
+                    id="quantity_available"
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    step={1}
+                    value={form.quantity_available}
+                    onChange={(e) =>
+                      setField("quantity_available", e.target.value)
+                    }
+                    aria-invalid={!!fieldErrors.quantity_available}
+                    placeholder="e.g. 50"
+                    className={cn(
+                      "h-12 w-full rounded-xl border bg-transparent px-4 text-sm text-gray1 shadow-none outline-none",
+                      fieldErrors.quantity_available
+                        ? "border-danger"
+                        : "border-gray5",
+                    )}
+                  />
+                  {fieldErrors.quantity_available ? (
+                    <p className="text-sm text-danger">
+                      {fieldErrors.quantity_available}
+                    </p>
+                  ) : null}
+                </div>
+
                 <div
                   className={cn(
                     "grid gap-4 md:items-start",
-                    form.requiresInstallation ? "md:grid-cols-3" : "md:grid-cols-2",
+                    form.requiresInstallation ? "md:grid-cols-2" : "md:grid-cols-1",
                   )}
                 >
-                  <div className="flex min-w-0 flex-col gap-1">
-                    <label
-                      htmlFor="availability_status"
-                      className="block pl-3 text-sm font-medium text-gray2"
-                    >
-                      Stock Status
-                    </label>
-                    <p className="min-h-[2.25rem] pl-3 text-xs text-gray3" />
-                    <Select
-                      value={form.availability_status || undefined}
-                      onValueChange={(value) =>
-                        setField("availability_status", value as AvailabilityStatus)
-                      }
-                    >
-                      <SelectTrigger
-                        id="availability_status"
-                        aria-invalid={!!fieldErrors.availability_status}
-                        className={cn(
-                          "h-12 min-h-12 w-full rounded-xl border bg-transparent px-4 text-sm text-gray1 shadow-none",
-                          "data-[size=default]:h-12 data-[size=default]:min-h-12",
-                          fieldErrors.availability_status ? "border-danger" : "border-gray5"
-                        )}
-                      >
-                        <SelectValue placeholder="Select option" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {AVAILABILITY_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                    {fieldErrors.availability_status ? (
-                      <p className="text-sm text-danger">{fieldErrors.availability_status}</p>
-                    ) : null}
-                  </div>
-
                   <MergedDurationField
                     id="delivery_time_value"
                     label="Estimated Delivery Timeline"

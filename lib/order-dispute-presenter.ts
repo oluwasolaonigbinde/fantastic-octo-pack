@@ -96,6 +96,18 @@ export const getDisputeStatusTone = (
   viewerRole: DisputeViewerRole = "buyer",
 ): DisputeStatusTone => {
   if (status === "resolved") {
+    if (outcome === "split_funds") {
+      return {
+        label: "Resolved",
+        detailLabel: "Escrow split between buyer and seller",
+        textClassName: "text-[#6B7280]",
+        badgeClassName: "bg-[#F3F4F6] text-[#6B7280] border-[#DDE0E5]",
+        buttonClassName: "bg-[#6B7280] text-white",
+        isResolved: true,
+        isPositive: false,
+      };
+    }
+
     // The buyer "wins" on a refund; the distributor "wins" on a release.
     const positive =
       viewerRole === "buyer"
@@ -171,6 +183,8 @@ export const getDisputeOutcomeLabel = (
         : "Funds released to you";
     case "closed_after_dispute":
       return "Dispute closed";
+    case "split_funds":
+      return "Escrow split between buyer and seller";
     default:
       return "Pending resolution";
   }

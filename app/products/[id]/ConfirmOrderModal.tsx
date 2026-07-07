@@ -13,6 +13,10 @@ interface ConfirmOrderModalProps {
   sellerName: string;
   unitPrice: number;
   quantity: number;
+  /** On-hand stock. When known, caps the quantity and blocks over-ordering. */
+  availableQuantity?: number;
+  /** Server/validation error to surface (e.g. "Insufficient stock"). */
+  errorMessage?: string | null;
   isSubmitting?: boolean;
   /** The buyer's saved address book (GET /auth/addresses). */
   addresses?: UserAddress[];
@@ -65,6 +69,8 @@ export default function ConfirmOrderModal({
   sellerName,
   unitPrice,
   quantity,
+  availableQuantity,
+  errorMessage,
   isSubmitting = false,
   addresses = [],
   selectedAddressId = "",
@@ -85,6 +91,19 @@ export default function ConfirmOrderModal({
   if (!isOpen) return null;
 
   const total = unitPrice * quantity;
+
+  const hasStockInfo = typeof availableQuantity === "number";
+  const isOutOfStock = hasStockInfo && availableQuantity <= 0;
+  const exceedsStock = hasStockInfo && quantity > availableQuantity;
+  const canIncrement = !hasStockInfo || quantity < availableQuantity;
+  const stockNote = isOutOfStock
+    ? "This product is currently out of stock."
+    : exceedsStock
+      ? `Only ${availableQuantity} unit${
+          availableQuantity === 1 ? "" : "s"
+        } available in stock.`
+      : null;
+  const disablePayment = isSubmitting || isOutOfStock || exceedsStock;
 
   const selectedAddress = addresses.find((a) => a._id === selectedAddressId);
   const summaryAddress = selectedAddress ? formatAddress(selectedAddress) : "";
@@ -197,7 +216,8 @@ export default function ConfirmOrderModal({
                         type="button"
                         onClick={onIncrement}
                         aria-label="Increase quantity"
-                        className="flex size-10 items-center justify-center rounded-md bg-[#4B5563] text-white"
+                        disabled={!canIncrement}
+                        className="flex size-10 items-center justify-center rounded-md bg-[#4B5563] text-white disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         <Plus size={20} />
                       </button>
@@ -251,13 +271,23 @@ export default function ConfirmOrderModal({
               </div>
             </div>
 
+            {(stockNote || errorMessage) && (
+              <p className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-4 py-3 text-sm font-medium text-[#DC2626]">
+                {errorMessage ?? stockNote}
+              </p>
+            )}
+
             <button
               type="button"
               onClick={onMakePayment}
-              disabled={isSubmitting}
+              disabled={disablePayment}
               className="flex h-[56px] w-full items-center justify-center rounded-xl bg-[#0669D9] text-base text-white transition hover:bg-[#0553AE] disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isSubmitting ? "Creating order..." : "Make Payment"}
+              {isSubmitting
+                ? "Creating order..."
+                : isOutOfStock
+                  ? "Out of stock"
+                  : "Make Payment"}
             </button>
           </div>
         </div>

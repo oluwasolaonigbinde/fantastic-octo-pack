@@ -9,7 +9,10 @@ export type OrderDisputeStatus =
 export type OrderDisputeResolutionOutcome =
   | "release_to_seller"
   | "refund_buyer"
-  | "closed_after_dispute";
+  | "closed_after_dispute"
+  | "split_funds";
+
+export type OrderDisputeInventoryAction = "consume" | "release" | "none";
 
 export interface OrderDisputeEvidence {
   url: string;
@@ -36,6 +39,9 @@ export interface OrderDispute {
   status: OrderDisputeStatus;
   resolutionOutcome?: OrderDisputeResolutionOutcome | null;
   resolutionNote?: string | null;
+  sellerAmount?: number | null;
+  buyerAmount?: number | null;
+  inventoryAction?: OrderDisputeInventoryAction | null;
   evidence: OrderDisputeEvidence[];
   comments: OrderDisputeComment[];
   resolvedAt?: string | null;
@@ -75,4 +81,10 @@ export interface CreateOrderDisputePayload {
 export interface ResolveOrderDisputePayload {
   resolutionOutcome: OrderDisputeResolutionOutcome;
   resolutionNote?: string;
+  /** Required when resolutionOutcome is "split_funds". Must sum with buyerAmount to the order total. */
+  sellerAmount?: number;
+  /** Required when resolutionOutcome is "split_funds". Must sum with sellerAmount to the order total. */
+  buyerAmount?: number;
+  /** Required when resolutionOutcome is "split_funds". */
+  inventoryAction?: OrderDisputeInventoryAction;
 }

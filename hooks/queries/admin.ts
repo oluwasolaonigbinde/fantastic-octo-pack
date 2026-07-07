@@ -16,11 +16,12 @@
  * as-is here — we are replacing the caching layer, not the pagination strategy.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { queryKeys } from "@/lib/query-keys";
 import adminService from "@/services/adminService";
+import type { UpdatePlatformSettingsPayload } from "@/services/adminService";
 
 const useAuthToken = () =>
   useAppSelector((s) => s.auth.data?.tokens?.accessToken);
@@ -155,5 +156,28 @@ export const useAdminOrdersQuery = (
         params as Parameters<typeof adminService.getOrders>[1],
       ),
     ...sharedOptions(token, options),
+  });
+};
+
+export const useAdminPlatformSettingsQuery = (options?: AdminQueryOptions) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: queryKeys.admin.settings(),
+    queryFn: () => adminService.getPlatformSettings(token as string),
+    ...sharedOptions(token, options),
+  });
+};
+
+export const useUpdateAdminPlatformSettingsMutation = () => {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (payload: UpdatePlatformSettingsPayload) =>
+      adminService.updatePlatformSettings(token as string, payload),
+    onSuccess: (data) => {
+      qc.setQueryData(queryKeys.admin.settings(), data);
+    },
   });
 };

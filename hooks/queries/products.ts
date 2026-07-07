@@ -25,11 +25,14 @@ import { useAppSelector } from "@/hooks/useAppSelector";
 import { queryKeys } from "@/lib/query-keys";
 import productService, {
   type FetchProductsParams,
+  type FetchRecommendedParams,
 } from "@/services/productService";
 import type {
   CreateProductDto,
   ReviewProductDto,
   ReviewProductVisibilityDto,
+  StockAdjustDto,
+  StockDeltaDto,
   UpdateProduct,
 } from "@/types/product";
 
@@ -108,6 +111,46 @@ export const useProductsByCategoryQuery = (
     select: (res) => res.data.docs,
   });
 
+/**
+ * Public recommended catalog — GET /products/recommended. This route is
+ * unauthenticated and not role-scoped, so every visitor (including a signed-in
+ * distributor) sees the same public listings. Use this for public-facing
+ * product browsing instead of `useProductsQuery` (which hits the role-scoped
+ * `/products` collection).
+ */
+export const useRecommendedProductsQuery = (
+  params: FetchRecommendedParams = {},
+  options?: { enabled?: boolean },
+) =>
+  useQuery({
+    queryKey: queryKeys.products.recommended(
+      params as Record<string, unknown>,
+    ),
+    queryFn: () => productService.fetchRecommended(params),
+    enabled: options?.enabled ?? true,
+    select: (res) => ({
+      products: res.data.docs,
+      meta: res.data,
+      message: res.message,
+    }),
+  });
+
+/** Immutable stock movement history for a product (owner/admin only). */
+export const useProductMovementsQuery = (
+  productId: string | undefined,
+  options?: { enabled?: boolean },
+) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: queryKeys.products.movements(productId ?? ""),
+    queryFn: () =>
+      productService.fetchMovements(token as string, productId as string),
+    enabled: Boolean(productId) && (options?.enabled ?? true),
+    select: (res) => res.data,
+  });
+};
+
 /** OEM listing requests assigned to the current OEM. */
 export const useOemListingRequestsQuery = (
   filters: FetchProductsParams = {},
@@ -160,6 +203,52 @@ export const useUpdateProductMutation = () => {
       qc.invalidateQueries({ queryKey: queryKeys.products.detail(id) });
       qc.invalidateQueries({ queryKey: queryKeys.products.lists() });
     },
+  });
+};
+
+/**
+ * Stock mutations. Each invalidates the affected product detail, the lists,
+ * and the movement ledger so on-hand quantities re-read fresh everywhere.
+ */
+const invalidateStock = (
+  qc: ReturnType<typeof useQueryClient>,
+  id: string,
+) => {
+  qc.invalidateQueries({ queryKey: queryKeys.products.detail(id) });
+  qc.invalidateQueries({ queryKey: queryKeys.products.lists() });
+  qc.invalidateQueries({ queryKey: queryKeys.products.movements(id) });
+};
+
+export const useStockInMutation = () => {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: StockDeltaDto }) =>
+      productService.stockIn(token as string, id, dto),
+    onSuccess: (_res, { id }) => invalidateStock(qc, id),
+  });
+};
+
+export const useStockOutMutation = () => {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: StockDeltaDto }) =>
+      productService.stockOut(token as string, id, dto),
+    onSuccess: (_res, { id }) => invalidateStock(qc, id),
+  });
+};
+
+export const useAdjustStockMutation = () => {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, dto }: { id: string; dto: StockAdjustDto }) =>
+      productService.adjustStock(token as string, id, dto),
+    onSuccess: (_res, { id }) => invalidateStock(qc, id),
   });
 };
 

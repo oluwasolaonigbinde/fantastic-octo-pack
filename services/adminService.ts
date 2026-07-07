@@ -158,6 +158,27 @@ export interface AdminOrderRow {
   status: OrderStatus;
 }
 
+export interface PlatformSettings {
+  _id: string;
+  platformFeePercent: number;
+  platformFeeCap: number | null;
+  autoReceiveDays: number;
+  autoReceiveEnabled: boolean;
+  subscriptionBillingEnabled: boolean;
+  subscriptionGraceDays: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdatePlatformSettingsPayload {
+  platformFeePercent?: number;
+  platformFeeCap?: number | null;
+  autoReceiveDays?: number;
+  autoReceiveEnabled?: boolean;
+  subscriptionBillingEnabled?: boolean;
+  subscriptionGraceDays?: number;
+}
+
 interface PlatformUserParams {
   role?: UserRole;
   search?: string;
@@ -247,6 +268,29 @@ const requestJson = async <T>(token: string, path: string): Promise<T> => {
   return payload.data;
 };
 
+const requestJsonWithBody = async <T>(
+  token: string,
+  path: string,
+  method: "PATCH" | "POST" | "PUT",
+  body: unknown,
+): Promise<T> => {
+  const response = await fetch(apiUrl(path), {
+    method,
+    headers: authHeaders(token),
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorPayload = await response
+      .json()
+      .catch(() => ({ message: "Admin request failed" }));
+    throw new Error(errorPayload.message || "Admin request failed");
+  }
+
+  const payload = (await response.json()) as ApiEnvelope<T>;
+  return payload.data;
+};
+
 const adminService = {
   getDashboardSummary(token: string) {
     return requestJson<AdminDashboardSummary>(token, "/admin/dashboard-summary");
@@ -299,6 +343,19 @@ const adminService = {
     return requestJson<AdminPagination<AdminOrderRow>>(
       token,
       url.toString()
+    );
+  },
+
+  getPlatformSettings(token: string) {
+    return requestJson<PlatformSettings>(token, "/admin/settings");
+  },
+
+  updatePlatformSettings(token: string, payload: UpdatePlatformSettingsPayload) {
+    return requestJsonWithBody<PlatformSettings>(
+      token,
+      "/admin/settings",
+      "PATCH",
+      payload
     );
   },
 };
