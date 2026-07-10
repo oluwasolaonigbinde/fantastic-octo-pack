@@ -28,6 +28,7 @@ import { canEditProduct, getListingStatusMeta } from "@/utils/productStatus";
 import {
   getProductDefaultImageUrl,
   getProductStockTableValue,
+  getProductCategoryName,
 } from "@/utils/productDisplay";
 import type { ProductStatus, ProductStatusCounts } from "@/types/product";
 
@@ -165,7 +166,7 @@ export default function DistributorCatalogue() {
   const resolvedTotalPages = Math.max(1, totalPages);
 
   const categoryOptions = categories.map((category) => ({
-    value: category.name,
+    value: category._id,
     label: category.name,
   }));
 
@@ -355,7 +356,7 @@ export default function DistributorCatalogue() {
                             ) : null}
                           </div>
                         </TableCell>
-                        <TableCell>{product.category}</TableCell>
+                        <TableCell>{getProductCategoryName(product)}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-3 text-primary">
                             <button

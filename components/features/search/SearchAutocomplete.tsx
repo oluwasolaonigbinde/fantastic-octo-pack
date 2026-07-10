@@ -8,6 +8,7 @@ import { Loader2, Search } from "lucide-react";
 import { useRecommendedProductsQuery } from "@/hooks/queries/products";
 import { useUsersQuery } from "@/hooks/queries/users";
 import type { Product, ProductImage } from "@/types/product";
+import { getProductCategoryName } from "@/utils/productDisplay";
 import type { PublicProfileData } from "@/types/user";
 import { UserRole } from "@/types/user";
 
@@ -64,7 +65,7 @@ function buildProductResult(product: Product): SearchResultItem {
     id: product._id,
     kind: "product",
     title: product.name,
-    subtitle: product.category,
+    subtitle: getProductCategoryName(product),
     imageSrc: getProductImageUrl(product.images),
     href: `/products/${product._id}`,
     trailingText,

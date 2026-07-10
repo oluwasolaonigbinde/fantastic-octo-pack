@@ -31,6 +31,9 @@ import {
   getProductImageUrls,
   getProductSpecificationItems,
   getPricingModeLabel,
+  getProductCategoryId,
+  getProductCategoryName,
+  getProductSubcategoryName,
 } from "@/utils/productDisplay";
 
 const formatMoney = (amount: number): string =>
@@ -91,16 +94,18 @@ export default function AdminProductDetailPage() {
   const message = error instanceof Error ? error.message : "";
   const reviewVisibility = useReviewProductVisibilityMutation();
 
-  // The single-product fetch does not populate `category`, so `product.category`
-  // is the raw ObjectId. Resolve the display name from the shared category list.
+  // `category` is populated to `{ _id, name }` on read; fall back to resolving a
+  // bare id against the shared category list for older/unpopulated responses.
   const { data: categories } = useCategoriesQuery(
     {},
     { enabled: Boolean(token) },
   );
   const categoryName = useMemo(() => {
-    if (!product?.category) return "-";
-    const match = categories?.find((c) => c._id === product.category);
-    return match?.name ?? product.category;
+    const name = getProductCategoryName(product);
+    if (name) return name;
+    const categoryId = getProductCategoryId(product);
+    if (!categoryId) return "-";
+    return categories?.find((c) => c._id === categoryId)?.name ?? categoryId;
   }, [categories, product]);
 
   const statusMeta = product ? getListingStatusMeta(product.status) : null;
@@ -113,9 +118,7 @@ export default function AdminProductDetailPage() {
 
   const details = useMemo<DetailItem[]>(() => {
     if (!product) return [];
-    const subCategory = Array.isArray(product.sub_category)
-      ? product.sub_category.filter(Boolean).join(", ")
-      : "";
+    const subCategory = getProductSubcategoryName(product);
     const items: DetailItem[] = [
       { label: "Category", value: categoryName },
       { label: "Sub-category", value: subCategory },

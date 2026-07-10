@@ -10,6 +10,7 @@ import {
   Input,
   SingleSelect,
   Spinner,
+  Switch,
   Textarea,
 } from "@/components/base";
 import {
@@ -22,7 +23,11 @@ import {
 } from "@/components/ui/table";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import categoryService from "@/services/categoryService";
-import type { BaseSpecification, Category } from "@/types/categories";
+import type {
+  BaseSpecification,
+  Category,
+  Subcategory,
+} from "@/types/categories";
 
 type View = "categories" | "subcategories" | "specs";
 
@@ -46,7 +51,9 @@ export default function CategoriesManagement() {
 
   const [view, setView] = useState<View>("categories");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(
+    null,
+  );
 
   // Modals
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
@@ -85,22 +92,36 @@ export default function CategoriesManagement() {
     [categories, selectedCategoryId],
   );
 
-  const specCount = (category: Category) => category.baseSpecifications?.length ?? 0;
+  // Specs and the installation flag now live on the subcategory subdocument.
+  const selectedSubcategory = useMemo(
+    () =>
+      (selectedCategory?.subcategories ?? []).find(
+        (sub) => sub._id === selectedSubcategoryId,
+      ) ?? null,
+    [selectedCategory, selectedSubcategoryId],
+  );
+
   const subCount = (category: Category) => category.subcategories?.length ?? 0;
+  // Total required specs across all of a category's subcategories.
+  const specCount = (category: Category) =>
+    (category.subcategories ?? []).reduce(
+      (total, sub) => total + (sub.specifications?.length ?? 0),
+      0,
+    );
 
   const openCategory = (category: Category) => {
     setSelectedCategoryId(category._id);
     setView("subcategories");
   };
 
-  const openSubcategory = (sub: string) => {
-    setSelectedSubcategory(sub);
+  const openSubcategory = (sub: Subcategory) => {
+    setSelectedSubcategoryId(sub._id);
     setView("specs");
   };
 
   const goBack = () => {
     if (view === "specs") {
-      setSelectedSubcategory(null);
+      setSelectedSubcategoryId(null);
       setView("subcategories");
     } else if (view === "subcategories") {
       setSelectedCategoryId(null);
@@ -114,31 +135,35 @@ export default function CategoriesManagement() {
     await categoryService.createCategory(token, {
       name: name.trim(),
       description: description.trim(),
-      subcategories: [],
-      baseSpecifications: [],
     });
     refresh();
   };
 
-  const handleAddSubcategory = async (name: string) => {
+  const handleAddSubcategory = async (
+    name: string,
+    requiresInstallation: boolean,
+  ) => {
     if (!token || !selectedCategory) return;
-    const next = [...(selectedCategory.subcategories ?? []), name.trim()];
-    await categoryService.updateCategory(token, selectedCategory._id, {
-      subcategories: next,
+    await categoryService.createSubcategory(token, selectedCategory._id, {
+      name: name.trim(),
+      requiresInstallation,
     });
     refresh();
   };
 
   const handleSaveSpec = async (spec: BaseSpecification) => {
-    if (!token || !selectedCategory) return;
-    const existing = selectedCategory.baseSpecifications ?? [];
+    if (!token || !selectedCategory || !selectedSubcategory) return;
+    const existing = selectedSubcategory.specifications ?? [];
     const next =
       editingSpecIndex !== null
         ? existing.map((s, i) => (i === editingSpecIndex ? spec : s))
         : [...existing, spec];
-    await categoryService.updateCategory(token, selectedCategory._id, {
-      baseSpecifications: next,
-    });
+    await categoryService.updateSubcategory(
+      token,
+      selectedCategory._id,
+      selectedSubcategory._id,
+      { specifications: next },
+    );
     refresh();
   };
 
@@ -148,7 +173,7 @@ export default function CategoriesManagement() {
       ? "Categories"
       : view === "subcategories"
         ? selectedCategory?.name ?? "Subcategories"
-        : selectedSubcategory ?? "Required Specifications";
+        : selectedSubcategory?.name ?? "Required Specifications";
 
   const addBtnClass = "w-auto whitespace-nowrap px-4";
   const addButton =
@@ -222,12 +247,11 @@ export default function CategoriesManagement() {
           ) : view === "subcategories" ? (
             <SubcategoriesTable
               category={selectedCategory}
-              specCount={selectedCategory ? specCount(selectedCategory) : 0}
               onView={openSubcategory}
             />
           ) : (
             <SpecsTable
-              specs={selectedCategory?.baseSpecifications ?? []}
+              specs={selectedSubcategory?.specifications ?? []}
               onView={(index) => {
                 setEditingSpecIndex(index);
                 setSpecModalOpen(true);
@@ -254,7 +278,7 @@ export default function CategoriesManagement() {
         onClose={() => setSpecModalOpen(false)}
         spec={
           editingSpecIndex !== null
-            ? selectedCategory?.baseSpecifications?.[editingSpecIndex] ?? null
+            ? selectedSubcategory?.specifications?.[editingSpecIndex] ?? null
             : null
         }
         onSave={handleSaveSpec}
@@ -329,12 +353,10 @@ function CategoriesTable({
 
 function SubcategoriesTable({
   category,
-  specCount,
   onView,
 }: {
   category: Category | null;
-  specCount: number;
-  onView: (sub: string) => void;
+  onView: (sub: Subcategory) => void;
 }) {
   const subs = category?.subcategories ?? [];
   return (
@@ -343,30 +365,34 @@ function SubcategoriesTable({
         <TableRow>
           <TableHead>Sub Category Name</TableHead>
           <TableHead>Required Specs</TableHead>
+          <TableHead>Installation</TableHead>
           <TableHead className="text-right">Action</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {subs.length === 0 ? (
           <TableRow>
-            <TableCell colSpan={3} className="py-16 text-center text-gray3">
+            <TableCell colSpan={4} className="py-16 text-center text-gray3">
               No subcategories yet. Add one to organise this category.
             </TableCell>
           </TableRow>
         ) : (
-          subs.map((sub, index) => (
+          subs.map((sub) => (
             <TableRow
-              key={`${sub}-${index}`}
+              key={sub._id}
               onClick={() => onView(sub)}
               className="cursor-pointer"
             >
               <TableCell>
                 <div className="flex items-center gap-3">
                   <span className="size-8 shrink-0 rounded-md bg-gray6" />
-                  <span className="font-medium text-gray1">{sub}</span>
+                  <span className="font-medium text-gray1">{sub.name}</span>
                 </div>
               </TableCell>
-              <TableCell>{specCount}</TableCell>
+              <TableCell>{sub.specifications?.length ?? 0}</TableCell>
+              <TableCell>
+                {sub.requiresInstallation ? "Required" : "Not required"}
+              </TableCell>
               <TableCell>
                 <ViewButton onClick={() => onView(sub)} />
               </TableCell>
@@ -537,15 +563,17 @@ function AddSubcategoryModal({
 }: {
   open: boolean;
   onClose: () => void;
-  onSave: (name: string) => Promise<void>;
+  onSave: (name: string, requiresInstallation: boolean) => Promise<void>;
 }) {
   const [name, setName] = useState("");
+  const [requiresInstallation, setRequiresInstallation] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
       setName("");
+      setRequiresInstallation(false);
       setError("");
     }
   }, [open]);
@@ -558,7 +586,7 @@ function AddSubcategoryModal({
     setSaving(true);
     setError("");
     try {
-      await onSave(name);
+      await onSave(name, requiresInstallation);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Saving subcategory failed.");
@@ -577,6 +605,22 @@ function AddSubcategoryModal({
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-gray5 px-4 py-3">
+          <div>
+            <p className="text-sm font-medium text-gray1">
+              Requires on-site installation
+            </p>
+            <p className="text-xs text-gray3">
+              Products listed under this subcategory will require an installation
+              timeline.
+            </p>
+          </div>
+          <Switch
+            checked={requiresInstallation}
+            onCheckedChange={setRequiresInstallation}
+            aria-label="Requires on-site installation"
+          />
+        </div>
         <ModalActions onCancel={onClose} onSave={submit} saving={saving} />
       </div>
     </ModalShell>

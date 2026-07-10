@@ -13,19 +13,16 @@ import FilterChipBar from "./FilterChipBar";
 import ProductGrid from "./ProductGrid";
 
 import { useRecommendedProductsQuery } from "@/hooks/queries/products";
+import { useCategoriesQuery } from "@/hooks/queries/categories";
 
 import { BigLoader } from "@/components/base";
 import { Product } from "@/types/product";
-import { isProductAvailable } from "@/utils/productDisplay";
+import {
+  isProductAvailable,
+  getProductCategoryId,
+  getProductCategoryName,
+} from "@/utils/productDisplay";
 import SearchAutocomplete from "@/components/features/search/SearchAutocomplete";
-
-const CATEGORY_OPTIONS = [
-  "equipment",
-  "consumables",
-  "instruments",
-  "accessories",
-  "spare parts",
-] as const;
 
 const EMPTY_FILTERS: FilterCriteria = {
   category: null,
@@ -57,11 +54,35 @@ const ProductPage = () => {
   const products = data?.products ?? null;
   const message = error instanceof Error ? error.message : "";
 
-  const normalizeCategory = useCallback((cat?: string | null) => {
-    if (!cat || cat === "all") return null;
-    const key = cat.toLowerCase().trim();
-    return CATEGORY_OPTIONS.find((value) => value === key) ?? null;
-  }, []);
+  // Categories are admin-defined and dynamic, so the filter facets are built
+  // from the live categories list rather than a hardcoded set.
+  const { data: categories } = useCategoriesQuery({ page: 1, limit: 50 });
+
+  const categoryOptions = useMemo(
+    () =>
+      (categories ?? []).map((category) => ({
+        id: category._id,
+        name: category.name,
+      })),
+    [categories],
+  );
+
+  // Accepts either a category id or a category name (case-insensitive) from the
+  // URL and resolves it to the matching category id, or null when unknown.
+  const normalizeCategory = useCallback(
+    (cat?: string | null) => {
+      if (!cat || cat === "all") return null;
+      const raw = cat.trim();
+      const byId = categoryOptions.find((option) => option.id === raw);
+      if (byId) return byId.id;
+      const lower = raw.toLowerCase();
+      const byName = categoryOptions.find(
+        (option) => option.name.toLowerCase() === lower,
+      );
+      return byName?.id ?? null;
+    },
+    [categoryOptions],
+  );
 
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<string>("");
@@ -110,14 +131,14 @@ const ProductPage = () => {
         "category" | "oem" | "distributor" | "availability"
       >
     ) => {
-      const categoryKey = product.category.toLowerCase().trim();
+      const categoryId = getProductCategoryId(product);
       const role = getRole(product);
       const effectiveMaxPrice = getEffectiveMaxPrice(criteria);
 
       if (
         ignore !== "category" &&
         criteria.category &&
-        categoryKey !== criteria.category
+        categoryId !== criteria.category
       ) {
         return false;
       }
@@ -176,7 +197,7 @@ const ProductPage = () => {
       if (!matchesFilters(product, filters)) return false;
       if (searchLower) {
         const name = product.name.toLowerCase();
-        const category = product.category.toLowerCase();
+        const category = getProductCategoryName(product).toLowerCase();
         const brand = (product.brand_oem ?? "").toLowerCase();
         if (
           !name.includes(searchLower) &&
@@ -206,10 +227,10 @@ const ProductPage = () => {
       matchesFilters(product, filters, "availability")
     );
 
-    const categories = CATEGORY_OPTIONS.reduce<Record<string, number>>(
-      (acc, category) => {
-        acc[category] = categoryBase.filter(
-          (product) => product.category.toLowerCase().trim() === category
+    const categories = categoryOptions.reduce<Record<string, number>>(
+      (acc, option) => {
+        acc[option.id] = categoryBase.filter(
+          (product) => getProductCategoryId(product) === option.id
         ).length;
         return acc;
       },
@@ -238,7 +259,7 @@ const ProductPage = () => {
           ).length,
         },
       };
-  }, [filters, getRole, matchesFilters, products]);
+  }, [categoryOptions, filters, getRole, matchesFilters, products]);
 
   const filteredTotal = filteredProducts.length;
   const computedTotalPages = Math.max(
@@ -323,6 +344,7 @@ const ProductPage = () => {
             <FilterChipBar
               counts={filterCounts}
               filters={filters}
+              categoryOptions={categoryOptions}
               sortBy={sortBy}
               onFilterChange={handleFilterChange}
               onSortChange={handleSortChange}
@@ -345,6 +367,7 @@ const ProductPage = () => {
                 ].join("|")}
                 counts={filterCounts}
                 filters={filters}
+                categoryOptions={categoryOptions}
                 onFilterChange={handleFilterChange}
                 onClearFilters={handleClearFilters}
               />

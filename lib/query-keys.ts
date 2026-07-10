@@ -53,6 +53,8 @@ export const queryKeys = {
     plans: (filters: Record<string, unknown> = {}) =>
       [...queryKeys.subscription.all, "plans", filters] as const,
     features: () => [...queryKeys.subscription.all, "features"] as const,
+    changePlanPreview: (planId: string) =>
+      [...queryKeys.subscription.all, "change-plan-preview", planId] as const,
   },
   categories: {
     all: ["categories"] as const,

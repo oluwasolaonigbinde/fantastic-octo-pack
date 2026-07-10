@@ -22,6 +22,7 @@ import { PublicLayout } from "@/components/layout";
 import { useProductsQuery } from "@/hooks/queries/products";
 import { useUserQuery } from "@/hooks/queries/users";
 import type { Product } from "@/types/product";
+import { getProductCategoryName } from "@/utils/productDisplay";
 import type { PublicProfileData, UserData } from "@/types/user";
 import { readAuthSessionUser } from "@/utils/authSession";
 
@@ -58,7 +59,7 @@ function buildCategoryLabel(profile: PublicProfileData | null, products: Product
   const productCategories = Array.from(
     new Set(
       products
-        .map((product) => product.category?.trim())
+        .map((product) => getProductCategoryName(product).trim())
         .filter((value): value is string => Boolean(value))
     )
   );

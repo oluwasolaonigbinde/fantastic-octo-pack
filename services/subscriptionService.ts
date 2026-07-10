@@ -3,7 +3,11 @@ import type {
   AdminFeaturesQuery,
   AdminInvoicesQuery,
   AdminPlansQuery,
+  AdminSubscriptionAnalyticsQuery,
   AdminSubscriptionsQuery,
+  ChangePlanPayload,
+  ChangePlanPreview,
+  ChangePlanPreviewQuery,
   CreatePlanPayload,
   FeatureDefinition,
   Invoice,
@@ -13,6 +17,7 @@ import type {
   SubscribePayload,
   SubscribeResult,
   Subscription,
+  SubscriptionAnalytics,
   SubscriptionEnvelope,
   SubscriptionPage,
   SubscriptionPlan,
@@ -97,6 +102,27 @@ const subscribe = (
     headers: authHeaders(token),
     body: JSON.stringify(payload),
   }).then((res) => handleResponse(res, "Failed to subscribe to plan"));
+
+/** POST /subscriptions/change-plan — Upgrade or downgrade the caller's active plan. */
+const changePlan = (
+  token: string,
+  payload: ChangePlanPayload,
+): Promise<SubscriptionEnvelope<Subscription>> =>
+  fetch(apiUrl("/subscriptions/change-plan"), {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(payload),
+  }).then((res) => handleResponse(res, "Failed to change plan"));
+
+/** GET /subscriptions/change-plan/preview — Preview the cost of changing plans. */
+const previewPlanChange = (
+  token: string,
+  query: ChangePlanPreviewQuery,
+): Promise<SubscriptionEnvelope<ChangePlanPreview>> =>
+  fetch(apiUrl(`/subscriptions/change-plan/preview${buildQuery(query)}`), {
+    method: "GET",
+    headers: authHeaders(token),
+  }).then((res) => handleResponse(res, "Failed to preview plan change"));
 
 /** POST /subscriptions/pay — Retry collection on the caller's open invoice. */
 const payOpenInvoice = (
@@ -193,12 +219,27 @@ const fetchAdminInvoices = (
     headers: authHeaders(token),
   }).then((res) => handleResponse(res, "Failed to fetch invoices"));
 
+/** GET /subscriptions/admin/subscriptions/analytics — Subscription analytics (admin). */
+const fetchSubscriptionAnalytics = (
+  token: string,
+  query: AdminSubscriptionAnalyticsQuery = {},
+): Promise<SubscriptionEnvelope<SubscriptionAnalytics>> =>
+  fetch(
+    apiUrl(`/subscriptions/admin/subscriptions/analytics${buildQuery(query)}`),
+    {
+      method: "GET",
+      headers: authHeaders(token),
+    },
+  ).then((res) => handleResponse(res, "Failed to fetch subscription analytics"));
+
 export const subscriptionService = {
   // caller-facing
   fetchPlans,
   fetchMySubscription,
   fetchMyInvoices,
   subscribe,
+  changePlan,
+  previewPlanChange,
   payOpenInvoice,
   cancelSubscription,
   // admin
@@ -209,6 +250,7 @@ export const subscriptionService = {
   updatePlan,
   fetchAdminSubscriptions,
   fetchAdminInvoices,
+  fetchSubscriptionAnalytics,
 };
 
 export default subscriptionService;

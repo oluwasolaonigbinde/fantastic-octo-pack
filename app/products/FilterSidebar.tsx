@@ -75,6 +75,7 @@ function FilterOption({
 }
 
 export interface FilterCriteria {
+  /** Selected category id (matches Category._id), or null for "all". */
   category: string | null;
   oem?: "oem" | null;
   distributor?: "distributor" | null;
@@ -84,7 +85,14 @@ export interface FilterCriteria {
   availability?: "available" | "unavailable" | null;
 }
 
+/** A category the public filter can offer, sourced from the live categories API. */
+export interface CategoryOption {
+  id: string;
+  name: string;
+}
+
 export interface FilterCounts {
+  /** Keyed by category id, plus an `all` total. */
   categories: Record<string, number>;
   oem: {
     all: number;
@@ -104,6 +112,7 @@ export interface FilterCounts {
 interface FilterSidebarProps {
   counts: FilterCounts;
   filters: FilterCriteria;
+  categoryOptions: CategoryOption[];
   onFilterChange?: (filters: FilterCriteria) => void;
   onClearFilters?: () => void;
 }
@@ -111,6 +120,7 @@ interface FilterSidebarProps {
 export default function FilterSidebar({
   counts,
   filters,
+  categoryOptions,
   onFilterChange,
   onClearFilters,
 }: FilterSidebarProps) {
@@ -229,36 +239,15 @@ export default function FilterSidebar({
               checked={!draftFilters.category}
               onToggle={() => clearFilterValue("category")}
             />
-            <FilterOption
-              label="Equipment"
-              count={counts.categories.equipment}
-              checked={draftFilters.category === "equipment"}
-              onToggle={() => toggleFilterValue("category", "equipment")}
-            />
-            <FilterOption
-              label="Consumables"
-              count={counts.categories.consumables}
-              checked={draftFilters.category === "consumables"}
-              onToggle={() => toggleFilterValue("category", "consumables")}
-            />
-            <FilterOption
-              label="Instruments"
-              count={counts.categories.instruments}
-              checked={draftFilters.category === "instruments"}
-              onToggle={() => toggleFilterValue("category", "instruments")}
-            />
-            <FilterOption
-              label="Accessories"
-              count={counts.categories.accessories}
-              checked={draftFilters.category === "accessories"}
-              onToggle={() => toggleFilterValue("category", "accessories")}
-            />
-            <FilterOption
-              label="Spare Parts"
-              count={counts.categories["spare parts"]}
-              checked={draftFilters.category === "spare parts"}
-              onToggle={() => toggleFilterValue("category", "spare parts")}
-            />
+            {categoryOptions.map((option) => (
+              <FilterOption
+                key={option.id}
+                label={option.name}
+                count={counts.categories[option.id]}
+                checked={draftFilters.category === option.id}
+                onToggle={() => toggleFilterValue("category", option.id)}
+              />
+            ))}
           </FilterSection>
 
           <FilterSection title="OEM">

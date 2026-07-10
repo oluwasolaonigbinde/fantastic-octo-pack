@@ -31,6 +31,8 @@ import {
   getProductImageUrls,
   getProductSpecificationItems,
   getPrimaryProductLocation,
+  getProductCategoryId,
+  getProductCategoryName,
 } from "@/utils/productDisplay";
 import {
   clearPendingAuthIntent,
@@ -177,11 +179,14 @@ export default function ProductDetailsPage() {
   const [isSavingAddress, setIsSavingAddress] = useState(false);
   const processedResumeKeyRef = useRef<string | null>(null);
 
+  const relatedCategoryId = getProductCategoryId(product);
+
   useEffect(() => {
     let isMounted = true;
 
     async function loadRelatedProducts() {
-      if (!product?.category) {
+      const categoryId = relatedCategoryId;
+      if (!product || !categoryId) {
         if (isMounted) {
           setRelatedProducts([]);
         }
@@ -192,7 +197,7 @@ export default function ProductDetailsPage() {
 
       try {
         const result = await productService.fetchWithFilter({
-          category: product.category,
+          category: categoryId,
           populate: "createdBy",
           limit: 16,
         });
@@ -221,7 +226,7 @@ export default function ProductDetailsPage() {
     return () => {
       isMounted = false;
     };
-  }, [product?._id, product?.category]);
+  }, [product, product?._id, relatedCategoryId]);
 
   const createdBy = useMemo(
     () =>
@@ -359,6 +364,60 @@ export default function ProductDetailsPage() {
         }
       } finally {
         setIsSavingAddress(false);
+      }
+    },
+    [applyAddressList, authData?.tokens?.accessToken],
+  );
+
+  const handleUpdateAddress = useCallback(
+    async (addressId: string, payload: AddAddressPayload) => {
+      const token = authData?.tokens?.accessToken;
+      if (!token) {
+        return;
+      }
+
+      setIsSavingAddress(true);
+      try {
+        const result = await addressService.updateAddress(
+          token,
+          addressId,
+          payload,
+        );
+        if (result.success) {
+          applyAddressList(result.data ?? [], addressId);
+        }
+      } finally {
+        setIsSavingAddress(false);
+      }
+    },
+    [applyAddressList, authData?.tokens?.accessToken],
+  );
+
+  const handleDeleteAddress = useCallback(
+    async (addressId: string) => {
+      const token = authData?.tokens?.accessToken;
+      if (!token) {
+        return;
+      }
+
+      const result = await addressService.deleteAddress(token, addressId);
+      if (result.success) {
+        applyAddressList(result.data ?? []);
+      }
+    },
+    [applyAddressList, authData?.tokens?.accessToken],
+  );
+
+  const handleSetDefaultAddress = useCallback(
+    async (addressId: string) => {
+      const token = authData?.tokens?.accessToken;
+      if (!token) {
+        return;
+      }
+
+      const result = await addressService.setDefaultAddress(token, addressId);
+      if (result.success) {
+        applyAddressList(result.data ?? [], addressId);
       }
     },
     [applyAddressList, authData?.tokens?.accessToken],
@@ -613,7 +672,12 @@ export default function ProductDetailsPage() {
           title="Product Details"
           breadcrumbs={[
             { label: "Category", href: "/products" },
-            { label: product.category || "Equipment", href: "/products" },
+            {
+              label: getProductCategoryName(product) || "Equipment",
+              href: getProductCategoryId(product)
+                ? `/products?category=${getProductCategoryId(product)}`
+                : "/products",
+            },
             { label: product.name || "Product" },
           ]}
         />
@@ -863,6 +927,9 @@ export default function ProductDetailsPage() {
         }
         onSelectAddress={(addressId) => setSelectedAddressId(addressId)}
         onAddAddress={handleAddAddress}
+        onUpdateAddress={handleUpdateAddress}
+        onDeleteAddress={handleDeleteAddress}
+        onSetDefaultAddress={handleSetDefaultAddress}
         onMakePayment={handleMakePayment}
       />
 

@@ -215,6 +215,65 @@ export interface SubscribePayload {
   planId: string;
 }
 
+/** Request body for POST /subscriptions/change-plan. */
+export interface ChangePlanPayload {
+  planId: string;
+}
+
+/** Query for GET /subscriptions/change-plan/preview. */
+export interface ChangePlanPreviewQuery {
+  planId: string;
+}
+
+/** Current/target plan snapshot embedded in a change-plan preview. */
+export interface ChangePlanPreviewPlan {
+  id: string;
+  name: string;
+  /** Price in kobo. */
+  price: number;
+}
+
+/**
+ * Proration/cost preview returned by GET /subscriptions/change-plan/preview.
+ * An upgrade is charged immediately (prorated); a downgrade/no-op costs nothing
+ * now and takes effect at the current period end.
+ */
+export interface ChangePlanPreview {
+  changeType: "same" | "upgrade" | "downgrade";
+  /** Amount charged now, in kobo. Zero for downgrades and no-ops. */
+  amountDue: number;
+  currency: string;
+  /** True when `amountDue` is a prorated charge (upgrade with a non-zero cost). */
+  proration: boolean;
+  /** ISO date the change takes effect (now for upgrades, period end for downgrades). */
+  effectiveAt: string;
+  currentPlan: ChangePlanPreviewPlan;
+  targetPlan: ChangePlanPreviewPlan;
+  /** Available wallet balance in kobo (balance − held). */
+  walletBalance: number;
+  /** Whether the wallet can cover `amountDue`. */
+  sufficientBalance: boolean;
+}
+
+/** Query for GET /subscriptions/admin/subscriptions/analytics. */
+export interface AdminSubscriptionAnalyticsQuery {
+  role?: SubscriptionRole;
+}
+
+/** Aggregated subscription analytics returned to admins. Amounts are in kobo. */
+export interface SubscriptionAnalytics {
+  total: number;
+  active: number;
+  pending: number;
+  pastDue: number;
+  canceled: number;
+  expired: number;
+  expiringSoon: number;
+  monthlyRevenue: number;
+  allTimeRevenue: number;
+  currency: string;
+}
+
 export interface CreatePlanPayload {
   name: string;
   description?: string;

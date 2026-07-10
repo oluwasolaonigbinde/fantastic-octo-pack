@@ -29,6 +29,7 @@ import { useOemListingRequestsQuery } from "@/hooks/queries/products";
 import type { Product } from "@/types/product";
 
 import { buildDistributorSummaries, normalizeOemStatus } from "./oem-ui";
+import { getProductCategoryName } from "@/utils/productDisplay";
 
 type DashboardMetric = {
   label: string;
@@ -201,7 +202,7 @@ const buildLiveDistributorRows = (products: Product[]): DistributorRow[] => {
       id: distributorId,
       name,
       location: formatLocation(product.countries),
-      productRepresented: formatRequestType(product.category),
+      productRepresented: formatRequestType(getProductCategoryName(product)),
       dateAuthorized: formatDateTimeLabel(product.updatedAt ?? product.submittedAt),
       status:
         normalizeOemStatus(product.oemApprovalStatus) === "approved"
@@ -226,7 +227,7 @@ const buildLiveMappingRows = (products: Product[]): MappingRow[] =>
       id: product._id,
       distributor,
       product: product.name,
-      requestType: formatRequestType(product.category),
+      requestType: formatRequestType(getProductCategoryName(product)),
       status:
         normalizeOemStatus(product.oemApprovalStatus) === "approved"
           ? "active"

@@ -1,4 +1,28 @@
 import { UserData } from "./user";
+import { BaseSpecification } from "./categories";
+
+/**
+ * Category as returned on a product read: the backend always populates it and
+ * slims it to these fields. May still be a bare id string for unpopulated or
+ * legacy reads, so consumers should use the `getProductCategory*` helpers.
+ */
+export interface ProductCategoryRef {
+  _id: string;
+  name: string;
+  description?: string;
+}
+
+/**
+ * The product's chosen subcategory, expanded from its id into the matching
+ * subcategory subdocument on read. May be a bare id string when the category
+ * is unpopulated or the subcategory was removed.
+ */
+export interface ProductSubcategoryRef {
+  _id: string;
+  name: string;
+  specifications?: BaseSpecification[];
+  requiresInstallation?: boolean;
+}
 
 export interface ProductImage {
   url: string;
@@ -62,9 +86,10 @@ export interface ProductPendingRevision {
 export interface Product {
   _id: string;
   name: string;
-  category: string;
-  /** Subcategory names (each is one of the category's subcategories). */
-  sub_category?: string[];
+  /** Populated to `{ _id, name, description }` on reads; may be a bare id. */
+  category: string | ProductCategoryRef;
+  /** The chosen subcategory (single), expanded on read; may be a bare id. */
+  sub_category?: string | ProductSubcategoryRef;
   brand_oem?: string;
   manufacturing_country?: string;
   condition?: "new" | "used" | "refurbished";
@@ -133,9 +158,10 @@ export interface ProductListSummary {
 
 export interface UpdateProduct {
   name?: string;
+  /** Category id. */
   category?: string;
-  /** Subcategory names (each must be one of the category's subcategories). */
-  sub_category?: string[];
+  /** Subcategory id (must be one of the category's subcategories). */
+  sub_category?: string;
   brand_oem?: string;
   assignedOem?: string | null;
   manufacturing_country?: string;
@@ -147,7 +173,6 @@ export interface UpdateProduct {
   quantityAvailable?: number;
   categorySpecifications?: CategorySpecification[];
   customSpecifications?: CustomSpecification[];
-  requiresInstallation?: boolean;
   images?: ProductImage[];
   description?: string;
   availability_status?: "in_stock" | "out_of_stock" | "on_order";
@@ -185,9 +210,10 @@ export interface ProductResponse {
 
 export type CreateProductDto = {
   name: string;
+  /** Category id. */
   category: string;
-  /** Subcategory names (each must be one of the category's subcategories). */
-  sub_category?: string[];
+  /** Subcategory id — required; must be one of the category's subcategories. */
+  sub_category: string;
   brand_oem?: string;
   assignedOem?: string | null;
   manufacturing_country: string;
@@ -199,7 +225,6 @@ export type CreateProductDto = {
   quantityAvailable?: number;
   categorySpecifications?: CategorySpecification[];
   customSpecifications?: CustomSpecification[];
-  requiresInstallation?: boolean;
   description: string;
   availability_status: "in_stock" | "out_of_stock" | "on_order";
   installation_time: string;

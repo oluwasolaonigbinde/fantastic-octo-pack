@@ -6,6 +6,45 @@ import type {
 } from "@/types/product";
 import { countryCodeToDisplayLabel } from "@/utils/countryDisplay";
 
+/**
+ * The backend now populates `category` on product reads to `{ _id, name, ... }`,
+ * but it may still be a bare id string for unpopulated or legacy reads. These
+ * accessors read either shape safely.
+ */
+export const getProductCategoryId = (
+  product?: Pick<Product, "category"> | null,
+): string => {
+  const category = product?.category;
+  if (!category) return "";
+  return typeof category === "string" ? category : category._id ?? "";
+};
+
+export const getProductCategoryName = (
+  product?: Pick<Product, "category"> | null,
+): string => {
+  const category = product?.category;
+  if (!category) return "";
+  return typeof category === "string" ? "" : category.name ?? "";
+};
+
+/** Subcategory id, whether `sub_category` is expanded to an object or a bare id. */
+export const getProductSubcategoryId = (
+  product?: Pick<Product, "sub_category"> | null,
+): string => {
+  const sub = product?.sub_category;
+  if (!sub) return "";
+  return typeof sub === "string" ? sub : sub._id ?? "";
+};
+
+/** Subcategory name; empty when `sub_category` is only a bare id. */
+export const getProductSubcategoryName = (
+  product?: Pick<Product, "sub_category"> | null,
+): string => {
+  const sub = product?.sub_category;
+  if (!sub) return "";
+  return typeof sub === "string" ? "" : sub.name ?? "";
+};
+
 export type ProductSpecItem = {
   label: string;
   value: string;

@@ -179,6 +179,38 @@ export interface UpdatePlatformSettingsPayload {
   subscriptionGraceDays?: number;
 }
 
+/** Platform-wide escrow figures (GET /admin/escrow/platform). Amounts in kobo. */
+export interface PlatformEscrowSummary {
+  currency: string;
+  platformFeePercent: number;
+  platformFeeCap: number | null;
+  totalHeldGrossKobo: number;
+  totalExpectedNetKobo: number;
+  totalPlatformFeeKobo: number;
+  totalOrders: number;
+}
+
+/**
+ * Escrow figures for a single distributor (GET /admin/escrow/distributors/:id).
+ * Amounts in kobo.
+ */
+export interface DistributorEscrowSummary {
+  currency: string;
+  platformFeePercent: number;
+  platformFeeCap: number | null;
+  distributor: {
+    _id: string;
+    firstName: string | null;
+    lastName: string | null;
+    email: string | null;
+    businessName: string | null;
+  };
+  heldGrossKobo: number;
+  expectedNetKobo: number;
+  platformFeeKobo: number;
+  orderCount: number;
+}
+
 interface PlatformUserParams {
   role?: UserRole;
   search?: string;
@@ -348,6 +380,17 @@ const adminService = {
 
   getPlatformSettings(token: string) {
     return requestJson<PlatformSettings>(token, "/admin/settings");
+  },
+
+  getPlatformEscrow(token: string) {
+    return requestJson<PlatformEscrowSummary>(token, "/admin/escrow/platform");
+  },
+
+  getDistributorEscrow(token: string, distributorId: string) {
+    return requestJson<DistributorEscrowSummary>(
+      token,
+      `/admin/escrow/distributors/${distributorId}`
+    );
   },
 
   updatePlatformSettings(token: string, payload: UpdatePlatformSettingsPayload) {

@@ -25,7 +25,10 @@ import productService from "@/services/productService";
 import { useProductsQuery } from "@/hooks/queries/products";
 import { useCategoriesQuery } from "@/hooks/queries/categories";
 import { getListingStatusMeta } from "@/utils/productStatus";
-import { getProductStockTableValue } from "@/utils/productDisplay";
+import {
+  getProductStockTableValue,
+  getProductCategoryName,
+} from "@/utils/productDisplay";
 import type { Product, ProductStatus, ProductStatusCounts } from "@/types/product";
 import type { UserData } from "@/types/user";
 import CategoriesManagement from "./categories-management";
@@ -222,14 +225,14 @@ export default function AdminProductsPage() {
   const equipmentCount = useMemo(
     () =>
       visibleProducts.filter(
-        (product) => product.category.toLowerCase() === "equipment"
+        (product) => getProductCategoryName(product).toLowerCase() === "equipment"
       ).length,
     [visibleProducts]
   );
   const consumablesCount = useMemo(
     () =>
       visibleProducts.filter(
-        (product) => product.category.toLowerCase() === "consumables"
+        (product) => getProductCategoryName(product).toLowerCase() === "consumables"
       ).length,
     [visibleProducts]
   );
@@ -373,7 +376,7 @@ export default function AdminProductsPage() {
               options={[
                 { value: "all", label: "Select category" },
                 ...categories.map((category) => ({
-                  value: category.name,
+                  value: category._id,
                   label: category.name,
                 })),
               ]}
@@ -451,7 +454,7 @@ export default function AdminProductsPage() {
                           {formatDate(product.submittedAt ?? product.createdAt)}
                         </TableCell>
                         <TableCell>{getDistributorName(product.createdBy)}</TableCell>
-                        <TableCell>{product.category}</TableCell>
+                        <TableCell>{getProductCategoryName(product)}</TableCell>
                         <TableCell>{getProductStockTableValue(product)}</TableCell>
                         <TableCell>{formatMoney(product.pricePerUnit)}</TableCell>
                         <TableCell>

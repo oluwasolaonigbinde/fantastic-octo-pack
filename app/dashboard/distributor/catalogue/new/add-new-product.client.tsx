@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 import Header from "../../../component/header";
-import { Button, Input, PopUp, SingleSelect, Switch } from "@/components/base";
+import { Button, Input, PopUp, SingleSelect } from "@/components/base";
 import {
   Select,
   SelectContent,
@@ -43,6 +43,10 @@ import { fetchPublicProfiles } from "@/store/slices/user-slice";
 import { UserRole } from "@/types/user";
 import type { BaseSpecification } from "@/types/categories";
 import type { ProductImage } from "@/types/product";
+import {
+  getProductCategoryId,
+  getProductSubcategoryId,
+} from "@/utils/productDisplay";
 
 /** Seeded OEM accounts use this display name (e.g. oem@local.test) so `assignedOem` matches OEM review guards. */
 const PLAYWRIGHT_OEM_DISPLAY_LABEL = "Playwright OEM";
@@ -96,7 +100,6 @@ type WizardState = {
   condition: Condition;
   description: string;
   quantity_available: string;
-  requiresInstallation: boolean;
   installation_time_value: string;
   installation_time_unit: DurationUnit;
   delivery_time_value: string;
@@ -202,7 +205,6 @@ const INITIAL_STATE: WizardState = {
   condition: "",
   description: "",
   quantity_available: "",
-  requiresInstallation: false,
   installation_time_value: "",
   installation_time_unit: "days",
   delivery_time_value: "",
@@ -723,8 +725,8 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
     }));
 
     setForm({
-      category: product.category ?? "",
-      sub_category: product.sub_category?.[0] ?? "",
+      category: getProductCategoryId(product),
+      sub_category: getProductSubcategoryId(product),
       name: product.name ?? "",
       assignedOem: oemId,
       manufacturing_country: product.manufacturing_country ?? "",
@@ -734,7 +736,6 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
         typeof product.quantityAvailable === "number"
           ? String(product.quantityAvailable)
           : "",
-      requiresInstallation: Boolean(product.requiresInstallation),
       installation_time_value: installationValue,
       installation_time_unit: installationUnit,
       delivery_time_value: deliveryValue,
@@ -774,19 +775,33 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
     [categories, form.category],
   );
 
-  const baseSpecifications = useMemo(
-    () => selectedCategory?.baseSpecifications ?? [],
-    [selectedCategory],
-  );
-
   const subCategoryOptions = useMemo(
     () =>
-      (selectedCategory?.subcategories ?? []).map((name) => ({
-        value: name,
-        label: name,
+      (selectedCategory?.subcategories ?? []).map((sub) => ({
+        value: sub._id,
+        label: sub.name,
       })),
     [selectedCategory],
   );
+
+  // Specifications and the installation requirement now live on the chosen
+  // subcategory, not the category. Both are derived from it.
+  const selectedSubcategory = useMemo(
+    () =>
+      (selectedCategory?.subcategories ?? []).find(
+        (sub) => sub._id === form.sub_category,
+      ) ?? null,
+    [selectedCategory, form.sub_category],
+  );
+
+  const baseSpecifications = useMemo(
+    () => selectedSubcategory?.specifications ?? [],
+    [selectedSubcategory],
+  );
+
+  // Installation is dictated by the subcategory and enforced server-side; the
+  // distributor no longer toggles it manually.
+  const requiresInstallation = Boolean(selectedSubcategory?.requiresInstallation);
 
   const sortedOemUsers = useMemo(() => {
     const list = [...oemUsers];
@@ -1098,6 +1113,17 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
         nextErrors.category = "Select a category to continue.";
       }
 
+      // A subcategory is now required — it drives the required specifications and
+      // whether the product needs installation.
+      if (!nextErrors.category && selectedCategory) {
+        if (!form.sub_category || !selectedSubcategory) {
+          nextErrors.sub_category =
+            subCategoryOptions.length > 0
+              ? "Select a sub-category to continue."
+              : "This category has no sub-categories yet. Choose another category.";
+        }
+      }
+
       return nextErrors;
     }
 
@@ -1142,7 +1168,7 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
         nextErrors.delivery_time_unit = "Select the delivery time unit.";
       }
 
-      if (form.requiresInstallation) {
+      if (requiresInstallation) {
         if (!isPositiveWholeNumber(form.installation_time_value)) {
           nextErrors.installation_time_value = "Enter a valid installation time.";
         }
@@ -1247,8 +1273,9 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
     formData.append("name", normalizeText(form.name));
     formData.append("category", form.category);
 
+    // sub_category is a single required subcategory id.
     if (normalizeText(form.sub_category)) {
-      formData.append("sub_category", JSON.stringify([normalizeText(form.sub_category)]));
+      formData.append("sub_category", normalizeText(form.sub_category));
     }
 
     if (form.assignedOem && form.assignedOem !== "__no-oem__") {
@@ -1266,13 +1293,17 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
     if (!isEditing && Number.isFinite(stockQuantity)) {
       formData.append("quantityAvailable", String(stockQuantity));
     }
-    formData.append("requiresInstallation", form.requiresInstallation ? "true" : "false");
-
+    // `requiresInstallation` is derived from the subcategory server-side, so it
+    // is not sent. `installation_time` is still a required, positive duration on
+    // the backend: send the distributor's value when the subcategory requires
+    // installation, otherwise a schema-satisfying placeholder the backend keeps
+    // inert (the derived requiresInstallation stays false).
     formData.append(
       "installation_time",
-      form.requiresInstallation
-        ? formatDuration(form.installation_time_value, form.installation_time_unit) ?? "0 days"
-        : "0 days",
+      requiresInstallation
+        ? formatDuration(form.installation_time_value, form.installation_time_unit) ??
+            "1 day"
+        : "1 day",
     );
     formData.append(
       "delivery_time",
@@ -1458,7 +1489,13 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
                   options={subCategoryOptions}
                   disabled={!form.category || subCategoryOptions.length === 0}
                   error={fieldErrors.sub_category}
-                  onValueChange={(value) => setField("sub_category", value)}
+                  onValueChange={(value) => {
+                    setField("sub_category", value);
+                    // Specs are defined per subcategory, so reset any values
+                    // captured for the previous subcategory.
+                    setForm((prev) => ({ ...prev, categorySpecValues: {} }));
+                    setSpecErrors({});
+                  }}
                 />
               </div>
             ) : null}
@@ -1568,30 +1605,15 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
 
             {currentStep === 3 ? (
               <div className="space-y-6">
-                <div className="flex flex-col gap-3 rounded-xl border border-gray5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray1">
-                      Does this product require on-site installation?
-                    </p>
-                    <p className="text-xs text-gray3">
-                      Turn this on to provide an installation timeline. Buyers will be guided through installation scheduling at checkout.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={form.requiresInstallation}
-                    onCheckedChange={(checked) => {
-                      setField("requiresInstallation", checked);
-                      if (!checked) {
-                        setFieldErrors((prev) => {
-                          const next = { ...prev };
-                          delete next.installation_time_value;
-                          delete next.installation_time_unit;
-                          return next;
-                        });
-                      }
-                    }}
-                    aria-label="Requires on-site installation"
-                  />
+                <div className="flex flex-col gap-1 rounded-xl border border-gray5 px-4 py-4">
+                  <p className="text-sm font-medium text-gray1">
+                    On-site installation
+                  </p>
+                  <p className="text-xs text-gray3">
+                    {requiresInstallation
+                      ? `Products in the "${selectedSubcategory?.name ?? "selected"}" sub-category require on-site installation. Provide an installation timeline below — buyers are guided through installation scheduling at checkout.`
+                      : `Products in the "${selectedSubcategory?.name ?? "selected"}" sub-category do not require on-site installation. This is set by the category admin and cannot be changed here.`}
+                  </p>
                 </div>
 
                 <div className="flex min-w-0 flex-col gap-1">
@@ -1634,7 +1656,7 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
                 <div
                   className={cn(
                     "grid gap-4 md:items-start",
-                    form.requiresInstallation ? "md:grid-cols-2" : "md:grid-cols-1",
+                    requiresInstallation ? "md:grid-cols-2" : "md:grid-cols-1",
                   )}
                 >
                   <MergedDurationField
@@ -1649,7 +1671,7 @@ export default function AddNewProduct({ productId }: AddNewProductProps = {}) {
                     onUnitChange={(u) => setField("delivery_time_unit", u)}
                   />
 
-                  {form.requiresInstallation ? (
+                  {requiresInstallation ? (
                     <MergedDurationField
                       id="installation_time_value"
                       label="Estimated Installation Duration"
