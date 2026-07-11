@@ -2,6 +2,7 @@ import type { Product, ProductImage } from "@/types/product";
 import type { UserData } from "@/types/user";
 import { DEFAULT_AVATAR_SRC } from "@/constants/avatar";
 import { formatProductCountriesLabel } from "@/utils/countryDisplay";
+import { getProductCategoryName } from "@/utils/productDisplay";
 
 export type OemListingStatus = "pending" | "approved" | "rejected";
 
@@ -205,7 +206,7 @@ export const getProductHeroImage = (product: Product | null | undefined): Produc
 export const buildCategoryBreakdown = (products: Product[]) => {
   const summary = products.reduce(
     (accumulator, product) => {
-      const category = product.category?.toLowerCase();
+      const category = getProductCategoryName(product).toLowerCase();
 
       if (category.includes("consumable")) {
         accumulator.consumables += 1;

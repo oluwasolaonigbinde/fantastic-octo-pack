@@ -3,7 +3,9 @@ import {
   CategoryListResponse,
   CategoryResponse,
   CreateCategory,
+  CreateSubcategory,
   UpdateCategory,
+  UpdateSubcategory,
 } from "@/types/categories";
 import { apiUrl } from "@/utils/api-base-url";
 
@@ -123,12 +125,87 @@ const deleteCategory = async (
   return;
 };
 
+// Add subcategory
+const createSubcategory = async (
+  token: string,
+  categoryId: string,
+  subcategoryData: CreateSubcategory
+): Promise<CategoryResponse> => {
+  const response = await fetch(
+    apiUrl(`/categories/${categoryId}/subcategories`),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(subcategoryData),
+    }
+  );
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "Creating subcategory failed");
+  }
+  return response.json();
+};
+
+// Update subcategory
+const updateSubcategory = async (
+  token: string,
+  categoryId: string,
+  subcategoryId: string,
+  subcategoryData: UpdateSubcategory
+): Promise<CategoryResponse> => {
+  const response = await fetch(
+    apiUrl(`/categories/${categoryId}/subcategories/${subcategoryId}`),
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(subcategoryData),
+    }
+  );
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "Updating subcategory failed");
+  }
+  return response.json();
+};
+
+// Delete subcategory
+const deleteSubcategory = async (
+  token: string,
+  categoryId: string,
+  subcategoryId: string
+): Promise<CategoryResponse> => {
+  const response = await fetch(
+    apiUrl(`/categories/${categoryId}/subcategories/${subcategoryId}`),
+    {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "Deleting subcategory failed");
+  }
+  return response.json();
+};
+
 const categoryService = {
   fetchCategories,
   fetchCategoryById,
   createCategory,
   updateCategory,
   deleteCategory,
+  createSubcategory,
+  updateSubcategory,
+  deleteSubcategory,
 };
 
 export default categoryService;

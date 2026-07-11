@@ -6,9 +6,17 @@ import type {
   BanksResponse,
   MyPaymentsQuery,
   PaymentListResponse,
+  PaymentTransaction,
   ResolveAccountQuery,
   ResolveAccountResponse,
 } from "@/types/payment";
+
+/** Envelope returned by the withdrawal approve/reject transitions. */
+interface PaymentTransactionResponse {
+  success: boolean;
+  message: string;
+  data: PaymentTransaction;
+}
 
 const authHeaders = (token: string) => ({
   "Content-Type": "application/json",
@@ -114,11 +122,56 @@ const resolveBankAccount = async (
   return body.data?.accountName ?? "";
 };
 
+/** POST /transactions/:transactionId/approve — Approve a pending withdrawal (admin). */
+const approveWithdrawal = async (
+  token: string,
+  transactionId: string,
+): Promise<PaymentTransactionResponse> => {
+  const response = await fetch(
+    apiUrl(`/transactions/${transactionId}/approve`),
+    {
+      method: "POST",
+      headers: authHeaders(token),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await parseErrorMessage(response, "Failed to approve withdrawal"),
+    );
+  }
+
+  return response.json();
+};
+
+/** POST /transactions/:transactionId/reject — Reject a pending withdrawal (admin). */
+const rejectWithdrawal = async (
+  token: string,
+  transactionId: string,
+  note?: string,
+): Promise<PaymentTransactionResponse> => {
+  const response = await fetch(apiUrl(`/transactions/${transactionId}/reject`), {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(note ? { note } : {}),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await parseErrorMessage(response, "Failed to reject withdrawal"),
+    );
+  }
+
+  return response.json();
+};
+
 export const paymentService = {
   fetchMyPayments,
   fetchPayments,
   fetchBanks,
   resolveBankAccount,
+  approveWithdrawal,
+  rejectWithdrawal,
 };
 
 export default paymentService;

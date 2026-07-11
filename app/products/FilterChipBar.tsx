@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { ChevronDown, X } from "lucide-react";
-import type { FilterCriteria, FilterCounts } from "./FilterSidebar";
+import type { FilterCriteria, FilterCounts, CategoryOption } from "./FilterSidebar";
 
 const DEFAULT_MIN_PRICE = 10000;
 const DEFAULT_MAX_PRICE = 500000;
@@ -22,6 +22,7 @@ const SORT_OPTIONS = [
 interface FilterChipBarProps {
   counts: FilterCounts;
   filters: FilterCriteria;
+  categoryOptions: CategoryOption[];
   sortBy: string;
   onFilterChange: (filters: FilterCriteria) => void;
   onSortChange: (sortBy: string) => void;
@@ -61,6 +62,7 @@ function RadioOption({
 export default function FilterChipBar({
   counts,
   filters,
+  categoryOptions,
   sortBy,
   onFilterChange,
   onSortChange,
@@ -193,14 +195,14 @@ export default function FilterChipBar({
             <div className="space-y-2">
               {[
                 { value: null, label: "All categories", count: counts.categories.all },
-                { value: "equipment", label: "Equipment", count: counts.categories.equipment },
-                { value: "consumables", label: "Consumables", count: counts.categories.consumables },
-                { value: "instruments", label: "Instruments", count: counts.categories.instruments },
-                { value: "accessories", label: "Accessories", count: counts.categories.accessories },
-                { value: "spare parts", label: "Spare Parts", count: counts.categories["spare parts"] },
+                ...categoryOptions.map((option) => ({
+                  value: option.id,
+                  label: option.name,
+                  count: counts.categories[option.id],
+                })),
               ].map(({ value, label, count }) => (
                 <RadioOption
-                  key={label}
+                  key={value ?? "all"}
                   label={label}
                   count={count}
                   checked={filters.category === value || (!filters.category && value === null)}

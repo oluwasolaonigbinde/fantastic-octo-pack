@@ -32,11 +32,11 @@ export const fetchProfile = async (
   return handleResponse(res);
 };
 
-/** GET /auth/addresses — list the user's saved delivery addresses. */
+/** GET /auth/delivery-addresses — list the user's saved delivery addresses. */
 export const fetchAddresses = async (
   token: string,
 ): Promise<AddressListResponse> => {
-  const res = await fetch(apiUrl("/auth/addresses"), {
+  const res = await fetch(apiUrl("/auth/delivery-addresses"), {
     method: "GET",
     headers: authHeaders(token),
     cache: "no-store",
@@ -45,14 +45,14 @@ export const fetchAddresses = async (
 };
 
 /**
- * POST /auth/addresses — permanently add an address to the user's address book.
- * Returns the full, updated address list.
+ * POST /auth/delivery-addresses — permanently add an address to the user's
+ * address book. Returns the full, updated address list.
  */
 export const addAddress = async (
   token: string,
   payload: AddAddressPayload,
 ): Promise<AddressListResponse> => {
-  const res = await fetch(apiUrl("/auth/addresses"), {
+  const res = await fetch(apiUrl("/auth/delivery-addresses"), {
     method: "POST",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -60,13 +60,13 @@ export const addAddress = async (
   return handleResponse(res);
 };
 
-/** PATCH /auth/addresses/:addressId — update a saved address. */
+/** PATCH /auth/delivery-addresses/:addressId — update a saved address. */
 export const updateAddress = async (
   token: string,
   addressId: string,
   payload: UpdateAddressPayload,
 ): Promise<AddressListResponse> => {
-  const res = await fetch(apiUrl(`/auth/addresses/${addressId}`), {
+  const res = await fetch(apiUrl(`/auth/delivery-addresses/${addressId}`), {
     method: "PATCH",
     headers: authHeaders(token),
     body: JSON.stringify(payload),
@@ -74,27 +74,30 @@ export const updateAddress = async (
   return handleResponse(res);
 };
 
-/** DELETE /auth/addresses/:addressId — remove a saved address. */
+/** DELETE /auth/delivery-addresses/:addressId — remove a saved address. */
 export const deleteAddress = async (
   token: string,
   addressId: string,
 ): Promise<AddressListResponse> => {
-  const res = await fetch(apiUrl(`/auth/addresses/${addressId}`), {
+  const res = await fetch(apiUrl(`/auth/delivery-addresses/${addressId}`), {
     method: "DELETE",
     headers: authHeaders(token),
   });
   return handleResponse(res);
 };
 
-/** PATCH /auth/addresses/:addressId/default — mark an address as the default. */
+/** PATCH /auth/delivery-addresses/:addressId/default — mark as the default. */
 export const setDefaultAddress = async (
   token: string,
   addressId: string,
 ): Promise<AddressListResponse> => {
-  const res = await fetch(apiUrl(`/auth/addresses/${addressId}/default`), {
-    method: "PATCH",
-    headers: authHeaders(token),
-  });
+  const res = await fetch(
+    apiUrl(`/auth/delivery-addresses/${addressId}/default`),
+    {
+      method: "PATCH",
+      headers: authHeaders(token),
+    },
+  );
   return handleResponse(res);
 };
 

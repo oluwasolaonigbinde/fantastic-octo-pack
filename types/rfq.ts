@@ -35,6 +35,7 @@ export interface ProductRef {
   name: string;
   pricePerUnit?: number;
   images?: { url: string; cloudinary_id: string }[];
+  /** Category id (RFQ/order product refs are not deep-populated to the Category). */
   category?: string;
 }
 

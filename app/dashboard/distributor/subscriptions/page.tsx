@@ -22,6 +22,7 @@ import {
 } from "@/components/base";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { useSubscription } from "@/hooks/useSubscription";
+import { usePlanChangePreviewQuery } from "@/hooks/queries/subscription";
 import { useWallet } from "@/hooks/useWallet";
 import { useWalletTopup } from "@/hooks/useWalletTopup";
 import { TopUpDrawer, TopUpReturnBanner } from "@/components/wallet/wallet-topup";
@@ -29,6 +30,7 @@ import { koboToNaira } from "@/lib/wallet-format";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
 import { useMyProductsQuery } from "@/hooks/queries/products";
+import { getProductCategoryName } from "@/utils/productDisplay";
 import { useDistributorInboxQuery } from "@/hooks/queries/rfqs";
 import type { PlanFeature, Subscription, SubscriptionPlan } from "@/types/subscription";
 
@@ -124,20 +126,26 @@ function PlanCard({
   plan,
   isCurrent,
   subscribed,
+  currentPlanPrice,
   canAfford,
   isBusy,
   onSubscribe,
+  onChangePlan,
   onManage,
   onTopUp,
 }: {
   plan: SubscriptionPlan;
   isCurrent: boolean;
-  /** The caller already holds a live subscription — no plan is subscribable. */
+  /** The caller already holds a live paid subscription. */
   subscribed: boolean;
+  /** Price (kobo) of the plan the caller is currently on — sets upgrade vs downgrade. */
+  currentPlanPrice: number;
   /** The wallet has enough available balance to pay for this plan. */
   canAfford: boolean;
   isBusy: boolean;
   onSubscribe: () => void;
+  /** Move an existing subscription to this plan (upgrade or downgrade). */
+  onChangePlan: () => void;
   onManage: () => void;
   onTopUp: () => void;
 }) {
@@ -223,17 +231,17 @@ function PlanCard({
         </div>
       </div>
 
-      {/* CTA. Free is the baseline (no subscribe). On a paid plan, only the
-          current plan shows Manage — every other card has no action. */}
+      {/* CTA. When the caller holds a live paid subscription, the current plan
+          shows Manage and every other plan (paid or free) offers an upgrade /
+          downgrade. Otherwise the free tier is the baseline and paid plans are
+          subscribable. */}
       <div className="mt-4">
-        {isFree ? (
-          isCurrent ? (
+        {isCurrent ? (
+          isFree ? (
             <div className="w-full rounded-[12px] bg-[#F3F4F6] py-2 text-center text-sm font-normal text-[#6B7280]">
               Current plan
             </div>
-          ) : null
-        ) : subscribed ? (
-          isCurrent ? (
+          ) : (
             <button
               type="button"
               onClick={onManage}
@@ -242,8 +250,18 @@ function PlanCard({
             >
               Manage Subscription
             </button>
-          ) : null
-        ) : (
+          )
+        ) : subscribed ? (
+          <button
+            type="button"
+            onClick={onChangePlan}
+            disabled={isBusy}
+            className="w-full rounded-[12px] border border-[#0669D9] py-2 text-sm font-medium text-[#0669D9] transition hover:bg-[#EAF9FF] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {plan.price > currentPlanPrice ? "Upgrade" : "Downgrade"} to{" "}
+            {plan.name}
+          </button>
+        ) : isFree ? null : (
           <>
             <Button
               title={`Subscribe to ${plan.name}`}
@@ -289,6 +307,7 @@ export default function DistributorSubscriptions() {
     isLoading,
     isMutating,
     subscribe,
+    changePlan,
     cancel,
   } = useSubscription();
   const { wallet } = useWallet();
@@ -310,6 +329,16 @@ export default function DistributorSubscriptions() {
   const [showManageModal, setShowManageModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
+  /** The plan the caller is about to upgrade/downgrade to (confirmation modal). */
+  const [changeTarget, setChangeTarget] = useState<SubscriptionPlan | null>(
+    null,
+  );
+
+  const {
+    data: changePreview,
+    isLoading: isPreviewLoading,
+    isError: isPreviewError,
+  } = usePlanChangePreviewQuery(changeTarget?._id ?? null);
   const [popup, setPopup] = useState<{
     type: "success" | "warning";
     title: string;
@@ -323,19 +352,19 @@ export default function DistributorSubscriptions() {
     [products],
   );
   const equipmentCount = useMemo(
-    () => products.filter((p) => p.category?.toLowerCase() === "equipment").length,
+    () => products.filter((p) => getProductCategoryName(p).toLowerCase() === "equipment").length,
     [products],
   );
   const consumablesCount = useMemo(
-    () => products.filter((p) => p.category?.toLowerCase() === "consumables").length,
+    () => products.filter((p) => getProductCategoryName(p).toLowerCase() === "consumables").length,
     [products],
   );
   const approvedEquipmentCount = useMemo(
-    () => approvedProducts.filter((p) => p.category?.toLowerCase() === "equipment").length,
+    () => approvedProducts.filter((p) => getProductCategoryName(p).toLowerCase() === "equipment").length,
     [approvedProducts],
   );
   const approvedConsumablesCount = useMemo(
-    () => approvedProducts.filter((p) => p.category?.toLowerCase() === "consumables").length,
+    () => approvedProducts.filter((p) => getProductCategoryName(p).toLowerCase() === "consumables").length,
     [approvedProducts],
   );
   const respondedQuotes = useMemo(
@@ -369,6 +398,8 @@ export default function DistributorSubscriptions() {
     );
   }, [availablePlans, hasPaidSubscription, subscription]);
   const currentPlanId = currentPlan?._id ?? null;
+  const currentPlanPrice =
+    currentPlan?.price ?? subscription?.planSnapshot?.price ?? 0;
 
   const handleSubscribe = async (plan: SubscriptionPlan) => {
     // Frontend guard — don't attempt to subscribe when the wallet can't cover
@@ -404,6 +435,29 @@ export default function DistributorSubscriptions() {
       description:
         error ?? "We couldn't start your subscription. Please try again.",
     });
+  };
+
+  const handleConfirmChangePlan = async () => {
+    if (!changeTarget) return;
+    const target = changeTarget;
+    const isUpgrade = target.price > currentPlanPrice;
+    const { ok, error } = await changePlan(target._id);
+    setChangeTarget(null);
+    setShowManageModal(false);
+    setPopup(
+      ok
+        ? {
+            type: "success",
+            title: isUpgrade ? "Plan upgraded" : "Plan downgraded",
+            description: `You're now on the ${target.name} plan. Any billing difference has been applied to this cycle.`,
+          }
+        : {
+            type: "warning",
+            title: "Couldn't change plan",
+            description:
+              error ?? "We couldn't change your plan. Please try again.",
+          },
+    );
   };
 
   const handleCancel = async () => {
@@ -542,9 +596,11 @@ export default function DistributorSubscriptions() {
                       : plan.price <= 0
                   }
                   subscribed={hasPaidSubscription}
+                  currentPlanPrice={currentPlanPrice}
                   canAfford={availableBalance >= plan.price}
                   isBusy={isMutating && pendingPlanId === plan._id}
                   onSubscribe={() => handleSubscribe(plan)}
+                  onChangePlan={() => setChangeTarget(plan)}
                   onManage={() => setShowManageModal(true)}
                   onTopUp={() => handleTopUp(plan)}
                 />
@@ -593,6 +649,111 @@ export default function DistributorSubscriptions() {
                 Cancel Subscription
               </button>
             ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Change Plan (Upgrade / Downgrade) Confirmation Modal ── */}
+      <Dialog
+        open={changeTarget !== null}
+        onOpenChange={() => !isMutating && setChangeTarget(null)}
+      >
+        <DialogContent className="max-w-[500px] rounded-[20px] bg-white p-8">
+          <DialogHeader>
+            <DialogTitle className="text-[20px] font-semibold text-[#111827]">
+              {changeTarget && changeTarget.price > currentPlanPrice
+                ? "Upgrade plan"
+                : "Downgrade plan"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="mt-6 space-y-5">
+            <div className="rounded-[20px] border border-[#AAD3F3] bg-[#F6FBFF] px-5 py-4">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[#6B7280]">From</span>
+                <span className="font-medium text-[#111827]">
+                  {currentPlan?.name ??
+                    subscription?.planSnapshot?.name ??
+                    "Current plan"}{" "}
+                  ({formatNaira(currentPlanPrice)})
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between text-sm">
+                <span className="text-[#6B7280]">To</span>
+                <span className="font-medium text-[#111827]">
+                  {changeTarget?.name} ({formatNaira(changeTarget?.price ?? 0)}
+                  {changeTarget
+                    ? ` / ${intervalLabel(changeTarget.interval)}`
+                    : ""}
+                  )
+                </span>
+              </div>
+              <div className="mt-3 space-y-2 border-t border-[#DDE0E5] pt-3 text-sm">
+                {isPreviewLoading ? (
+                  <p className="text-[#6B7280]">Calculating cost…</p>
+                ) : isPreviewError || !changePreview ? (
+                  <p className="text-[#6B7280]">
+                    The billing difference will be settled on your next invoice.
+                  </p>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[#6B7280]">Due now</span>
+                      <span className="font-semibold text-[#111827]">
+                        {changePreview.amountDue > 0
+                          ? formatNaira(changePreview.amountDue)
+                          : "₦0.00"}
+                      </span>
+                    </div>
+                    {changePreview.changeType === "downgrade" ? (
+                      <p className="text-[#6B7280]">
+                        Takes effect {formatDate(changePreview.effectiveAt)} — no
+                        charge now.
+                      </p>
+                    ) : changePreview.proration ? (
+                      <p className="text-[#6B7280]">
+                        Prorated for the rest of your current billing cycle.
+                      </p>
+                    ) : null}
+                    {!changePreview.sufficientBalance &&
+                    changePreview.amountDue > 0 ? (
+                      <p className="font-medium text-[#E33C13]">
+                        Insufficient wallet balance to cover this upgrade.
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => setChangeTarget(null)}
+                disabled={isMutating}
+                className="flex h-12 flex-1 items-center justify-center rounded-[12px] border border-[#4B5563] text-sm font-medium text-[#4B5563] disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmChangePlan}
+                disabled={
+                  isMutating ||
+                  Boolean(
+                    changePreview &&
+                      changePreview.amountDue > 0 &&
+                      !changePreview.sufficientBalance,
+                  )
+                }
+                className="flex h-12 flex-1 items-center justify-center rounded-[12px] bg-[#0669D9] text-sm font-medium text-white disabled:opacity-60"
+              >
+                {isMutating
+                  ? "Applying…"
+                  : changeTarget && changeTarget.price > currentPlanPrice
+                    ? "Confirm upgrade"
+                    : "Confirm downgrade"}
+              </button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

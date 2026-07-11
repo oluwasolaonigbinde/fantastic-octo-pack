@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { Product } from "@/types/product";
+import { getProductCategoryName } from "@/utils/productDisplay";
 
 import {
   formatCompactDateTime,
@@ -104,7 +105,7 @@ export default function RecentListingRequest({
                       </div>
                     </TableCell>
                     <TableCell className="whitespace-nowrap">{product.name}</TableCell>
-                    <TableCell>{product.category}</TableCell>
+                    <TableCell>{getProductCategoryName(product)}</TableCell>
                     <TableCell className="whitespace-nowrap">
                       {formatCurrency(product.pricePerUnit)}
                     </TableCell>

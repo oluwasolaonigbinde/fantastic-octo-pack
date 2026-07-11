@@ -16,6 +16,7 @@ import SafeProductImage from "@/components/product/SafeProductImage";
 import {
   getProductDefaultImageUrl,
   getProductStockTableValue,
+  getProductCategoryName,
 } from "@/utils/productDisplay";
 import { getListingStatusMeta } from "@/utils/productStatus";
 import { EmptyState, Skeleton } from "@/components/base";
@@ -189,7 +190,7 @@ export function DistributorRecentProductsTable({
                   {meta.label}
                 </TableCell>
                 <TableCell className="font-normal text-black">
-                  {toSentenceCase(product.category)}
+                  {toSentenceCase(getProductCategoryName(product))}
                 </TableCell>
                 <TableCell>
                   <div className="inline-flex items-center gap-6">

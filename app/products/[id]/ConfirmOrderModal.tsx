@@ -1,7 +1,17 @@
 "use client";
 
 import Image from "next/image";
-import { ChevronDown, ChevronRight, Edit3, Info, Minus, Plus, X } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Edit3,
+  Info,
+  Minus,
+  Plus,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useState } from "react";
 
 import type { AddAddressPayload, UserAddress } from "@/types/address";
@@ -18,11 +28,11 @@ interface ConfirmOrderModalProps {
   /** Server/validation error to surface (e.g. "Insufficient stock"). */
   errorMessage?: string | null;
   isSubmitting?: boolean;
-  /** The buyer's saved address book (GET /auth/addresses). */
+  /** The buyer's saved address book (GET /auth/delivery-addresses). */
   addresses?: UserAddress[];
   /** `_id` of the currently selected saved address, or "" to use the default. */
   selectedAddressId?: string;
-  /** True while a new address is being persisted (POST /auth/addresses). */
+  /** True while a new address is being persisted (POST /auth/delivery-addresses). */
   isSavingAddress?: boolean;
   onClose: () => void;
   onIncrement: () => void;
@@ -30,10 +40,19 @@ interface ConfirmOrderModalProps {
   onSelectAddress?: (addressId: string) => void;
   /** Persist a new address to the buyer's address book, then resolve. */
   onAddAddress?: (payload: AddAddressPayload) => Promise<void>;
+  /** Persist edits to an existing saved address, then resolve. */
+  onUpdateAddress?: (
+    addressId: string,
+    payload: AddAddressPayload,
+  ) => Promise<void>;
+  /** Remove a saved address from the buyer's address book, then resolve. */
+  onDeleteAddress?: (addressId: string) => Promise<void>;
+  /** Mark a saved address as the buyer's default, then resolve. */
+  onSetDefaultAddress?: (addressId: string) => Promise<void>;
   onMakePayment: () => void;
 }
 
-type EditView = "list" | "add";
+type EditView = "list" | "form";
 
 const STATES = ["Lagos", "Abuja", "Rivers", "Oyo", "Kano"];
 const CITIES: Record<string, string[]> = {
@@ -80,6 +99,9 @@ export default function ConfirmOrderModal({
   onDecrement,
   onSelectAddress,
   onAddAddress,
+  onUpdateAddress,
+  onDeleteAddress,
+  onSetDefaultAddress,
   onMakePayment,
 }: ConfirmOrderModalProps) {
   const [editView, setEditView] = useState<EditView | null>(null);
@@ -87,6 +109,10 @@ export default function ConfirmOrderModal({
   const [newCity, setNewCity] = useState("");
   const [newAddress, setNewAddress] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
+  /** `_id` of the address being edited, or null when adding a new one. */
+  const [editingId, setEditingId] = useState<string | null>(null);
+  /** `_id` of the address a delete/default action is currently running on. */
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -109,24 +135,81 @@ export default function ConfirmOrderModal({
   const summaryAddress = selectedAddress ? formatAddress(selectedAddress) : "";
   const hasAddress = Boolean(summaryAddress);
 
+  function resetForm() {
+    setNewState("");
+    setNewCity("");
+    setNewAddress("");
+    setEditingId(null);
+    setAddError(null);
+  }
+
+  function startAdd() {
+    resetForm();
+    setEditView("form");
+  }
+
+  function startEdit(addr: UserAddress) {
+    setNewState(addr.state);
+    setNewCity(addr.city);
+    setNewAddress(addr.address);
+    setEditingId(addr._id);
+    setAddError(null);
+    setEditView("form");
+  }
+
   async function handleSaveAddress() {
-    if (!newState || !newCity || !newAddress.trim() || !onAddAddress) return;
+    if (!newState || !newCity || !newAddress.trim()) return;
+    const payload: AddAddressPayload = {
+      address: newAddress.trim(),
+      city: newCity,
+      state: newState,
+      country: "Nigeria",
+    };
     setAddError(null);
     try {
-      await onAddAddress({
-        address: newAddress.trim(),
-        city: newCity,
-        state: newState,
-        country: "Nigeria",
-      });
-      setNewState("");
-      setNewCity("");
-      setNewAddress("");
+      if (editingId) {
+        if (!onUpdateAddress) return;
+        await onUpdateAddress(editingId, payload);
+      } else {
+        if (!onAddAddress) return;
+        await onAddAddress(payload);
+      }
+      resetForm();
       setEditView("list");
     } catch (error) {
       setAddError(
         error instanceof Error ? error.message : "Could not save address",
       );
+    }
+  }
+
+  async function handleDeleteAddress(addressId: string) {
+    if (!onDeleteAddress) return;
+    setAddError(null);
+    setBusyId(addressId);
+    try {
+      await onDeleteAddress(addressId);
+    } catch (error) {
+      setAddError(
+        error instanceof Error ? error.message : "Could not delete address",
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleSetDefaultAddress(addressId: string) {
+    if (!onSetDefaultAddress) return;
+    setAddError(null);
+    setBusyId(addressId);
+    try {
+      await onSetDefaultAddress(addressId);
+    } catch (error) {
+      setAddError(
+        error instanceof Error ? error.message : "Could not set default address",
+      );
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -254,7 +337,7 @@ export default function ConfirmOrderModal({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setEditView(hasAddress ? "list" : "add")}
+                    onClick={() => (hasAddress ? setEditView("list") : startAdd())}
                     className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-[#017BED] bg-[#EAF9FF] px-3 text-sm font-semibold text-[#4B5563]"
                   >
                     {hasAddress ? "Edit Address" : "Add Address"}
@@ -300,7 +383,10 @@ export default function ConfirmOrderModal({
               type="button"
               aria-label="Close edit address"
               className="flex-1 bg-black/30"
-              onClick={() => setEditView(null)}
+              onClick={() => {
+                resetForm();
+                setEditView(null);
+              }}
             />
 
             {/* sheet */}
@@ -313,7 +399,7 @@ export default function ConfirmOrderModal({
                     </h3>
                     <button
                       type="button"
-                      onClick={() => setEditView("add")}
+                      onClick={startAdd}
                       className="inline-flex items-center gap-1.5 rounded-xl border border-[#DDE0E5] bg-white px-3 py-2 text-sm font-medium text-[#4B5563]"
                     >
                       Add a new address
@@ -328,39 +414,80 @@ export default function ConfirmOrderModal({
                     </p>
                   ) : (
                     <div className="space-y-3">
-                      {addresses.map((addr) => (
-                        <label
-                          key={addr._id}
-                          className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition ${
-                            selectedAddressId === addr._id
-                              ? "border-[#017BED] bg-[#F5FAFF]"
-                              : "border-[#DDE0E5] bg-[#F9FAFB]"
-                          }`}
-                        >
-                          <input
-                            type="radio"
-                            name="address"
-                            value={addr._id}
-                            checked={selectedAddressId === addr._id}
-                            onChange={() => onSelectAddress?.(addr._id)}
-                            className="mt-0.5 accent-[#017BED]"
-                          />
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-[#111827]">
-                              {addr.city}, {addr.state}
-                            </p>
-                            <p className="mt-0.5 text-sm text-[#6B7280]">
-                              {formatAddress(addr)}
-                            </p>
-                            {addr.isDefault && (
-                              <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#EAF9FF] px-2.5 py-0.5 text-xs font-medium text-[#017BED]">
-                                <Info size={11} />
-                                Default address
-                              </span>
-                            )}
+                      {addresses.map((addr) => {
+                        const isBusy = busyId === addr._id;
+                        return (
+                          <div
+                            key={addr._id}
+                            className={`rounded-xl border p-4 transition ${
+                              selectedAddressId === addr._id
+                                ? "border-[#017BED] bg-[#F5FAFF]"
+                                : "border-[#DDE0E5] bg-[#F9FAFB]"
+                            } ${isBusy ? "opacity-60" : ""}`}
+                          >
+                            <label className="flex cursor-pointer items-start gap-3">
+                              <input
+                                type="radio"
+                                name="address"
+                                value={addr._id}
+                                checked={selectedAddressId === addr._id}
+                                onChange={() => onSelectAddress?.(addr._id)}
+                                className="mt-0.5 accent-[#017BED]"
+                              />
+                              <div className="min-w-0">
+                                <p className="text-sm font-semibold text-[#111827]">
+                                  {addr.city}, {addr.state}
+                                </p>
+                                <p className="mt-0.5 text-sm text-[#6B7280]">
+                                  {formatAddress(addr)}
+                                </p>
+                                {addr.isDefault && (
+                                  <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#EAF9FF] px-2.5 py-0.5 text-xs font-medium text-[#017BED]">
+                                    <Info size={11} />
+                                    Default address
+                                  </span>
+                                )}
+                              </div>
+                            </label>
+
+                            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[#E5E7EB] pt-3">
+                              {!addr.isDefault && onSetDefaultAddress && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetDefaultAddress(addr._id)}
+                                  disabled={isBusy}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#DDE0E5] bg-white px-2.5 py-1.5 text-xs font-medium text-[#4B5563] transition hover:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <Star size={13} />
+                                  Set as default
+                                </button>
+                              )}
+                              {onUpdateAddress && (
+                                <button
+                                  type="button"
+                                  onClick={() => startEdit(addr)}
+                                  disabled={isBusy}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#DDE0E5] bg-white px-2.5 py-1.5 text-xs font-medium text-[#4B5563] transition hover:bg-[#F3F4F6] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <Edit3 size={13} />
+                                  Edit
+                                </button>
+                              )}
+                              {onDeleteAddress && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteAddress(addr._id)}
+                                  disabled={isBusy}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#FECACA] bg-white px-2.5 py-1.5 text-xs font-medium text-[#DC2626] transition hover:bg-[#FEF2F2] disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <Trash2 size={13} />
+                                  Delete
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </label>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
@@ -375,11 +502,11 @@ export default function ConfirmOrderModal({
                 </div>
               )}
 
-              {editView === "add" && (
+              {editView === "form" && (
                 <div className="space-y-5">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xl font-bold text-[#111827]">
-                      Add New Address
+                      {editingId ? "Edit Address" : "Add New Address"}
                     </h3>
                   </div>
 
@@ -387,13 +514,18 @@ export default function ConfirmOrderModal({
                   <div className="flex items-center gap-1.5 text-sm">
                     <button
                       type="button"
-                      onClick={() => setEditView("list")}
+                      onClick={() => {
+                        resetForm();
+                        setEditView("list");
+                      }}
                       className="font-medium text-[#F97316] hover:underline"
                     >
                       Choose Address
                     </button>
                     <ChevronRight size={14} className="text-[#9CA3AF]" />
-                    <span className="text-[#6B7280]">Add Address</span>
+                    <span className="text-[#6B7280]">
+                      {editingId ? "Edit Address" : "Add Address"}
+                    </span>
                   </div>
 
                   {/* State */}
@@ -480,7 +612,11 @@ export default function ConfirmOrderModal({
                     }
                     className="flex h-[52px] w-full items-center justify-center rounded-xl bg-[#0669D9] text-sm font-medium text-white transition hover:bg-[#0553AE] disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {isSavingAddress ? "Saving..." : "Save"}
+                    {isSavingAddress
+                      ? "Saving..."
+                      : editingId
+                        ? "Save Changes"
+                        : "Save"}
                   </button>
                 </div>
               )}

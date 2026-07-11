@@ -33,6 +33,7 @@ import { getListingStatusMeta } from "@/utils/productStatus";
 import {
   getProductDefaultImageUrl,
   getProductStockTableValue,
+  getProductCategoryName,
 } from "@/utils/productDisplay";
 import type { ProductStatus } from "@/types/product";
 
@@ -148,7 +149,7 @@ const ProductTable = ({
               label="Categories"
               onValueChange={(val) => setCategory(val)}
               options={categories.map((item) => ({
-                value: item.name,
+                value: item._id,
                 label: item.name,
               }))}
               className="w-full"
@@ -215,7 +216,7 @@ const ProductTable = ({
                               {chip.label}
                             </span>
                           </TableCell>
-                          <TableCell>{product.category}</TableCell>
+                          <TableCell>{getProductCategoryName(product)}</TableCell>
                           <TableCell className="inline-flex items-center gap-3">
                             <button
                               onClick={(event) => {
@@ -261,7 +262,7 @@ const ProductTable = ({
                               {chip.label}
                             </span>
                           </TableCell>
-                          <TableCell>{product.category}</TableCell>
+                          <TableCell>{getProductCategoryName(product)}</TableCell>
                           <TableCell className="inline-flex items-center gap-3">
                             <button
                               onClick={(event) => {

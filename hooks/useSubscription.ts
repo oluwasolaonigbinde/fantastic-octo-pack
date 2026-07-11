@@ -4,6 +4,7 @@ import { useCallback } from "react";
 
 import {
   useCancelSubscriptionMutation,
+  useChangePlanMutation,
   useSubscribeMutation,
   useSubscriptionPlansQuery,
   useSubscriptionQuery,
@@ -11,13 +12,13 @@ import {
 
 /**
  * Loads the distributor's available plans and current subscription, and exposes
- * subscribe/cancel actions. Upgrade/downgrade is intentionally not supported —
- * the only way to manage a live subscription is to cancel it.
+ * subscribe / change-plan (upgrade or downgrade) / cancel actions.
  */
 export function useSubscription() {
   const plansQuery = useSubscriptionPlansQuery();
   const subscriptionQuery = useSubscriptionQuery();
   const subscribeMutation = useSubscribeMutation();
+  const changePlanMutation = useChangePlanMutation();
   const cancelMutation = useCancelSubscriptionMutation();
 
   const subscribe = useCallback(
@@ -36,6 +37,22 @@ export function useSubscription() {
       }
     },
     [subscribeMutation],
+  );
+
+  const changePlan = useCallback(
+    async (planId: string): Promise<{ ok: boolean; error?: string }> => {
+      try {
+        await changePlanMutation.mutateAsync(planId);
+        return { ok: true };
+      } catch (error) {
+        return {
+          ok: false,
+          error:
+            error instanceof Error ? error.message : "Failed to change plan",
+        };
+      }
+    },
+    [changePlanMutation],
   );
 
   const cancel = useCallback(async (): Promise<{
@@ -63,10 +80,14 @@ export function useSubscription() {
     subscription: subscriptionQuery.data?.subscription ?? null,
     entitlements: subscriptionQuery.data?.entitlements ?? null,
     isLoading: plansQuery.isLoading || subscriptionQuery.isLoading,
-    isMutating: subscribeMutation.isPending || cancelMutation.isPending,
+    isMutating:
+      subscribeMutation.isPending ||
+      changePlanMutation.isPending ||
+      cancelMutation.isPending,
     isError: plansQuery.isError || subscriptionQuery.isError,
     message: error instanceof Error ? error.message : "",
     subscribe,
+    changePlan,
     cancel,
   };
 }

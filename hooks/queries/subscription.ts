@@ -60,6 +60,28 @@ export const useSubscriptionQuery = (options?: { enabled?: boolean }) => {
   });
 };
 
+/**
+ * Preview the proration/cost of moving the caller to `planId`. Disabled until a
+ * target plan is chosen; the payload shape is backend-defined (opaque record).
+ */
+export const usePlanChangePreviewQuery = (
+  planId: string | null,
+  options?: { enabled?: boolean },
+) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: queryKeys.subscription.changePlanPreview(planId ?? ""),
+    queryFn: () =>
+      subscriptionService.previewPlanChange(token as string, {
+        planId: planId as string,
+      }),
+    enabled:
+      Boolean(token) && Boolean(planId) && (options?.enabled ?? true),
+    select: (res) => res.data,
+  });
+};
+
 /** Admin feature catalog. */
 export const useSubscriptionFeaturesQuery = (
   query: AdminFeaturesQuery = {},
@@ -87,6 +109,18 @@ export const useSubscribeMutation = () => {
   return useMutation({
     mutationFn: (planId: string) =>
       subscriptionService.subscribe(token as string, { planId }),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: queryKeys.subscription.all }),
+  });
+};
+
+export const useChangePlanMutation = () => {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (planId: string) =>
+      subscriptionService.changePlan(token as string, { planId }),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: queryKeys.subscription.all }),
   });

@@ -13,6 +13,10 @@ import {
 } from "@/components/oem/SimpleRichTextEditor";
 import { Textarea } from "@/components/ui/textarea";
 import categoryService from "@/services/categoryService";
+import {
+  getProductCategoryId,
+  getProductSubcategoryId,
+} from "@/utils/productDisplay";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import {
   useProductQuery,
@@ -88,12 +92,6 @@ const SECTION_LABELS = [
   "Image upload",
 ];
 
-const FALLBACK_SUBCATEGORY_OPTIONS = [
-  { value: "Imaging", label: "Imaging" },
-  { value: "Monitoring", label: "Monitoring" },
-  { value: "Consumables", label: "Consumables" },
-];
-
 const MAX_IMAGE_COUNT = 8;
 const MIN_VISIBLE_IMAGE_SLOTS = 4;
 const MAX_UPLOAD_FILE_SIZE = 5 * 1024 * 1024;
@@ -153,8 +151,8 @@ const getDefaultImageIndex = (images: ProductImage[]) => {
 
 const buildFormFromProduct = (product: Product): EditableFormState => ({
   name: product.name || "",
-  category: product.category || "",
-  subCategory: product.sub_category?.[0] || "",
+  category: getProductCategoryId(product),
+  subCategory: getProductSubcategoryId(product),
   model: extractEditableModel(product),
   brand: product.brand_oem || "",
   description: product.description || "",
@@ -204,8 +202,8 @@ const buildBaseUpdatePayload = (
   defaultImageIndex: number,
 ): UpdateProduct => ({
   name: form.name.trim(),
-  category: form.category.trim(),
-  sub_category: form.subCategory.trim() ? [form.subCategory.trim()] : undefined,
+  category: form.category.trim() || undefined,
+  sub_category: form.subCategory.trim() || undefined,
   brand_oem: form.brand.trim() || undefined,
   description: form.description.trim() || undefined,
   pricePerUnit: form.pricePerUnit ? Number(form.pricePerUnit) : undefined,
@@ -349,32 +347,25 @@ export default function OemEditProductPage() {
     return clampDefaultImageIndex(requestedIndex, mergedImageCount);
   }, [defaultImageIndexByProductId, mergedImageCount, productId, retainedImages]);
 
-  const categoryOptions = useMemo(() => {
-    const dynamicOptions = categories.map((category) => ({
-      value: category.name,
-      label: category.name,
-    }));
+  const categoryOptions = useMemo(
+    () =>
+      categories.map((category) => ({
+        value: category._id,
+        label: category.name,
+      })),
+    [categories],
+  );
 
-    if (form.category && !dynamicOptions.some((option) => option.value === form.category)) {
-      dynamicOptions.unshift({ value: form.category, label: form.category });
-    }
-
-    return dynamicOptions;
-  }, [categories, form.category]);
-
+  // Subcategories now live on the selected category; each is chosen by its id.
   const subCategoryOptions = useMemo(() => {
-    if (
-      form.subCategory &&
-      !FALLBACK_SUBCATEGORY_OPTIONS.some((option) => option.value === form.subCategory)
-    ) {
-      return [
-        { value: form.subCategory, label: form.subCategory },
-        ...FALLBACK_SUBCATEGORY_OPTIONS,
-      ];
-    }
-
-    return FALLBACK_SUBCATEGORY_OPTIONS;
-  }, [form.subCategory]);
+    const selected = categories.find(
+      (category) => category._id === form.category,
+    );
+    return (selected?.subcategories ?? []).map((sub) => ({
+      value: sub._id,
+      label: sub.name,
+    }));
+  }, [categories, form.category]);
 
   const imageCards = useMemo<ImageCard[]>(() => {
     const existingCards: ImageCard[] = retainedImages.map((image, index) => ({
@@ -578,7 +569,7 @@ export default function OemEditProductPage() {
 
           appendIfPresent(formData, "name", basePayload.name);
           appendIfPresent(formData, "category", basePayload.category);
-          appendIfPresent(formData, "sub_category", basePayload.sub_category?.[0]);
+          appendIfPresent(formData, "sub_category", basePayload.sub_category);
           appendIfPresent(formData, "brand_oem", basePayload.brand_oem);
           appendIfPresent(formData, "description", basePayload.description);
 
@@ -732,9 +723,13 @@ export default function OemEditProductPage() {
                 <SingleSelect
                   label="Category"
                   value={form.category}
-                  onValueChange={(value) => updateForm("category", value)}
+                  onValueChange={(value) => {
+                    updateForm("category", value);
+                    // Subcategories are scoped to the category; reset on change.
+                    updateForm("subCategory", "");
+                  }}
                   options={categoryOptions}
-                  placeholder="Equipment"
+                  placeholder="Select category"
                 />
               </div>
               <div className="w-full min-w-[200px] max-w-[250px] flex-1">

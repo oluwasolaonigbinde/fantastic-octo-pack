@@ -34,6 +34,7 @@ import {
   getOemStatusMeta,
   normalizeOemStatus,
 } from "../oem-ui";
+import { getProductCategoryName } from "@/utils/productDisplay";
 
 const PAGE_SIZE = 10;
 
@@ -75,7 +76,9 @@ export default function OemListingRequests() {
         ? productLabel.includes(productName.toLowerCase())
         : true;
       const matchesStatus = statusFilter ? status === statusFilter : true;
-      const matchesCategory = categoryFilter ? product.category === categoryFilter : true;
+      const matchesCategory = categoryFilter
+        ? getProductCategoryName(product) === categoryFilter
+        : true;
 
       return matchesDistributor && matchesProduct && matchesStatus && matchesCategory;
     });
@@ -86,7 +89,11 @@ export default function OemListingRequests() {
     currentPage * PAGE_SIZE,
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const categories = [...new Set(products.map((product) => product.category).filter(Boolean))];
+  const categories = [
+    ...new Set(
+      products.map((product) => getProductCategoryName(product)).filter(Boolean),
+    ),
+  ];
   const totalBreakdown = buildCategoryBreakdown(products);
   const approvedBreakdown = buildCategoryBreakdown(approvedProducts);
   const pendingBreakdown = buildCategoryBreakdown(pendingProducts);
@@ -295,7 +302,7 @@ export default function OemListingRequests() {
                           </div>
                         </TableCell>
                         <TableCell className="whitespace-nowrap">{product.name}</TableCell>
-                        <TableCell>{product.category}</TableCell>
+                        <TableCell>{getProductCategoryName(product)}</TableCell>
                         <TableCell className="whitespace-nowrap">
                           {formatCurrency(product.pricePerUnit)}
                         </TableCell>

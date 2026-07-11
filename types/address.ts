@@ -1,7 +1,8 @@
 /**
  * Saved delivery address living in the authenticated user's address book.
- * Backed by the `/auth/addresses` routes. Buy Now resolves the order's delivery
- * address from one of these (by `_id`) or the user's default when none is given.
+ * Backed by the `/auth/delivery-addresses` routes. Buy Now resolves the order's
+ * delivery address from one of these (by `_id`) or the user's default when none
+ * is given.
  */
 export interface UserAddress {
   _id: string;
@@ -13,7 +14,7 @@ export interface UserAddress {
   isDefault?: boolean;
 }
 
-/** Request body for POST /auth/addresses. */
+/** Request body for POST /auth/delivery-addresses. */
 export interface AddAddressPayload {
   address: string;
   city: string;
@@ -24,7 +25,7 @@ export interface AddAddressPayload {
   isDefault?: boolean;
 }
 
-/** Request body for PATCH /auth/addresses/:addressId — all fields optional. */
+/** Request body for PATCH /auth/delivery-addresses/:addressId — all optional. */
 export type UpdateAddressPayload = Partial<AddAddressPayload>;
 
 /**

@@ -41,6 +41,7 @@ import {
 import * as Popover from "@radix-ui/react-popover";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { useDistributorInboxQuery } from "@/hooks/queries/rfqs";
+import { useCategoriesQuery } from "@/hooks/queries/categories";
 import { QUOTE_STATUS_LABELS } from "@/types/rfq";
 import type { Quote, Rfq, UserRef, ProductRef } from "@/types/rfq";
 import rfqService from "@/services/rfqService";
@@ -88,6 +89,13 @@ function DistributorQuotesPageInner() {
     isLoading,
     refetch: refetchInbox,
   } = useDistributorInboxQuery();
+  // RFQ product refs carry `category` as a bare id (the RFQ populate selects the
+  // field but doesn't expand the Category doc). Resolve it to a readable name.
+  const { data: categories } = useCategoriesQuery({ page: 1, limit: 50 });
+  const categoryNameById = useMemo(
+    () => new Map((categories ?? []).map((c) => [c._id, c.name])),
+    [categories],
+  );
 
   // ── Table / filter state ──────────────────────────────────────────────────
   const [productNameFilter, setProductNameFilter] = useState("");
@@ -359,7 +367,14 @@ function DistributorQuotesPageInner() {
       <div className="space-y-6">
         <DetailField label="Buyer name" value={buyerName} />
         <DetailField label="Product name" value={item?.productName} />
-        <DetailField label="Category" value={product?.category} />
+        <DetailField
+          label="Category"
+          value={
+            product?.category
+              ? categoryNameById.get(product.category) ?? product.category
+              : undefined
+          }
+        />
         <DetailField label="Model" value={item?.model} />
         <DetailField
           label="Quantity"

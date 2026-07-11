@@ -2,10 +2,18 @@ import {
   PublicProfileData,
   PublicProfileDetailResponse,
   PublicProfileResponse,
+  UserData,
   UserResponse,
   UserRole,
 } from "@/types/user";
 import { apiUrl } from "@/utils/api-base-url";
+
+/** Envelope returned by GET /users/:id — a user plus their authored products. */
+export interface UserDetailResponse {
+  success: boolean;
+  message: string;
+  data: UserData;
+}
 
 const parseErrorMessage = async (response: Response, fallback: string) => {
   try {
@@ -106,6 +114,32 @@ export const userService = {
       throw new Error(
         await parseErrorMessage(response, "Failed to fetch public profiles")
       );
+    }
+
+    return response.json();
+  },
+
+  async getUserById(
+    token: string,
+    id: string,
+    populate?: string,
+  ): Promise<UserDetailResponse> {
+    const url = new URL(apiUrl(`/users/${id}`));
+    if (populate) {
+      url.searchParams.append("populate", populate);
+    }
+
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      throw new Error(await parseErrorMessage(response, "Failed to fetch user"));
     }
 
     return response.json();
