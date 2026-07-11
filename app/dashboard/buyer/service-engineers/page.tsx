@@ -99,9 +99,11 @@ function BuyerEngineerCard({ engineer }: { engineer: PublicProfileData }) {
         <div className="flex flex-col justify-center gap-[17px]">
           {/* Row 1: name | phone — gap 89px */}
           <div className="flex flex-row items-center gap-[89px]">
-            <div className="flex flex-col gap-[2px]">
+            <div className="flex min-w-0 max-w-[180px] flex-col gap-[2px]">
               <p className="text-[12px] leading-[17px] text-[#6B7280]">Name of engineer</p>
-              <p className="text-sm text-[#111827]">{fullName}</p>
+              <p className="truncate text-sm text-[#111827]" title={fullName}>
+                {fullName}
+              </p>
             </div>
             <div className="flex flex-col gap-[2px]">
               <p className="text-[12px] leading-[17px] text-[#6B7280]">Phone number</p>

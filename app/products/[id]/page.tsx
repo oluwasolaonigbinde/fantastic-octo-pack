@@ -15,6 +15,7 @@ import { PublicLayout } from "@/components/layout";
 import Banner from "@/components/features/public/Banner";
 import ProductImageGallery from "./ProductImageGallery";
 import ProductInfo from "./ProductInfo";
+import MarkdownContent from "@/components/product/MarkdownContent";
 import RelatedProducts from "./RelatedProducts";
 import ConfirmOrderModal from "./ConfirmOrderModal";
 import EditDeliveryAddressModal from "./EditDeliveryAddressModal";
@@ -286,8 +287,8 @@ export default function ProductDetailsPage() {
     sellerLocation,
   ]);
 
-  const productOverviewText =
-    product?.description?.trim() ||
+  const productDescription = product?.description?.trim() ?? "";
+  const productOverviewFallback =
     "Product overview will appear here once the seller provides a detailed description for buyers.";
 
   const persistPendingAuthIntent = useCallback(
@@ -697,7 +698,9 @@ export default function ProductDetailsPage() {
               title={product.name}
               availabilityLabel={getProductAvailabilityLabel(product)}
               price={product.pricePerUnit || 0}
+              condition={product.condition}
               isSellerVerified={Boolean(createdBy?.isEmailVerified)}
+              sellerRole={createdBy?.role}
               isOemVerified={product.oemApprovalStatus === "approved"}
               onSendInquiry={handleSendInquiry}
               onOrderNow={handleOrderNow}
@@ -742,9 +745,16 @@ export default function ProductDetailsPage() {
             <h2 className="text-xl font-semibold leading-8 text-[#111827] md:text-2xl md:leading-9">
               Product Overview
             </h2>
-            <p className="max-w-[1199px] text-sm leading-7 text-[#4B5563] md:text-base md:leading-8">
-              {productOverviewText}
-            </p>
+            {productDescription ? (
+              <MarkdownContent
+                content={productDescription}
+                className="max-w-[1199px]"
+              />
+            ) : (
+              <p className="max-w-[1199px] text-sm leading-7 text-[#4B5563] md:text-base md:leading-8">
+                {productOverviewFallback}
+              </p>
+            )}
           </section>
 
           <section className="space-y-4">

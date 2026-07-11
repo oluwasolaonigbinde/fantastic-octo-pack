@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { CheckSquare, MapPin } from "lucide-react";
+import ConditionBadge from "@/components/product/ConditionBadge";
 import { ProductImage } from "@/types/product";
 
 const LOCAL_PRODUCT_PLACEHOLDER_SRC = "/images/product 2.webp";
@@ -35,10 +36,6 @@ export default function ProductCard({
       ? LOCAL_PRODUCT_PLACEHOLDER_SRC
       : resolvedImageSrc;
 
-  const conditionLabel = condition
-    ? condition.charAt(0).toUpperCase() + condition.slice(1)
-    : null;
-
   return (
     <Link href={`/products/${id}`} className="block h-full" prefetch={false}>
       <div className="flex h-full cursor-pointer flex-col overflow-hidden rounded-[24px] border border-[#DDE0E5] bg-white transition-shadow duration-300 hover:shadow-[0_18px_40px_rgba(15,23,42,0.08)]">
@@ -60,6 +57,7 @@ export default function ProductCard({
               }}
             />
           </div>
+          <ConditionBadge condition={condition} overlay />
         </div>
 
         {/* Title */}
@@ -97,14 +95,6 @@ export default function ProductCard({
               </p>
             </div>
           </div>
-        </div>
-
-        {/* Condition bar */}
-        <div className="mt-auto w-full px-4 pb-4">
-          <p className="text-[18px] leading-[28px] text-[#4B5563]">
-            Condition:{" "}
-            <span className="font-semibold">{conditionLabel ?? "N/A"}</span>
-          </p>
         </div>
       </div>
     </Link>

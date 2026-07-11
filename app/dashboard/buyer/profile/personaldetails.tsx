@@ -144,8 +144,13 @@ const PersonalDetails = () => {
             accept="image/png, image/jpg, image/jpeg"
           />
 
-          <div>
-            <h2 className="medium4 capitalize">{`${data.firstName || "User"} ${data.lastName || ""}`}</h2>
+          <div className="min-w-0 max-w-[220px] sm:max-w-xs">
+            <h2
+              className="medium4 truncate capitalize"
+              title={`${data.firstName || "User"} ${data.lastName || ""}`}
+            >
+              {`${data.firstName || "User"} ${data.lastName || ""}`}
+            </h2>
             <p className="inline-flex flex-col gap-2 text-sm leading-3 md:flex-row md:items-center">
               <span>{roleDisplayLabel(data.role)}</span> | {data.email}
             </p>
@@ -188,9 +193,14 @@ const PersonalDetails = () => {
 
       <div className="mt-6 h-[calc(100vh-24rem)] space-y-6 overflow-auto">
         <div className="flex flex-col gap-6 md:flex-row">
-          <div>
+          <div className="min-w-0 max-w-xs">
             <p className="text-sm text-gray3">Name</p>
-            <p>{`${data.firstName || "Firstname"} ${data.lastName || "Lastname"}`}</p>
+            <p
+              className="truncate"
+              title={`${data.firstName || "Firstname"} ${data.lastName || "Lastname"}`}
+            >
+              {`${data.firstName || "Firstname"} ${data.lastName || "Lastname"}`}
+            </p>
           </div>
           <div>
             <p className="text-sm text-gray3">Email address</p>

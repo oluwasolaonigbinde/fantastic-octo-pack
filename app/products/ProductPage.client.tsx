@@ -339,8 +339,10 @@ const ProductPage = () => {
 
       <div className="flex-1 bg-white px-4 py-8 md:px-8 lg:px-16">
         <div className="max-w-7xl mx-auto">
-          {/* Mobile: horizontal chip filter bar */}
-          <div className="sticky top-[80px] z-40 -mx-4 mb-4 block border-b border-[#E7EBF2] bg-white px-4 py-2 shadow-[0_6px_18px_rgba(15,37,79,0.06)] lg:hidden">
+          {/* Mobile + tablet: horizontal chip filter bar. Kept until xl so
+              tablets (iPad Air/Pro) get a full-width grid instead of a cramped
+              sidebar + grid split. */}
+          <div className="sticky top-[80px] z-40 -mx-4 mb-4 block border-b border-[#E7EBF2] bg-white px-4 py-2 shadow-[0_6px_18px_rgba(15,37,79,0.06)] xl:hidden">
             <FilterChipBar
               counts={filterCounts}
               filters={filters}
@@ -352,9 +354,9 @@ const ProductPage = () => {
             />
           </div>
 
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* Desktop: vertical sidebar */}
-            <div className="hidden lg:block lg:sticky lg:top-8 lg:h-fit">
+          <div className="flex flex-col xl:flex-row gap-6">
+            {/* Desktop: vertical sidebar (xl+ only, so tablets aren't cramped) */}
+            <div className="hidden xl:block xl:sticky xl:top-8 xl:h-fit">
               <FilterSidebar
                 key={[
                   filters.category ?? "",

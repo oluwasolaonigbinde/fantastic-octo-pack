@@ -226,6 +226,7 @@ export default function RegisterPage() {
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
         <Input
+          maxLength={50}
           {...register("firstName")}
           id="firstName"
           label="First name"
@@ -238,6 +239,7 @@ export default function RegisterPage() {
         />
 
         <Input
+          maxLength={50}
           {...register("lastName")}
           id="lastName"
           label="Last name"

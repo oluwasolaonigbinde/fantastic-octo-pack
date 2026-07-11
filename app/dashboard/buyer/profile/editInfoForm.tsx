@@ -99,6 +99,7 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
       <Input
         id="firstName"
+        maxLength={50}
         {...register("firstName", {
           onBlur: () => trigger("firstName"),
         })}
@@ -112,6 +113,7 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
       />
       <Input
         id="lastName"
+        maxLength={50}
         {...register("lastName", {
           onBlur: () => trigger("lastName"),
         })}
@@ -124,6 +126,7 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
       <Input label="Email address" value={data?.email || ""} disabled />
       <Input
         id="phoneNumber"
+        maxLength={20}
         {...register("phoneNumber", {
           onBlur: () => trigger("phoneNumber"),
         })}
@@ -151,6 +154,7 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
       <Input value={data?.role || ""} label="Role" disabled />
       <Textarea
         id="address"
+        maxLength={200}
         {...register("address", {
           onBlur: () => trigger("address"),
         })}

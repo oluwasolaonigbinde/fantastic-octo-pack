@@ -183,38 +183,47 @@ export default function Header({
                 </AvatarFallback>
               </Avatar>
 
-              <div className="hidden lg:block">
+              <div className="hidden lg:block min-w-0 max-w-[200px]">
                 {data?.role === UserRole.DISTRIBUTOR ? (
-                  <div className="flex flex-col gap-0.5">
-                    <p className="inline-flex items-center gap-2 text-sm font-medium whitespace-nowrap text-gray1">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <p
+                      className="truncate text-sm font-medium text-gray1"
+                      title={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                    >
                       {`Hello, ${data?.firstName || "User"} ${data?.lastName || ""}`}
                     </p>
-                    <p className="text-xs text-gray3">{data?.email}</p>
-                    <p className="inline-flex items-center gap-1 text-xs text-gray3">
+                    <p className="text-xs text-gray3 truncate">{data?.email}</p>
+                    <p className="inline-flex items-center gap-1 text-xs text-gray3 truncate">
                       {data?.kycBadgeLabel || "Registered seller"}
                       <BadgeCheck className="size-3.5 shrink-0 text-primary" aria-hidden />
                     </p>
                   </div>
                 ) : data?.role === UserRole.ENGINEER ? (
-                  <div className="flex flex-col gap-0.5">
-                    <p className="inline-flex items-center gap-2 text-sm font-medium whitespace-nowrap text-gray1">
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <p
+                      className="truncate text-sm font-medium text-gray1"
+                      title={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                    >
                       {`Hello, ${data?.firstName || "User"} ${data?.lastName || ""}`}
                     </p>
-                    <p className="text-xs text-gray3">{engineerIdentityEmail}</p>
-                    <p className="text-xs text-gray3">{secondaryIdentityLine}</p>
+                    <p className="text-xs text-gray3 truncate">{engineerIdentityEmail}</p>
+                    <p className="text-xs text-gray3 truncate">{secondaryIdentityLine}</p>
                   </div>
                 ) : (
                   <>
-                    <p className="inline-flex items-center justify-between w-full text-sm font-medium whitespace-nowrap text-gray1">
+                    <p
+                      className="truncate text-sm font-medium text-gray1"
+                      title={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                    >
                       {`Hello, ${data?.firstName || "User"} ${data?.lastName || ""}`}
                     </p>
                     {data?.role === UserRole.BUYER || data?.kycBadgeLabel ? (
                       <p className="text-xs text-gray3 inline-flex items-center gap-1">
-                        {secondaryIdentityLine}
+                        <span className="truncate">{secondaryIdentityLine}</span>
                         <BadgeCheck className="size-3.5 shrink-0 text-primary" aria-hidden />
                       </p>
                     ) : (
-                      <p className="text-xs text-gray3">{secondaryIdentityLine}</p>
+                      <p className="text-xs text-gray3 truncate">{secondaryIdentityLine}</p>
                     )}
                   </>
                 )}

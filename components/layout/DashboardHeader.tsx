@@ -72,13 +72,16 @@ export default function DashboardHeader({
                 </AvatarFallback>
               </Avatar>
 
-              <div className="hidden lg:block">
-                <p className="inline-flex items-center justify-between w-full text-sm whitespace-nowrap">
+              <div className="hidden lg:block min-w-0 max-w-[200px]">
+                <p
+                  className="truncate text-sm"
+                  title={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                >
                   {`Hello, ${data?.firstName || "User"} ${
                     data?.lastName || ""
                   }`}
                 </p>
-                <p className="text-xs text-gray3">{secondaryIdentityLine}</p>
+                <p className="text-xs text-gray3 truncate">{secondaryIdentityLine}</p>
               </div>
             </Link>
           </div>

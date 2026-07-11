@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowRight, CalendarDays, CheckSquare, MapPin } from "lucide-react";
 
+import ConditionBadge from "@/components/product/ConditionBadge";
 import SafeProductImage from "@/components/product/SafeProductImage";
 import type { Product } from "@/types/product";
 import {
@@ -25,14 +26,6 @@ function formatCurrency(value: number): string {
   })
     .format(value || 0)
     .replace(/^NGN\s?/, "\u20A6");
-}
-
-function formatConditionLabel(condition?: string | null): string {
-  if (!condition) {
-    return "New";
-  }
-
-  return condition.charAt(0).toUpperCase() + condition.slice(1).toLowerCase();
 }
 
 export default function RelatedProducts({
@@ -87,10 +80,7 @@ export default function RelatedProducts({
                     className="object-contain p-2 md:p-3"
                     sizes="(max-width: 640px) 50vw, 25vw"
                   />
-                  <div className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-[#FDF5EB] px-2 py-1 text-[10px] font-semibold text-[#AD7F59] md:left-4 md:top-4 md:text-xs">
-                    <span className="size-1.5 rounded-full bg-[#FE6E00]" />
-                    {formatConditionLabel(product.condition)}
-                  </div>
+                  <ConditionBadge condition={product.condition} overlay />
                 </div>
 
                 <div className="flex flex-1 flex-col p-3 md:p-4">
@@ -122,13 +112,7 @@ export default function RelatedProducts({
                     </span>
                   </div>
 
-                  <div className="mt-auto flex min-h-11 items-center justify-between gap-2 px-0 py-2 text-[11px] text-[#4B5563] md:min-h-12 md:text-xs">
-                    <span>
-                      Condition:{" "}
-                      <span className="font-medium text-[#344054]">
-                        {formatConditionLabel(product.condition)}
-                      </span>
-                    </span>
+                  <div className="mt-auto flex min-h-11 items-center justify-end gap-2 px-0 py-2 text-[11px] text-[#4B5563] md:min-h-12 md:text-xs">
                     <span className="inline-flex items-center gap-1 text-right">
                       <CalendarDays className="size-3 shrink-0 text-[#667085]" />
                       {product.delivery_time || "2 weeks lead time"}
