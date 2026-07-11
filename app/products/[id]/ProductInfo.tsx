@@ -1,12 +1,15 @@
 "use client";
 
 import { CheckCircle2, MessageCircle, ShieldCheck } from "lucide-react";
+import ConditionBadge from "@/components/product/ConditionBadge";
 
 interface ProductInfoProps {
   title: string;
   availabilityLabel: string;
   price: number;
+  condition?: string | null;
   isSellerVerified?: boolean;
+  sellerRole?: string | null;
   isOemVerified?: boolean;
   onSendInquiry?: () => void;
   onOrderNow?: () => void;
@@ -28,7 +31,9 @@ export default function ProductInfo({
   title,
   availabilityLabel,
   price,
+  condition,
   isSellerVerified = false,
+  sellerRole,
   isOemVerified = false,
   onSendInquiry,
   onOrderNow,
@@ -37,9 +42,12 @@ export default function ProductInfo({
   return (
     <div className="flex min-h-full w-full min-w-0 flex-col gap-0 md:h-[440px]">
       <div>
-        <h1 className="w-full text-2xl font-medium leading-8 text-black md:text-[28px] md:leading-9">
-          {title}
-        </h1>
+        <div className="flex flex-wrap items-start gap-3">
+          <h1 className="min-w-0 flex-1 text-2xl font-medium leading-8 text-black md:text-[28px] md:leading-9">
+            {title}
+          </h1>
+          <ConditionBadge condition={condition} size="md" className="mt-1" />
+        </div>
 
         <div className="mt-6 md:mt-8">
           <span className="sr-only">{availabilityLabel}</span>
@@ -50,7 +58,11 @@ export default function ProductInfo({
 
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <VerificationPill
-              label="Verified Seller"
+              label={
+                sellerRole === "distributor"
+                  ? "Verified Distributor"
+                  : "Verified Seller"
+              }
               isVisible={isSellerVerified}
             />
             <VerificationPill label="OEM Verified" isVisible={isOemVerified} />

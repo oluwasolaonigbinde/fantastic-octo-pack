@@ -85,8 +85,10 @@ export default function PersonalDetails() {
             />
           </div>
 
-          <div>
-            <h2 className="text-[30px] font-semibold text-gray1">{displayName}</h2>
+          <div className="min-w-0 max-w-[280px] sm:max-w-sm">
+            <h2 className="truncate text-[30px] font-semibold text-gray1" title={displayName}>
+              {displayName}
+            </h2>
             <p className="text-lg text-gray2">
               {(data?.role || "oem").replace("_", " ")} | {data?.email || "--"}
             </p>

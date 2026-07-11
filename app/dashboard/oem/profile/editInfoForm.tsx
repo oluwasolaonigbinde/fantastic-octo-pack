@@ -83,6 +83,7 @@ export default function EditInfoForm({ onClose }: EditInfoFormProps) {
     <>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
         <Input
+          maxLength={100}
           {...register("name")}
           id="oem-edit-name"
           label="Name"
@@ -90,6 +91,7 @@ export default function EditInfoForm({ onClose }: EditInfoFormProps) {
         />
         <Input id="oem-edit-email" label="Email address" value={data?.email || ""} disabled />
         <Input
+          maxLength={20}
           {...register("phoneNumber")}
           id="oem-edit-phone"
           label="Phone number"
@@ -108,6 +110,7 @@ export default function EditInfoForm({ onClose }: EditInfoFormProps) {
           options={[{ value: data?.role || "oem", label: (data?.role || "oem").replace("_", " ") }]}
         />
         <Textarea
+          maxLength={200}
           {...register("address")}
           id="oem-edit-address"
           label="Address"

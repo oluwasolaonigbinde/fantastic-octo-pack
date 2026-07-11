@@ -67,7 +67,10 @@ export function TeamMembersTable({ members }: TeamMembersTableProps) {
 
             return (
               <TableRow key={member.id}>
-                <TableCell className="font-medium text-gray1">
+                <TableCell
+                  className="max-w-[200px] truncate font-medium text-gray1"
+                  title={memberName(member)}
+                >
                   {memberName(member)}
                 </TableCell>
                 <TableCell className="text-gray2">{member.email}</TableCell>

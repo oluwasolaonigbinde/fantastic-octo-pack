@@ -17,6 +17,7 @@ import {
 import { useRouter } from "next/navigation";
 import type { Product, ProductImage } from "@/types/product";
 import { PublicLayout } from "@/components/layout";
+import ConditionBadge from "@/components/product/ConditionBadge";
 import SafeProductImage from "@/components/product/SafeProductImage";
 import { getProductAvailabilityLabel } from "@/utils/productDisplay";
 import { useRecommendedProductsQuery } from "@/hooks/queries/products";
@@ -437,6 +438,7 @@ export default function Home() {
                         sizes="(max-width: 640px) 50vw, (max-width: 1280px) 33vw, 25vw"
                         className="object-contain p-3 sm:p-4"
                       />
+                      <ConditionBadge condition={item.condition} overlay />
                     </div>
 
                     <div className="flex flex-1 flex-col gap-4 px-3 pb-4 pt-3 sm:px-4 sm:pt-4">
@@ -471,13 +473,6 @@ export default function Home() {
                           </p>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="px-3 pb-3 pt-0 text-sm text-[#4b5563] sm:px-4 sm:pb-4 sm:text-[18px]">
-                      <span>Condition: </span>
-                      <span className="font-semibold capitalize text-[#111827]">
-                        {item.condition || "New"}
-                      </span>
                     </div>
                   </button>
                 ))}

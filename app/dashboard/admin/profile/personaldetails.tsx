@@ -41,7 +41,10 @@ function DetailItem({ label, value }: { label: string; value?: string | null }) 
   return (
     <div className="min-w-0 space-y-0.5">
       <p className="text-sm leading-5 text-gray3">{label}</p>
-      <p className="break-words text-base leading-6 text-gray1">
+      <p
+        className="line-clamp-2 break-words text-base leading-6 text-gray1"
+        title={value || undefined}
+      >
         {value || "Not provided"}
       </p>
     </div>
@@ -101,8 +104,11 @@ export default function AdminPersonalDetails() {
                   className="size-full object-cover"
                 />
               </div>
-              <div className="min-w-0">
-                <h2 className="text-lg font-medium leading-6 text-gray1">
+              <div className="min-w-0 max-w-[220px] sm:max-w-xs">
+                <h2
+                  className="truncate text-lg font-medium leading-6 text-gray1"
+                  title={profile.name}
+                >
                   {profile.name}
                 </h2>
                 <p className="text-sm leading-5 text-gray1">Super Admin |</p>
@@ -167,6 +173,7 @@ export default function AdminPersonalDetails() {
             <Input
               label="Name"
               value={form.name}
+              maxLength={101}
               onChange={(event) =>
                 setForm((prev) => ({ ...prev, name: event.target.value }))
               }
@@ -212,6 +219,7 @@ export default function AdminPersonalDetails() {
               <span className="type-label font-medium text-gray2">Address</span>
               <textarea
                 value={form.address}
+                maxLength={200}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, address: event.target.value }))
                 }

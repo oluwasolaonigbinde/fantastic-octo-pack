@@ -11,11 +11,13 @@ export const RegisterSchema = z.object({
   firstName: z
     .string()
     .trim()
-    .min(1, "First name is required"),
+    .min(1, "First name is required")
+    .max(50, "First name must be 50 characters or fewer"),
   lastName: z
     .string()
     .trim()
-    .min(1, "Last name is required"),
+    .min(1, "Last name is required")
+    .max(50, "Last name must be 50 characters or fewer"),
   email: z
     .email()
     .trim()
