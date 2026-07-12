@@ -63,6 +63,16 @@ expectMatch(
 );
 expectMatch(authServiceFile, /apiUrl\("\/auth\/login"\)/, "auth service should use /auth/login");
 expectMatch(authServiceFile, /apiUrl\("\/auth\/logout"\)/, "auth service should use /auth/logout");
+expectMatch(
+  authServiceFile,
+  /apiUrl\("\/auth\/profile"\)[\s\S]*?method: "PATCH"/,
+  "profile updates should use PATCH /auth/profile",
+);
+expectMatch(
+  authServiceFile,
+  /const profileUpdateData = Object\.fromEntries\([\s\S]*?firstName:[\s\S]*?lastName:[\s\S]*?phoneNumber:[\s\S]*?address:/,
+  "profile updates should send only the documented personal profile fields",
+);
 
 expectMatch(userServiceFile, /apiUrl\("\/public\/profiles"\)/, "public profile list should use /public/profiles");
 expectMatch(
@@ -86,6 +96,11 @@ expectMatch(
   productServiceFile,
   /apiUrl\(`\/products\/\$\{id\}\?populate=createdBy,assignedOem`\)/,
   "product detail reads should use /products/:id",
+);
+expectNoMatch(
+  productDetailPageFile,
+  /getProductSpecificationItems\(product\)\.slice\(/,
+  "product detail should render every submitted specification",
 );
 expectMatch(
   productServiceFile,

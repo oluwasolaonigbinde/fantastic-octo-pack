@@ -47,7 +47,7 @@
   --radius-badge: var(--radius-scale-2);
   --control-height-sm: 40px;
   --control-height-md: 44px;
-  --control-height-lg: 60px;
+  --control-height-lg: 48px;
   --control-padding-x: var(--space-4);
   --control-label-gap: var(--space-1);
   --card-padding: var(--space-5);
@@ -106,6 +106,12 @@
   --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
   --sidebar-border: oklch(0.929 0.013 255.508);
   --sidebar-ring: oklch(0.704 0.04 256.788);
+}
+
+@media (min-width: 768px) {
+  :root {
+    --control-height-lg: 60px;
+  }
 }
 
 @theme inline {

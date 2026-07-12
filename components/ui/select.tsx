@@ -37,7 +37,7 @@ function SelectTrigger({
       data-slot="select-trigger"
       data-size={size}
       className={cn(
-        "type-body-md flex w-full items-center justify-between gap-2 whitespace-nowrap rounded-lg border border-gray5 bg-white pl-4 pr-[10px] text-gray1 outline-none transition-[border-color,box-shadow] data-[placeholder]:text-gray4 focus-visible:border-ring aria-invalid:border-destructive disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-11 data-[size=sm]:h-10 data-[size=lg]:h-[60px] data-[size=lg]:text-base data-[size=lg]:leading-6 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "type-body-md flex w-full items-center justify-between gap-2 whitespace-nowrap rounded-lg border border-gray5 bg-white pl-4 pr-[10px] text-gray1 outline-none transition-[border-color,box-shadow] data-[placeholder]:text-gray4 focus-visible:border-ring aria-invalid:border-destructive disabled:cursor-not-allowed disabled:opacity-50 data-[size=default]:h-11 data-[size=sm]:h-10 data-[size=lg]:h-12 md:data-[size=lg]:h-[60px] data-[size=lg]:text-base data-[size=lg]:leading-6 *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

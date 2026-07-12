@@ -54,7 +54,7 @@ function Field({
       <span className="block px-4 text-base leading-6 text-gray1">{label}</span>
       <span
         className={`mt-1 flex w-full rounded-[14px] border border-gray5 px-4 py-4 text-base leading-6 text-gray4 ${
-          textarea ? "h-[144px] items-start" : "h-[60px] items-center"
+          textarea ? "h-[144px] items-start" : "h-11 sm:h-[60px] items-center"
         }`}
       >
         <span className="min-w-0 flex-1">{placeholder}</span>
@@ -138,18 +138,18 @@ export default function AdminCreateRolePage() {
               </div>
             </div>
 
-            <div className="flex gap-5">
+            <div className="flex flex-col gap-5 sm:flex-row">
               <Button
                 title="Cancel"
                 variant="primaryLight"
                 iconLeft={<X size={18} />}
-                className="h-14 w-[218px] rounded-lg bg-[#EAF8FF]"
+                className="h-12 w-full sm:h-14 sm:w-[218px] rounded-lg bg-[#EAF8FF]"
                 type="button"
               />
               <Button
                 title="Proceed"
                 iconRight={<ArrowRight size={18} />}
-                className="h-14 w-[218px] rounded-lg"
+                className="h-12 w-full sm:h-14 sm:w-[218px] rounded-lg"
                 type="button"
               />
             </div>

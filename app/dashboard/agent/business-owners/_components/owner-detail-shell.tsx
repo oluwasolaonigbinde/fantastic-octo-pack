@@ -220,7 +220,7 @@ export function OwnerDetailShell({
                 <Link
                   key={tab.label}
                   href={tab.href(owner.id)}
-                  className={`${isActive ? "flex" : "hidden md:flex"} min-h-[56px] w-full min-w-0 flex-1 items-center justify-center px-4 text-sm transition md:min-w-[160px] ${
+                  className={`flex min-h-[56px] shrink-0 min-w-[110px] items-center justify-center px-4 text-sm transition md:w-full md:min-w-[160px] md:flex-1 md:shrink ${
                     isActive
                       ? "bg-[#0669D9] text-white"
                       : "bg-white text-[#111827] hover:bg-[#F9FAFB]"

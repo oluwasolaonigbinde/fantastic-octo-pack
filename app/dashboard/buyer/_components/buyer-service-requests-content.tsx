@@ -20,34 +20,45 @@ import {
 } from "@/types/service-request";
 
 import { OverviewSectionHeading } from "../../component/overview-primitives";
-import ServiceRequestDetailDrawer from "./service-request-detail-drawer";
+import ServiceRequestDetailPanel from "./service-request-detail-panel";
 
 function formatRequestId(id: string): string {
   const tail = String(id).slice(-6).toUpperCase();
   return `JR-${tail}`;
 }
 
-function formatSchedule(preferredDate: string, preferredTime?: string): string {
-  try {
-    const parsedDate = new Date(preferredDate);
-    const datePart = new Intl.DateTimeFormat("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "2-digit",
-    }).format(parsedDate);
-
-    return preferredTime ? `${datePart} - ${preferredTime}` : datePart;
-  } catch {
-    return preferredDate;
+function ordinalSuffix(day: number): string {
+  if (day >= 11 && day <= 13) return "th";
+  switch (day % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
   }
 }
 
-function formatCurrency(value?: number): string {
-  if (typeof value !== "number") {
-    return "--";
-  }
+/** e.g. "20th May, 2024" */
+function formatLongDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const day = parsed.getDate();
+  const month = new Intl.DateTimeFormat("en-US", { month: "long" }).format(parsed);
+  return `${day}${ordinalSuffix(day)} ${month}, ${parsed.getFullYear()}`;
+}
 
-  return `NGN ${value.toLocaleString("en-NG")}`;
+/** e.g. "10:30 AM" */
+function formatTime(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(parsed);
 }
 
 function getPartyName(party: ServiceRequestData["engineer"]): string {
@@ -69,14 +80,6 @@ function getPartyName(party: ServiceRequestData["engineer"]): string {
   return "--";
 }
 
-function getPartyPhone(party: ServiceRequestData["engineer"]): string {
-  if (party && typeof party === "object" && "phoneNumber" in party) {
-    return party.phoneNumber || "--";
-  }
-
-  return "--";
-}
-
 function tableStatusDisplay(status: ServiceRequestStatus): {
   label: string;
   className: string;
@@ -85,8 +88,9 @@ function tableStatusDisplay(status: ServiceRequestStatus): {
     case ServiceRequestStatus.PENDING:
       return { label: "Pending", className: "text-[#D89A2D]" };
     case ServiceRequestStatus.ACCEPTED:
+      return { label: "Accepted", className: "text-[#34A853]" };
     case ServiceRequestStatus.IN_PROGRESS:
-      return { label: "Ongoing", className: "text-[#D97627]" };
+      return { label: "In progress", className: "text-[#D97627]" };
     case ServiceRequestStatus.COMPLETED:
       return { label: "Completed", className: "text-[#34A853]" };
     case ServiceRequestStatus.REJECTED:
@@ -211,7 +215,7 @@ export function BuyerServiceRequestKpiStrip() {
   ];
 
   return (
-    <div className="grid gap-3 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {cards.map((card) => (
         <article
           key={card.title}
@@ -296,7 +300,7 @@ export function BuyerServiceRequestsFilterPanel({
             placeholder="Enter ID"
             value={requestIdFilter}
             onChange={(event) => onRequestIdChange(event.target.value)}
-            className="h-[60px] w-[250px] rounded-xl border border-[#E6ECF2] px-4 text-sm text-[#111827] outline-none placeholder:text-[#C4C8CE]"
+            className="h-11 w-full lg:h-[60px] lg:w-[250px] rounded-xl border border-[#E6ECF2] px-4 text-sm text-[#111827] outline-none placeholder:text-[#C4C8CE]"
           />
         </div>
         <div className="flex flex-col gap-1">
@@ -305,7 +309,7 @@ export function BuyerServiceRequestsFilterPanel({
             aria-label="Status filter"
             value={statusFilter}
             onChange={(event) => onStatusChange(event.target.value)}
-            className="h-[60px] w-[250px] rounded-xl border border-[#E6ECF2] bg-white px-4 text-sm text-[#111827] outline-none"
+            className="h-11 w-full lg:h-[60px] lg:w-[250px] rounded-xl border border-[#E6ECF2] bg-white px-4 text-sm text-[#111827] outline-none"
           >
             <option value="">Select status</option>
             <option value={ServiceRequestStatus.PENDING}>Pending</option>
@@ -324,14 +328,14 @@ export function BuyerServiceRequestsFilterPanel({
             type="date"
             value={dateFilter}
             onChange={(event) => onDateChange(event.target.value)}
-            className="h-[60px] w-[250px] rounded-xl border border-[#E6ECF2] px-4 text-sm text-[#111827] outline-none"
+            className="h-11 w-full lg:h-[60px] lg:w-[250px] rounded-xl border border-[#E6ECF2] px-4 text-sm text-[#111827] outline-none"
           />
         </div>
         <div className="flex items-end gap-3">
           <button
             type="button"
             onClick={onFilter}
-            className="inline-flex h-[60px] w-[250px] items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-white"
+            className="inline-flex h-11 w-full lg:h-[60px] lg:w-[250px] items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-white"
           >
             <Filter className="size-4" aria-hidden />
             Filter
@@ -339,7 +343,7 @@ export function BuyerServiceRequestsFilterPanel({
           <button
             type="button"
             onClick={onReset}
-            className="h-[60px] px-4 text-sm font-medium text-[#6B7280] hover:text-[#111827] transition-colors"
+            className="h-11 lg:h-[60px] px-4 text-sm font-medium text-[#6B7280] hover:text-[#111827] transition-colors"
           >
             Reset
           </button>
@@ -399,41 +403,78 @@ export function BuyerServiceRequestCards({
     );
   }
 
+  if (detailTarget) {
+    return (
+      <ServiceRequestDetailPanel
+        onClose={() => setDetailTargetId(null)}
+        request={detailTarget}
+      />
+    );
+  }
+
+  const isEmpty = filteredRequests.length === 0;
+  const emptyMessage =
+    serviceRequests.length === 0
+      ? "You have no service requests yet."
+      : "No service requests match the current filters.";
+
+  const renderAction = (request: ServiceRequestData) => {
+    const canContact =
+      request.status === ServiceRequestStatus.ACCEPTED ||
+      request.status === ServiceRequestStatus.IN_PROGRESS;
+
+    if (canContact) {
+      return (
+        <Link
+          href="/dashboard/buyer/messages"
+          onClick={(event) => event.stopPropagation()}
+          className="inline-flex items-center justify-center rounded-lg border border-primary px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/5"
+        >
+          Contact Engineer
+        </Link>
+      );
+    }
+
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          setDetailTargetId(request._id);
+        }}
+        className="inline-flex items-center gap-1.5 font-semibold text-primary"
+      >
+        <Eye className="size-4" strokeWidth={1.75} aria-hidden />
+        View
+      </button>
+    );
+  };
+
   return (
     <>
-      <div className="overflow-x-auto">
-        <table className="min-w-[920px] w-full border-separate border-spacing-0 text-left text-sm">
+      {/* Desktop table */}
+      <div className="hidden overflow-x-auto md:block">
+        <table className="min-w-[820px] w-full border-separate border-spacing-0 text-left text-sm">
           <thead>
             <tr className="text-xs font-medium text-[#6B7280]">
               <th className="border-b border-[#EEF2F7] px-4 py-3">Name of engineer</th>
-              <th className="border-b border-[#EEF2F7] px-4 py-3">Service type</th>
-              <th className="border-b border-[#EEF2F7] px-4 py-3">Price</th>
-              <th className="border-b border-[#EEF2F7] px-4 py-3">Description</th>
-              <th className="border-b border-[#EEF2F7] px-4 py-3">
-                Phone number
-              </th>
+              <th className="border-b border-[#EEF2F7] px-4 py-3">Equipment</th>
+              <th className="border-b border-[#EEF2F7] px-4 py-3">Service Type</th>
+              <th className="border-b border-[#EEF2F7] px-4 py-3">Date</th>
               <th className="border-b border-[#EEF2F7] px-4 py-3">Status</th>
               <th className="border-b border-[#EEF2F7] px-4 py-3">Action</th>
             </tr>
           </thead>
           <tbody>
-            {filteredRequests.length === 0 ? (
+            {isEmpty ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-[#6B7280]">
-                  {serviceRequests.length === 0
-                    ? "You have no service requests yet."
-                    : "No service requests match the current filters."}
+                <td colSpan={6} className="px-4 py-10 text-center text-[#6B7280]">
+                  {emptyMessage}
                 </td>
               </tr>
             ) : (
               filteredRequests.map((request) => {
                 const status = tableStatusDisplay(request.status);
-                const description = [request.equipmentName, request.serviceDescription]
-                  .filter(Boolean)
-                  .join(" - ");
-                const showMessaging =
-                  request.status === ServiceRequestStatus.ACCEPTED ||
-                  request.status === ServiceRequestStatus.IN_PROGRESS;
 
                 return (
                   <tr
@@ -443,63 +484,24 @@ export function BuyerServiceRequestCards({
                   >
                     <td className="px-4">
                       <div className="flex items-center gap-3">
-                        <span className="inline-flex size-9 shrink-0 rounded-md bg-[#E5E7EB]" />
-                        <span className="font-medium">
+                        <span className="inline-flex size-9 shrink-0 rounded-full bg-[#E5E7EB]" />
+                        <span className="font-medium whitespace-nowrap">
                           {getPartyName(request.engineer)}
                         </span>
                       </div>
                     </td>
-                    <td className="px-4">{request.jobType}</td>
+                    <td className="px-4 whitespace-nowrap">{request.equipmentName || "--"}</td>
+                    <td className="px-4 whitespace-nowrap">{request.jobType}</td>
                     <td className="px-4 whitespace-nowrap">
-                      {formatCurrency(request.price ?? request.unitPrice)}
+                      <span className="font-medium">{formatLongDate(request.createdAt)}</span>
+                      <span className="ml-2 text-xs text-[#9CA3AF]">
+                        {formatTime(request.createdAt)}
+                      </span>
                     </td>
-                    <td className="max-w-[280px] px-4 text-[#4B5563]">
-                      <span className="line-clamp-2">{description}</span>
-                    </td>
-                    <td className="px-4 whitespace-nowrap">
-                      {getPartyPhone(request.engineer)}
-                    </td>
-                    <td className={`px-4 font-medium ${status.className}`}>
+                    <td className={`px-4 font-medium whitespace-nowrap ${status.className}`}>
                       {status.label}
                     </td>
-                    <td className="px-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setDetailTargetId(request._id);
-                          }}
-                          className="inline-flex items-center gap-1.5 font-semibold text-primary"
-                        >
-                          <Eye className="size-4" strokeWidth={1.75} aria-hidden />
-                          View
-                        </button>
-
-                        {showMessaging ? (
-                          <Link
-                            href="/dashboard/buyer/messages"
-                            onClick={(event) => event.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-xs font-semibold text-primary underline-offset-2 hover:underline"
-                          >
-                            Open chat
-                            <ArrowRight className="size-3.5" aria-hidden />
-                          </Link>
-                        ) : null}
-
-                        {request.disputeActive ? (
-                          <span className="text-xs font-semibold text-[#B45309]">
-                            Dispute active
-                          </span>
-                        ) : null}
-
-                        {request.status === ServiceRequestStatus.CLOSED_AFTER_DISPUTE ? (
-                          <span className="text-xs text-[#6B7280]">
-                            Closed through dispute resolution
-                          </span>
-                        ) : null}
-                      </div>
-                    </td>
+                    <td className="px-4">{renderAction(request)}</td>
                   </tr>
                 );
               })
@@ -508,13 +510,61 @@ export function BuyerServiceRequestCards({
         </table>
       </div>
 
-      {detailTarget ? (
-        <ServiceRequestDetailDrawer
-          open
-          onClose={() => setDetailTargetId(null)}
-          request={detailTarget}
-        />
-      ) : null}
+      {/* Mobile cards */}
+      <div className="space-y-3 p-4 md:hidden">
+        {isEmpty ? (
+          <p className="py-10 text-center text-sm text-[#6B7280]">{emptyMessage}</p>
+        ) : (
+          filteredRequests.map((request) => {
+            const status = tableStatusDisplay(request.status);
+
+            return (
+              <button
+                key={request._id}
+                type="button"
+                onClick={() => setDetailTargetId(request._id)}
+                className="w-full rounded-2xl border border-[#EEF2F7] p-4 text-left"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex size-9 shrink-0 rounded-full bg-[#E5E7EB]" />
+                    <span className="font-medium text-[#111827]">
+                      {getPartyName(request.engineer)}
+                    </span>
+                  </div>
+                  <span className={`text-sm font-medium ${status.className}`}>
+                    {status.label}
+                  </span>
+                </div>
+
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <dt className="text-xs text-[#9CA3AF]">Equipment</dt>
+                    <dd className="text-[#111827]">{request.equipmentName || "--"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-[#9CA3AF]">Service Type</dt>
+                    <dd className="text-[#111827]">{request.jobType}</dd>
+                  </div>
+                  <div className="col-span-2">
+                    <dt className="text-xs text-[#9CA3AF]">Date</dt>
+                    <dd className="text-[#111827]">
+                      {formatLongDate(request.createdAt)}
+                      <span className="ml-2 text-xs text-[#9CA3AF]">
+                        {formatTime(request.createdAt)}
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
+
+                <div className="mt-4 flex justify-end" onClick={(event) => event.stopPropagation()}>
+                  {renderAction(request)}
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
     </>
   );
 }

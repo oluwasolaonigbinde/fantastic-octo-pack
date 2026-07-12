@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import {
+  ArrowLeft,
   ChevronDown,
   ChevronRight,
   Edit3,
@@ -504,7 +505,18 @@ export default function ConfirmOrderModal({
 
               {editView === "form" && (
                 <div className="space-y-5">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetForm();
+                        setEditView("list");
+                      }}
+                      aria-label="Back to choose address"
+                      className="flex h-8 w-8 items-center justify-center rounded-full text-[#111827] transition hover:bg-[#F3F4F6]"
+                    >
+                      <ArrowLeft size={18} />
+                    </button>
                     <h3 className="text-xl font-bold text-[#111827]">
                       {editingId ? "Edit Address" : "Add New Address"}
                     </h3>

@@ -94,7 +94,7 @@ function FilterField({
   return (
     <label className="block">
       <span className="mb-2 block px-4 text-sm text-[#111827]">{label}</span>
-      <span className="flex h-[60px] items-center rounded-xl border border-[#DDE0E5] bg-white px-4">
+      <span className="flex h-11 lg:h-[60px] items-center rounded-xl border border-[#DDE0E5] bg-white px-4">
         <input
           type={type}
           value={value}
@@ -579,7 +579,7 @@ export default function BuyerOrders() {
             )}
             <button
               type="button"
-              className="mt-6 inline-flex h-[60px] items-center justify-center gap-2 rounded-xl bg-primary px-8 text-sm text-white transition hover:bg-primary-dark"
+              className="mt-2 lg:mt-6 inline-flex h-11 lg:h-[60px] items-center justify-center gap-2 rounded-xl bg-primary px-8 text-sm text-white transition hover:bg-primary-dark"
             >
               <Filter size={17} />
               Filter

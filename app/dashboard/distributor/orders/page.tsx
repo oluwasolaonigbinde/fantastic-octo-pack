@@ -26,7 +26,7 @@ import {
 } from "@/lib/order-dispute-presenter";
 import { useOrdersQuery } from "@/hooks/queries/orders";
 import { useOrderDisputes } from "@/hooks/useOrderDisputes";
-import type { Order } from "@/types/order";
+import { isPaidOrderStatus, type Order } from "@/types/order";
 
 type ActiveTab = "orders" | "disputes";
 type OrderRow = {
@@ -55,6 +55,9 @@ const formatDate = (value: string) => {
     year: "numeric",
   }).format(parsed);
 };
+
+const formatOrderId = (id: string) =>
+  id.startsWith("ORD-") ? id : `ORD-${id.slice(-6).toUpperCase()}`;
 
 const toOrderRow = (order: Order): OrderRow => {
   const quantity = order.quantity ?? order.items?.[0]?.quantity ?? 1;
@@ -101,10 +104,14 @@ function FilterInput({
   label,
   placeholder,
   type = "text",
+  value,
+  onChange,
 }: {
   label: string;
   placeholder: string;
   type?: "text" | "date";
+  value?: string;
+  onChange?: (value: string) => void;
 }) {
   return (
     <label className="block">
@@ -112,7 +119,9 @@ function FilterInput({
       <input
         type={type}
         placeholder={placeholder}
-        className="h-14 w-full rounded-xl border border-[#DDE0E5] bg-white px-4 text-sm text-[#111827] outline-none placeholder:text-[#B9C0CC] focus:border-primary"
+        value={value}
+        onChange={(event) => onChange?.(event.target.value)}
+        className="h-11 lg:h-14 w-full rounded-xl border border-[#DDE0E5] bg-white px-4 text-sm text-[#111827] outline-none placeholder:text-[#B9C0CC] focus:border-primary"
       />
     </label>
   );
@@ -129,9 +138,7 @@ function MobileOrderList({
     <div className="mt-6 space-y-3 md:hidden">
       {orders.map((order) => {
         const statusTone = getOrderStatusTone(order.status);
-        const orderId = order.id.startsWith("ORD-")
-          ? order.id
-          : `ORD-${order.id.slice(-6).toUpperCase()}`;
+        const orderId = formatOrderId(order.id);
         return (
           <article
             key={order.id}
@@ -274,9 +281,35 @@ export default function DistributorOrdersPage() {
   const { data: orders, isLoading } = useOrdersQuery();
   const { disputes } = useOrderDisputes();
   const [activeTab, setActiveTab] = useState<ActiveTab>("orders");
+  const [orderIdQuery, setOrderIdQuery] = useState("");
+  const [statusQuery, setStatusQuery] = useState("");
+  const [dateQuery, setDateQuery] = useState("");
 
   const orderList = useMemo(() => (Array.isArray(orders) ? orders : []), [orders]);
   const displayOrders = orderList.length > 0 ? orderList.map(toOrderRow) : distributorDemoOrders;
+
+  // The distributor's list is only for orders they can act on: paid and onward.
+  // Unpaid/draft/pre-payment orders (created_pending_payment, payment_initiated,
+  // payment_failed, cancelled_pre_payment) have nothing for the distributor to do,
+  // so they're kept out of the table (metric cards below still count the full set).
+  const visibleOrders = useMemo(
+    () => displayOrders.filter((order) => isPaidOrderStatus(order.status)),
+    [displayOrders],
+  );
+
+  const filteredOrders = useMemo(() => {
+    const idQuery = orderIdQuery.toLowerCase().trim();
+    const status = statusQuery.toLowerCase().trim();
+    return visibleOrders.filter((order) => {
+      const matchesId = formatOrderId(order.id).toLowerCase().includes(idQuery);
+      const matchesStatus = getOrderStatusTone(order.status)
+        .label.toLowerCase()
+        .includes(status);
+      const matchesDate =
+        !dateQuery || new Date(order.createdAt).toISOString().startsWith(dateQuery);
+      return matchesId && matchesStatus && matchesDate;
+    });
+  }, [visibleOrders, orderIdQuery, statusQuery, dateQuery]);
 
   const displayDisputes = useMemo<BuyerDisputeRow[]>(() => {
     if (Array.isArray(disputes) && disputes.length > 0) {
@@ -413,15 +446,36 @@ export default function DistributorOrdersPage() {
                 Filter table list by:
               </p>
               <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr_1fr_1fr]">
-                <FilterInput label="Order ID" placeholder="Enter order ID" />
-                <FilterInput label="Order status" placeholder="Select status" />
-                <FilterInput label="Date created" placeholder="DD/MM/YY" type="date" />
+                <FilterInput
+                  label="Order ID"
+                  placeholder="Enter order ID"
+                  value={orderIdQuery}
+                  onChange={setOrderIdQuery}
+                />
+                <FilterInput
+                  label="Order status"
+                  placeholder="Select status"
+                  value={statusQuery}
+                  onChange={setStatusQuery}
+                />
+                <FilterInput
+                  label="Date created"
+                  placeholder="DD/MM/YY"
+                  type="date"
+                  value={dateQuery}
+                  onChange={setDateQuery}
+                />
                 <button
                   type="button"
-                  className="mt-6 inline-flex h-14 items-center justify-center gap-2 rounded-xl bg-primary px-8 text-sm text-white transition hover:bg-primary-dark"
+                  onClick={() => {
+                    setOrderIdQuery("");
+                    setStatusQuery("");
+                    setDateQuery("");
+                  }}
+                  className="mt-2 lg:mt-6 inline-flex h-11 lg:h-14 items-center justify-center gap-2 rounded-xl bg-primary px-8 text-sm text-white transition hover:bg-primary-dark"
                 >
                   <Filter size={16} />
-                  Filter
+                  Clear
                 </button>
               </div>
 
@@ -431,13 +485,21 @@ export default function DistributorOrdersPage() {
                   <Skeleton className="h-12" />
                   <Skeleton className="h-12" />
                 </div>
-              ) : displayOrders.length === 0 ? (
+              ) : filteredOrders.length === 0 ? (
                 <div className="mt-8">
-                  <EmptyState
-                    icon={<ShoppingBag />}
-                    title="No orders yet"
-                    description="When a buyer places an order from your quote, it will appear here."
-                  />
+                  {visibleOrders.length === 0 ? (
+                    <EmptyState
+                      icon={<ShoppingBag />}
+                      title="No orders yet"
+                      description="When a buyer places an order from your quote, it will appear here."
+                    />
+                  ) : (
+                    <EmptyState
+                      icon={<ShoppingBag />}
+                      title="No matching orders"
+                      description="No orders match your filters. Try clearing them to see all orders."
+                    />
+                  )}
                 </div>
               ) : (
                 <>
@@ -456,7 +518,7 @@ export default function DistributorOrdersPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {displayOrders.map((order) => {
+                      {filteredOrders.map((order) => {
                         const statusTone = getOrderStatusTone(order.status);
                         return (
                           <tr
@@ -465,9 +527,7 @@ export default function DistributorOrdersPage() {
                             className="cursor-pointer border-b border-[#F3F4F6]"
                           >
                             <td className="py-4 pr-4 text-[#111827]">
-                              {order.id.startsWith("ORD-")
-                                ? order.id
-                                : `ORD-${order.id.slice(-6).toUpperCase()}`}
+                              {formatOrderId(order.id)}
                             </td>
                             <td className="py-4 pr-4 text-[#111827]">
                               {order.productName}
@@ -506,7 +566,7 @@ export default function DistributorOrdersPage() {
                     </tbody>
                     </table>
                   </div>
-                  <MobileOrderList orders={displayOrders} onView={viewOrder} />
+                  <MobileOrderList orders={filteredOrders} onView={viewOrder} />
                 </>
               )}
             </section>
@@ -551,7 +611,7 @@ export default function DistributorOrdersPage() {
                 <FilterInput label="Dispute ID" placeholder="Enter ID" />
                 <button
                   type="button"
-                  className="mt-6 inline-flex h-14 items-center justify-center gap-2 rounded-xl bg-primary px-8 text-sm text-white transition hover:bg-primary-dark"
+                  className="mt-2 lg:mt-6 inline-flex h-11 lg:h-14 items-center justify-center gap-2 rounded-xl bg-primary px-8 text-sm text-white transition hover:bg-primary-dark"
                 >
                   <Filter size={16} />
                   Filter

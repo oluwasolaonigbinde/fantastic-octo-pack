@@ -241,6 +241,18 @@ export default function AdminPaymentPage() {
       <Header title="Payment" description="View and track all invoice payment" />
 
       <div className="space-y-8 p-4 md:p-6">
+        <div className="flex gap-1 overflow-x-auto rounded-xl border border-gray5 bg-white p-1">
+          <span className="whitespace-nowrap rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white">
+            Transactions & Escrow
+          </span>
+          <Link
+            href="/dashboard/admin/payment/payouts"
+            className="whitespace-nowrap rounded-lg px-4 py-2.5 text-sm font-medium text-gray3 transition hover:bg-gray6"
+          >
+            Payout Requests
+          </Link>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             title="Total ESCROW balance"

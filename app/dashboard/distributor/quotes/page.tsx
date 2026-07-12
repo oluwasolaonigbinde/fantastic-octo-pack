@@ -620,7 +620,7 @@ function DistributorQuotesPageInner() {
             variant="primary"
             size="lg"
             onClick={() => setBulkSourceOpen(true)}
-            className="w-full sm:w-[250px] h-[60px] rounded-xl shrink-0 !text-base font-normal"
+            className="w-full sm:w-[250px] h-11 sm:h-[60px] rounded-xl shrink-0 !text-base font-normal"
           />
         </div>
 
@@ -663,7 +663,7 @@ function DistributorQuotesPageInner() {
                           dateFrom && dateTo ? `${dateFrom} - ${dateTo}` : dateFrom || ""
                         }
                         readOnly
-                        className="block w-full rounded-xl border border-gray5 px-4 py-3 pr-10 text-gray1 placeholder-gray4 focus:outline-none focus:border-gray2 text-base h-[60px] cursor-pointer"
+                        className="block w-full rounded-xl border border-gray5 px-4 py-3 pr-10 text-gray1 placeholder-gray4 focus:outline-none focus:border-gray2 text-base h-11 lg:h-[60px] cursor-pointer"
                       />
                       <Calendar className="absolute right-3 top-1/2 -translate-y-1/2 size-5 text-gray4 pointer-events-none" />
                     </div>
@@ -725,7 +725,7 @@ function DistributorQuotesPageInner() {
                 size="lg"
                 iconLeft={<SlidersHorizontal className="size-4" />}
                 onClick={handleApplyFilters}
-                className="h-[60px] w-full lg:w-[130px] rounded-xl shrink-0 !text-base font-normal border border-[#B3E5FC] bg-[#EAF9FF] text-[#017BED] hover:bg-[#ddf1fc]"
+                className="h-11 lg:h-[60px] w-full lg:w-[130px] rounded-xl shrink-0 !text-base font-normal border border-[#B3E5FC] bg-[#EAF9FF] text-[#017BED] hover:bg-[#ddf1fc]"
               />
 
               {/* All Items scope selector */}
@@ -736,7 +736,7 @@ function DistributorQuotesPageInner() {
                 >
                   <SelectTrigger
                     size="lg"
-                    className="h-[60px] rounded-xl border-gray5 bg-white text-gray2 gap-2"
+                    className="rounded-xl border-gray5 bg-white text-gray2 gap-2"
                   >
                     <SelectValue placeholder="All Items" />
                   </SelectTrigger>

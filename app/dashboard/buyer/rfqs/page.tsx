@@ -1189,7 +1189,7 @@ export default function BuyerRfqsPage() {
                   size="md"
                   iconLeft={<Plus size={18} strokeWidth={1.75} />}
                   onClick={handleOpenBulkCreate}
-                  className="!h-[60px] !w-full !min-w-[230px] !rounded-[14px] !border-secondary !bg-[#fff7f0] !px-4 !text-lg !font-normal !text-secondary sm:!w-auto"
+                  className="!h-11 sm:!h-[60px] !w-full !min-w-[230px] !rounded-[14px] !border-secondary !bg-[#fff7f0] !px-4 !text-lg !font-normal !text-secondary sm:!w-auto"
                 />
                 <Button
                   title="Send RFQ"
@@ -1197,7 +1197,7 @@ export default function BuyerRfqsPage() {
                   size="md"
                   iconLeft={<Plus size={18} strokeWidth={1.75} />}
                   onClick={handleOpenCreate}
-                  className="!h-[60px] !w-full !min-w-[230px] !rounded-[14px] !px-4 !text-lg !font-normal sm:!w-auto"
+                  className="!h-11 sm:!h-[60px] !w-full !min-w-[230px] !rounded-[14px] !px-4 !text-lg !font-normal sm:!w-auto"
                 />
               </div>
             </div>

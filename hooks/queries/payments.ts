@@ -12,7 +12,7 @@
  * `queryKeys.orders.all` / `queryKeys.wallet.all`.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { queryKeys } from "@/lib/query-keys";
@@ -20,6 +20,7 @@ import paymentService from "@/services/paymentService";
 import type {
   AllPaymentsQuery,
   MyPaymentsQuery,
+  PaymentListPagination,
   PaymentListResponse,
   PaymentTransaction,
 } from "@/types/payment";
@@ -59,6 +60,90 @@ export const useMyPaymentsQuery = (
       payments: normalizePayments(res),
       message: res.message,
     }),
+  });
+};
+
+/** Read the pagination envelope, synthesising one when the API returns a bare array. */
+const normalizePagination = (
+  res: PaymentListResponse,
+  limit: number,
+): PaymentListPagination => {
+  const data = res.data as unknown;
+  if (
+    data &&
+    typeof data === "object" &&
+    !Array.isArray(data) &&
+    "docs" in data
+  ) {
+    return data as PaymentListPagination;
+  }
+
+  const docs = Array.isArray(data) ? (data as PaymentTransaction[]) : [];
+  return {
+    docs,
+    totalDocs: docs.length,
+    limit: limit || docs.length || 20,
+    totalPages: 1,
+    page: 1,
+    hasNextPage: false,
+    hasPreviousPage: false,
+    nextPage: null,
+    previousPage: null,
+  };
+};
+
+/**
+ * Admin payout (withdrawal) requests. Forces `intent=withdrawal` and returns
+ * the raw pagination envelope so the payout screen can drive its own pager.
+ */
+export const useWithdrawalRequestsQuery = (
+  query: Omit<AllPaymentsQuery, "intent"> = {},
+  options?: { enabled?: boolean },
+) => {
+  const token = useAuthToken();
+  const merged: AllPaymentsQuery = { ...query, intent: "withdrawal" };
+
+  return useQuery({
+    queryKey: queryKeys.payments.withdrawals({ ...merged }),
+    queryFn: () => paymentService.fetchPayments(token as string, merged),
+    enabled: Boolean(token) && (options?.enabled ?? true),
+    select: (res) => ({
+      page: normalizePagination(res, merged.limit ?? 20),
+      message: res.message,
+    }),
+  });
+};
+
+/** Approve a pending payout, then refresh every payout/payment view. */
+export const useApproveWithdrawalMutation = () => {
+  const token = useAuthToken();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (transactionId: string) =>
+      paymentService.approveWithdrawal(token as string, transactionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.payments.all });
+    },
+  });
+};
+
+/** Reject a pending payout with an optional note, then refresh payout views. */
+export const useRejectWithdrawalMutation = () => {
+  const token = useAuthToken();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      transactionId,
+      note,
+    }: {
+      transactionId: string;
+      note?: string;
+    }) => paymentService.rejectWithdrawal(token as string, transactionId, note),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.payments.all });
+    },
   });
 };
 

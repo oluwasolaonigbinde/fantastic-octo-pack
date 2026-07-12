@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
+  ArrowRight,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -18,6 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
   PopUp,
+  Select,
   Spinner,
 } from "@/components/base";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
@@ -47,6 +49,16 @@ const formatNaira = (kobo: number) =>
 
 const intervalLabel = (interval: SubscriptionPlan["interval"]) =>
   interval === "yearly" ? "year" : "month";
+
+/** "monthly" ×9 → "9 months"; "yearly" ×1 → "1 year". */
+const billingPeriodLabel = (
+  interval: SubscriptionPlan["interval"],
+  intervalCount: number,
+) => {
+  const unit = intervalLabel(interval);
+  const count = intervalCount > 0 ? intervalCount : 1;
+  return count > 1 ? `${count} ${unit}s` : `1 ${unit}`;
+};
 
 const formatDate = (value?: string | null) => {
   if (!value) return "—";
@@ -126,11 +138,9 @@ function PlanCard({
   plan,
   isCurrent,
   subscribed,
-  currentPlanPrice,
   canAfford,
   isBusy,
   onSubscribe,
-  onChangePlan,
   onManage,
   onTopUp,
 }: {
@@ -138,14 +148,10 @@ function PlanCard({
   isCurrent: boolean;
   /** The caller already holds a live paid subscription. */
   subscribed: boolean;
-  /** Price (kobo) of the plan the caller is currently on — sets upgrade vs downgrade. */
-  currentPlanPrice: number;
   /** The wallet has enough available balance to pay for this plan. */
   canAfford: boolean;
   isBusy: boolean;
   onSubscribe: () => void;
-  /** Move an existing subscription to this plan (upgrade or downgrade). */
-  onChangePlan: () => void;
   onManage: () => void;
   onTopUp: () => void;
 }) {
@@ -231,9 +237,10 @@ function PlanCard({
         </div>
       </div>
 
-      {/* CTA. When the caller holds a live paid subscription, the current plan
-          shows Manage and every other plan (paid or free) offers an upgrade /
-          downgrade. Otherwise the free tier is the baseline and paid plans are
+      {/* CTA. The current paid plan shows Manage — upgrades and downgrades are
+          driven from that dialog, so no other plan card carries a change button
+          (there is deliberately no "downgrade to Free"). When the caller has no
+          paid subscription, the free tier is the baseline and paid plans are
           subscribable. */}
       <div className="mt-4">
         {isCurrent ? (
@@ -251,17 +258,7 @@ function PlanCard({
               Manage Subscription
             </button>
           )
-        ) : subscribed ? (
-          <button
-            type="button"
-            onClick={onChangePlan}
-            disabled={isBusy}
-            className="w-full rounded-[12px] border border-[#0669D9] py-2 text-sm font-medium text-[#0669D9] transition hover:bg-[#EAF9FF] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {plan.price > currentPlanPrice ? "Upgrade" : "Downgrade"} to{" "}
-            {plan.name}
-          </button>
-        ) : isFree ? null : (
+        ) : subscribed ? null : isFree ? null : (
           <>
             <Button
               title={`Subscribe to ${plan.name}`}
@@ -287,6 +284,219 @@ function PlanCard({
         )}
       </div>
     </article>
+  );
+}
+
+// ─── Upgrade / Downgrade Dialog ───────────────────────────────────────────────
+
+/**
+ * Shared plan-change dialog. The caller picks a target plan from a dropdown,
+ * sees the resulting fee (with collapsible billing period + features) and the
+ * proration preview, then confirms. `plans` is already filtered to the eligible
+ * tiers for the direction (upgrades: pricier plans; downgrades: cheaper *paid*
+ * plans — the Free tier is never offered here).
+ */
+function ChangePlanDialog({
+  open,
+  mode,
+  plans,
+  isMutating,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  mode: "upgrade" | "downgrade";
+  plans: SubscriptionPlan[];
+  isMutating: boolean;
+  onClose: () => void;
+  onConfirm: (planId: string) => void;
+}) {
+  const isUpgrade = mode === "upgrade";
+  // Local picker state. The parent remounts this dialog (via `key`) each time it
+  // opens, so the selection resets cleanly without a reset effect.
+  const [selectedId, setSelectedId] = useState("");
+  const [showBilling, setShowBilling] = useState(false);
+  const [showFeatures, setShowFeatures] = useState(false);
+
+  const selected = plans.find((plan) => plan._id === selectedId) ?? null;
+
+  const { data: preview, isLoading: isPreviewLoading } =
+    usePlanChangePreviewQuery(open && selectedId ? selectedId : null);
+
+  // Upgrades are charged now; block confirmation when the wallet can't cover it.
+  const blockedByBalance = Boolean(
+    isUpgrade && preview && preview.amountDue > 0 && !preview.sufficientBalance,
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={() => !isMutating && onClose()}>
+      <DialogContent className="max-w-[440px] rounded-[20px] bg-white p-6">
+        <DialogHeader>
+          <DialogTitle className="text-[18px] font-semibold text-[#111827]">
+            {isUpgrade
+              ? "Upgrade Subscription Plan"
+              : "Downgrade Subscription Plan"}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="mt-4 space-y-4">
+          {plans.length === 0 ? (
+            <p className="rounded-[12px] bg-[#F9FAFB] px-4 py-6 text-center text-sm text-[#6B7280]">
+              No {isUpgrade ? "higher" : "lower"}-tier plans are available right
+              now.
+            </p>
+          ) : (
+            <Select
+              label="Select new plan"
+              placeholder="Select new plan"
+              value={selectedId}
+              onValueChange={setSelectedId}
+              options={plans.map((plan) => ({
+                label: `${plan.name} — ${formatNaira(plan.price)}`,
+                value: plan._id,
+              }))}
+            />
+          )}
+
+          {selected ? (
+            <div className="rounded-[12px] border border-[#22C55E] bg-white p-4">
+              <p className="text-sm text-[#6B7280]">Your new fee will be</p>
+              <p className="mt-1 text-lg font-semibold text-[#16A34A]">
+                {formatNaira(selected.price)} /{" "}
+                {intervalLabel(selected.interval)}
+              </p>
+              <p className="text-xs text-[#6B7280]">
+                {formatNaira(selected.price)} billed{" "}
+                {selected.interval === "yearly" ? "yearly" : "monthly"}
+                {selected.intervalCount > 1
+                  ? ` (every ${billingPeriodLabel(selected.interval, selected.intervalCount)})`
+                  : ""}
+              </p>
+
+              {/* Billing Period — collapsible */}
+              <div className="mt-3 border-t border-[#E5E7EB] pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowBilling((v) => !v)}
+                  className="flex w-full items-center justify-between"
+                >
+                  <span className="text-base font-semibold text-[#111827]">
+                    Billing Period
+                  </span>
+                  {showBilling ? (
+                    <ChevronUp className="size-4 text-[#4B5563]" />
+                  ) : (
+                    <ChevronDown className="size-4 text-[#4B5563]" />
+                  )}
+                </button>
+                {showBilling ? (
+                  <p className="mt-1 text-sm text-[#6B7280]">
+                    Billed every{" "}
+                    {billingPeriodLabel(
+                      selected.interval,
+                      selected.intervalCount,
+                    )}
+                    .
+                  </p>
+                ) : null}
+              </div>
+
+              {/* Features — collapsible */}
+              <div className="mt-3 border-t border-[#E5E7EB] pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowFeatures((v) => !v)}
+                  className="flex w-full items-center justify-between"
+                >
+                  <span className="text-base font-semibold text-[#111827]">
+                    Features
+                  </span>
+                  {showFeatures ? (
+                    <ChevronUp className="size-4 text-[#4B5563]" />
+                  ) : (
+                    <ChevronDown className="size-4 text-[#4B5563]" />
+                  )}
+                </button>
+                {showFeatures ? (
+                  <ul className="mt-1 space-y-1">
+                    {selected.features.length === 0 ? (
+                      <li className="text-xs text-[#6B7280]">
+                        No features listed.
+                      </li>
+                    ) : (
+                      selected.features.map((feature) => (
+                        <li
+                          key={feature.key}
+                          className="flex items-center justify-between text-xs text-[#4B5563]"
+                        >
+                          <span>{humanizeFeatureKey(feature.key)}</span>
+                          <span className="font-medium text-[#111827]">
+                            {featureValueLabel(feature)}
+                          </span>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Proration / cost preview from the backend. */}
+          {selected ? (
+            <div className="text-sm">
+              {isPreviewLoading ? (
+                <p className="text-[#6B7280]">Calculating cost…</p>
+              ) : preview ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#6B7280]">Due now</span>
+                    <span className="font-semibold text-[#111827]">
+                      {preview.amountDue > 0
+                        ? formatNaira(preview.amountDue)
+                        : "₦0.00"}
+                    </span>
+                  </div>
+                  {preview.changeType === "downgrade" ? (
+                    <p className="mt-1 text-[#6B7280]">
+                      Takes effect {formatDate(preview.effectiveAt)} — no charge
+                      now.
+                    </p>
+                  ) : preview.proration && preview.amountDue > 0 ? (
+                    <p className="mt-1 text-[#6B7280]">
+                      Prorated for the rest of your current billing cycle.
+                    </p>
+                  ) : null}
+                  {blockedByBalance ? (
+                    <p className="mt-1 font-medium text-[#E33C13]">
+                      Insufficient wallet balance to cover this upgrade.
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <p className="text-[#6B7280]">
+                  The billing difference will be settled on your next invoice.
+                </p>
+              )}
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            disabled={!selected || isMutating || blockedByBalance}
+            onClick={() => selected && onConfirm(selected._id)}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-[12px] bg-[#0669D9] text-sm font-medium text-white transition disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isMutating
+              ? "Applying…"
+              : isUpgrade
+                ? "Upgrade"
+                : "Downgrade"}
+            {!isMutating ? <ArrowRight className="size-4" /> : null}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -329,16 +539,11 @@ export default function DistributorSubscriptions() {
   const [showManageModal, setShowManageModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [pendingPlanId, setPendingPlanId] = useState<string | null>(null);
-  /** The plan the caller is about to upgrade/downgrade to (confirmation modal). */
-  const [changeTarget, setChangeTarget] = useState<SubscriptionPlan | null>(
+  /** Which plan-change dialog is open (driven from the Manage dialog). */
+  const [changeMode, setChangeMode] = useState<"upgrade" | "downgrade" | null>(
     null,
   );
 
-  const {
-    data: changePreview,
-    isLoading: isPreviewLoading,
-    isError: isPreviewError,
-  } = usePlanChangePreviewQuery(changeTarget?._id ?? null);
   const [popup, setPopup] = useState<{
     type: "success" | "warning";
     title: string;
@@ -400,6 +605,31 @@ export default function DistributorSubscriptions() {
   const currentPlanId = currentPlan?._id ?? null;
   const currentPlanPrice =
     currentPlan?.price ?? subscription?.planSnapshot?.price ?? 0;
+  // Billing cadence for the Manage dialog — prefer the frozen snapshot.
+  const currentInterval =
+    subscription?.planSnapshot?.interval ?? currentPlan?.interval ?? "monthly";
+  const currentIntervalCount =
+    subscription?.planSnapshot?.intervalCount ?? currentPlan?.intervalCount ?? 1;
+
+  // Eligible targets for each direction. Downgrades stay above ₦0 — there is no
+  // downgrade to the Free tier.
+  const upgradePlans = useMemo(
+    () =>
+      availablePlans.filter(
+        (plan) => plan._id !== currentPlanId && plan.price > currentPlanPrice,
+      ),
+    [availablePlans, currentPlanId, currentPlanPrice],
+  );
+  const downgradePlans = useMemo(
+    () =>
+      availablePlans.filter(
+        (plan) =>
+          plan._id !== currentPlanId &&
+          plan.price > 0 &&
+          plan.price < currentPlanPrice,
+      ),
+    [availablePlans, currentPlanId, currentPlanPrice],
+  );
 
   const handleSubscribe = async (plan: SubscriptionPlan) => {
     // Frontend guard — don't attempt to subscribe when the wallet can't cover
@@ -437,12 +667,12 @@ export default function DistributorSubscriptions() {
     });
   };
 
-  const handleConfirmChangePlan = async () => {
-    if (!changeTarget) return;
-    const target = changeTarget;
+  const handleConfirmChangePlan = async (planId: string) => {
+    const target = availablePlans.find((plan) => plan._id === planId);
+    if (!target) return;
     const isUpgrade = target.price > currentPlanPrice;
     const { ok, error } = await changePlan(target._id);
-    setChangeTarget(null);
+    setChangeMode(null);
     setShowManageModal(false);
     setPopup(
       ok
@@ -596,11 +826,9 @@ export default function DistributorSubscriptions() {
                       : plan.price <= 0
                   }
                   subscribed={hasPaidSubscription}
-                  currentPlanPrice={currentPlanPrice}
                   canAfford={availableBalance >= plan.price}
                   isBusy={isMutating && pendingPlanId === plan._id}
                   onSubscribe={() => handleSubscribe(plan)}
-                  onChangePlan={() => setChangeTarget(plan)}
                   onManage={() => setShowManageModal(true)}
                   onTopUp={() => handleTopUp(plan)}
                 />
@@ -610,26 +838,34 @@ export default function DistributorSubscriptions() {
         </section>
       </div>
 
-      {/* ── Manage Subscription Modal — cancel is the only action ── */}
+      {/* ── Manage Subscription Modal ── */}
       <Dialog open={showManageModal} onOpenChange={() => setShowManageModal(false)}>
-        <DialogContent className="max-w-[500px] rounded-[20px] bg-white p-8">
+        <DialogContent className="max-w-[460px] rounded-[20px] bg-white p-6">
           <DialogHeader>
             <DialogTitle className="text-[20px] font-semibold text-[#111827]">
-              Manage Subscription
+              Manage Subscriptions
             </DialogTitle>
           </DialogHeader>
-          <div className="mt-6 space-y-5">
-            <div className="rounded-[20px] border border-[#AAD3F3] bg-[#F6FBFF] px-5 py-4">
-              <p className="text-sm text-[#6B7280]">Current Plan</p>
-              <p className="mt-1 text-lg font-medium text-[#111827]">
-                {currentPlan?.name ?? subscription?.planSnapshot?.name ?? "Active plan"}
+          <div className="mt-5 space-y-5">
+            {/* Current plan summary */}
+            <div className="rounded-[16px] bg-[#EAF4FF] px-5 py-5">
+              <p className="text-sm font-medium text-[#3586E4]">Current Plan</p>
+              <p className="mt-1 text-[26px] font-semibold leading-tight text-[#111827]">
+                {currentPlan?.name ??
+                  subscription?.planSnapshot?.name ??
+                  "Active plan"}
               </p>
-              {subscription?.planSnapshot ? (
-                <p className="mt-1 text-sm text-[#6B7280]">
-                  {formatNaira(subscription.planSnapshot.price)} /{" "}
-                  {intervalLabel(subscription.planSnapshot.interval)}
-                </p>
-              ) : null}
+              <p className="mt-3 text-2xl font-semibold text-[#111827]">
+                {formatNaira(
+                  subscription?.planSnapshot?.price ?? currentPlanPrice,
+                )}
+              </p>
+              <p className="mt-1 text-sm text-[#6B7280]">
+                Billing period:{" "}
+                <span className="font-semibold text-[#111827]">
+                  {billingPeriodLabel(currentInterval, currentIntervalCount)}
+                </span>
+              </p>
               <p className="mt-3 text-sm text-[#6B7280]">
                 {subscription?.cancelAtPeriodEnd
                   ? `Cancellation scheduled — access ends ${formatDate(subscription?.currentPeriodEnd)}.`
@@ -637,6 +873,31 @@ export default function DistributorSubscriptions() {
               </p>
             </div>
 
+            {/* Upgrade / Downgrade */}
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowManageModal(false);
+                  setChangeMode("upgrade");
+                }}
+                className="flex h-12 w-full items-center justify-center rounded-[12px] bg-[#0669D9] text-sm font-medium text-white transition hover:bg-[#0559b8]"
+              >
+                Upgrade
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowManageModal(false);
+                  setChangeMode("downgrade");
+                }}
+                className="flex h-12 w-full items-center justify-center rounded-[12px] border border-[#FE6E00] bg-[#FFF7F0] text-sm font-medium text-[#FE6E00] transition hover:bg-[#FFEFE0]"
+              >
+                Downgrade
+              </button>
+            </div>
+
+            {/* Cancel */}
             {!subscription?.cancelAtPeriodEnd ? (
               <button
                 type="button"
@@ -644,7 +905,7 @@ export default function DistributorSubscriptions() {
                   setShowManageModal(false);
                   setShowCancelModal(true);
                 }}
-                className="w-full pt-2 text-center text-[16px] font-medium text-[#E33C13] underline"
+                className="w-full text-center text-[15px] font-medium text-[#FE6E00]"
               >
                 Cancel Subscription
               </button>
@@ -653,110 +914,25 @@ export default function DistributorSubscriptions() {
         </DialogContent>
       </Dialog>
 
-      {/* ── Change Plan (Upgrade / Downgrade) Confirmation Modal ── */}
-      <Dialog
-        open={changeTarget !== null}
-        onOpenChange={() => !isMutating && setChangeTarget(null)}
-      >
-        <DialogContent className="max-w-[500px] rounded-[20px] bg-white p-8">
-          <DialogHeader>
-            <DialogTitle className="text-[20px] font-semibold text-[#111827]">
-              {changeTarget && changeTarget.price > currentPlanPrice
-                ? "Upgrade plan"
-                : "Downgrade plan"}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="mt-6 space-y-5">
-            <div className="rounded-[20px] border border-[#AAD3F3] bg-[#F6FBFF] px-5 py-4">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-[#6B7280]">From</span>
-                <span className="font-medium text-[#111827]">
-                  {currentPlan?.name ??
-                    subscription?.planSnapshot?.name ??
-                    "Current plan"}{" "}
-                  ({formatNaira(currentPlanPrice)})
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between text-sm">
-                <span className="text-[#6B7280]">To</span>
-                <span className="font-medium text-[#111827]">
-                  {changeTarget?.name} ({formatNaira(changeTarget?.price ?? 0)}
-                  {changeTarget
-                    ? ` / ${intervalLabel(changeTarget.interval)}`
-                    : ""}
-                  )
-                </span>
-              </div>
-              <div className="mt-3 space-y-2 border-t border-[#DDE0E5] pt-3 text-sm">
-                {isPreviewLoading ? (
-                  <p className="text-[#6B7280]">Calculating cost…</p>
-                ) : isPreviewError || !changePreview ? (
-                  <p className="text-[#6B7280]">
-                    The billing difference will be settled on your next invoice.
-                  </p>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[#6B7280]">Due now</span>
-                      <span className="font-semibold text-[#111827]">
-                        {changePreview.amountDue > 0
-                          ? formatNaira(changePreview.amountDue)
-                          : "₦0.00"}
-                      </span>
-                    </div>
-                    {changePreview.changeType === "downgrade" ? (
-                      <p className="text-[#6B7280]">
-                        Takes effect {formatDate(changePreview.effectiveAt)} — no
-                        charge now.
-                      </p>
-                    ) : changePreview.proration ? (
-                      <p className="text-[#6B7280]">
-                        Prorated for the rest of your current billing cycle.
-                      </p>
-                    ) : null}
-                    {!changePreview.sufficientBalance &&
-                    changePreview.amountDue > 0 ? (
-                      <p className="font-medium text-[#E33C13]">
-                        Insufficient wallet balance to cover this upgrade.
-                      </p>
-                    ) : null}
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                onClick={() => setChangeTarget(null)}
-                disabled={isMutating}
-                className="flex h-12 flex-1 items-center justify-center rounded-[12px] border border-[#4B5563] text-sm font-medium text-[#4B5563] disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmChangePlan}
-                disabled={
-                  isMutating ||
-                  Boolean(
-                    changePreview &&
-                      changePreview.amountDue > 0 &&
-                      !changePreview.sufficientBalance,
-                  )
-                }
-                className="flex h-12 flex-1 items-center justify-center rounded-[12px] bg-[#0669D9] text-sm font-medium text-white disabled:opacity-60"
-              >
-                {isMutating
-                  ? "Applying…"
-                  : changeTarget && changeTarget.price > currentPlanPrice
-                    ? "Confirm upgrade"
-                    : "Confirm downgrade"}
-              </button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* ── Upgrade / Downgrade Plan Dialogs ── */}
+      <ChangePlanDialog
+        key={`upgrade-${changeMode === "upgrade"}`}
+        open={changeMode === "upgrade"}
+        mode="upgrade"
+        plans={upgradePlans}
+        isMutating={isMutating}
+        onClose={() => setChangeMode(null)}
+        onConfirm={handleConfirmChangePlan}
+      />
+      <ChangePlanDialog
+        key={`downgrade-${changeMode === "downgrade"}`}
+        open={changeMode === "downgrade"}
+        mode="downgrade"
+        plans={downgradePlans}
+        isMutating={isMutating}
+        onClose={() => setChangeMode(null)}
+        onConfirm={handleConfirmChangePlan}
+      />
 
       {/* ── Cancel Subscription Modal ── */}
       <Dialog open={showCancelModal} onOpenChange={() => !isMutating && setShowCancelModal(false)}>
@@ -791,7 +967,7 @@ export default function DistributorSubscriptions() {
               type="button"
               onClick={() => setShowCancelModal(false)}
               disabled={isMutating}
-              className="flex h-14 flex-1 items-center justify-center rounded-[12px] bg-[#0669D9] text-[16px] font-normal text-white disabled:opacity-60"
+              className="flex h-12 md:h-14 flex-1 items-center justify-center rounded-[12px] bg-[#0669D9] text-[16px] font-normal text-white disabled:opacity-60"
             >
               No don&apos;t cancel
             </button>
@@ -799,7 +975,7 @@ export default function DistributorSubscriptions() {
               type="button"
               onClick={handleCancel}
               disabled={isMutating}
-              className="flex h-14 flex-1 items-center justify-center rounded-[12px] border border-[#4B5563] text-[16px] font-normal text-[#4B5563] disabled:opacity-60"
+              className="flex h-12 md:h-14 flex-1 items-center justify-center rounded-[12px] border border-[#4B5563] text-[16px] font-normal text-[#4B5563] disabled:opacity-60"
             >
               {isMutating ? "Cancelling…" : "Yes Cancel"}
             </button>

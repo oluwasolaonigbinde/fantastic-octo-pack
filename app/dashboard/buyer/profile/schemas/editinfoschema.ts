@@ -21,18 +21,8 @@ export const editInfoSchema = z.object({
     .min(1, "Phone number is required")
     .min(10, "Please provide a valid phone number")
     .max(20, "Please provide a valid phone number"),
-  address: z
-    .string()
-    .trim()
-    .min(1, "Address is required")
-    .min(10, "Address must be at least 10 characters long")
-    .max(200, "Address must be 200 characters or fewer"),
-  dateOfBirth: z
-    .string()
-    .min(1, "Date of birth is required")
-    .refine((value) => !Number.isNaN(Date.parse(value)), {
-      message: "Please provide a valid date of birth",
-    }),
+  // Buyers manage a structured delivery-address book instead of a free-text
+  // profile address; PATCH /auth/profile ignores `address` for buyer accounts.
 });
 
 export type EditFormData = z.infer<typeof editInfoSchema>;

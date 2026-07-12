@@ -404,7 +404,7 @@ function OnboardingDrawer({
           <DetailItem label="Request date" value={request.requestDate} />
           <DetailItem label="Country" value={request.country} />
           <DetailItem label="Product category" value={request.category} />
-          <Button title="Review Onboarding Request" className="h-[60px] rounded-[14px]" />
+          <Button title="Review Onboarding Request" className="h-11 md:h-[60px] rounded-[14px]" />
         </div>
       ) : null}
     </RightSlider>
@@ -565,7 +565,7 @@ export default function AdminPlatformUsersPage() {
                 <Button
                   title="Add new agent"
                   iconLeft={<Plus size={18} />}
-                  className="h-[60px] w-full rounded-[12px] md:w-[250px]"
+                  className="h-11 md:h-[60px] w-full rounded-[12px] md:w-[250px]"
                   type="button"
                   onClick={() => {
                     window.location.assign(
@@ -667,7 +667,7 @@ export default function AdminPlatformUsersPage() {
                 <Button
                   title="Filter"
                   iconLeft={<Filter size={18} />}
-                  className="h-[60px] w-full rounded-[12px] md:w-[250px]"
+                  className="h-11 md:h-[60px] w-full rounded-[12px] md:w-[250px]"
                   type="button"
                   onClick={applyFilters}
                   isBusy={loading}
@@ -909,7 +909,7 @@ export default function AdminPlatformUsersPage() {
                 <Button
                   title="Filter"
                   iconLeft={<Filter size={18} />}
-                  className="h-[60px] w-full rounded-[12px] md:w-[250px]"
+                  className="h-11 md:h-[60px] w-full rounded-[12px] md:w-[250px]"
                   type="button"
                 />
               </div>

@@ -266,7 +266,7 @@ export default function BuyerPayments() {
             <button
               type="button"
               onClick={() => openTopUp()}
-              className="order-1 flex h-[60px] w-full items-center justify-center gap-3 rounded-lg bg-[#0669D9] text-lg text-white md:order-none"
+              className="order-1 flex h-12 w-full items-center justify-center gap-3 rounded-lg bg-[#0669D9] text-lg text-white md:order-none md:h-[60px]"
             >
               <span className="text-2xl leading-none">+</span>
               Top up
@@ -326,7 +326,7 @@ export default function BuyerPayments() {
             Filter table list by:
           </p>
 
-          <div className="mt-4 grid w-max grid-cols-[252px_252px_252px_252px] gap-5 md:w-full md:grid-cols-[minmax(0,252px)_minmax(0,252px)_minmax(0,252px)_minmax(180px,252px)]">
+          <div className="mt-4 grid w-full grid-cols-1 gap-4 sm:grid-cols-2 md:gap-5 md:grid-cols-[minmax(0,252px)_minmax(0,252px)_minmax(0,252px)_minmax(180px,252px)]">
             <label className="block">
               <span className="mb-2 block text-base leading-6 text-[#111827]">
                 Reference ID
@@ -335,7 +335,7 @@ export default function BuyerPayments() {
                 value={referenceId}
                 onChange={(event) => setReferenceId(event.target.value)}
                 placeholder="Enter reference ID"
-                className="h-[60px] w-full rounded-xl border border-[#DDE0E5] px-4 text-base outline-none placeholder:text-[#C4C8CE]"
+                className="h-11 md:h-[60px] w-full rounded-xl border border-[#DDE0E5] px-4 text-base outline-none placeholder:text-[#C4C8CE]"
               />
             </label>
             <label className="block">
@@ -346,7 +346,7 @@ export default function BuyerPayments() {
                 <select
                   value={transactionType}
                   onChange={(event) => setTransactionType(event.target.value)}
-                  className="h-[60px] w-full appearance-none rounded-xl border border-[#DDE0E5] bg-white px-4 pr-11 text-base text-[#6B7280] outline-none"
+                  className="h-11 md:h-[60px] w-full appearance-none rounded-xl border border-[#DDE0E5] bg-white px-4 pr-11 text-base text-[#6B7280] outline-none"
                 >
                   <option value="">All types</option>
                   <option value="ESCROW">ESCROW</option>
@@ -370,7 +370,7 @@ export default function BuyerPayments() {
                   value={dateCreated}
                   onChange={(event) => setDateCreated(event.target.value)}
                   placeholder="DD/MM/YY"
-                  className="h-[60px] w-full rounded-xl border border-[#DDE0E5] px-4 pr-12 text-base outline-none placeholder:text-[#C4C8CE]"
+                  className="h-11 md:h-[60px] w-full rounded-xl border border-[#DDE0E5] px-4 pr-12 text-base outline-none placeholder:text-[#C4C8CE]"
                 />
                 <CalendarDays
                   size={20}
@@ -385,7 +385,7 @@ export default function BuyerPayments() {
                 setTransactionType(transactionType);
                 setDateCreated(dateCreated);
               }}
-              className="mt-8 flex h-[60px] items-center justify-center gap-3 rounded-lg bg-[#0669D9] text-base text-white"
+              className="flex h-11 md:h-[60px] items-center justify-center gap-3 rounded-lg bg-[#0669D9] text-base text-white md:mt-8"
             >
               <Filter size={18} />
               Filter

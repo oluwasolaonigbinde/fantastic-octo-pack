@@ -345,6 +345,18 @@ const updateUser = async (
   token: string,
   userData: UpdateUserData,
 ): Promise<AuthResponse> => {
+  // PATCH /auth/profile only accepts the personal profile fields below. The
+  // profile forms also carry legacy/date and role-specific fields; sending
+  // those whole form objects makes the API reject an otherwise valid update.
+  const profileUpdateData = Object.fromEntries(
+    Object.entries({
+      firstName: userData.firstName,
+      lastName: userData.lastName,
+      phoneNumber: userData.phoneNumber,
+      address: userData.address,
+    }).filter(([, value]) => value !== undefined),
+  );
+
   const response = await fetch(apiUrl("/auth/profile"), {
     method: "PATCH",
     headers: {
@@ -352,7 +364,7 @@ const updateUser = async (
       Authorization: `Bearer ${token}`,
     },
     credentials: "include",
-    body: JSON.stringify(userData),
+    body: JSON.stringify(profileUpdateData),
   });
 
   if (!response.ok) {

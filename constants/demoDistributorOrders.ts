@@ -215,6 +215,15 @@ export const getReadableStatusLabel = (
 export const getOrderStatusTone = (status: string | undefined) => {
   switch (status) {
     case "created_pending_payment":
+    case "payment_initiated":
+      return {
+        label: "Awaiting payment",
+        className: "bg-[#F3F4F6] text-[#6B7280]",
+        textClassName: "text-[#6B7280]",
+      };
+    // Buyer has paid and escrow is funded — this is the order the distributor
+    // now needs to act on (mark received → delivered → installed).
+    case "paid":
       return {
         label: "Processing",
         className: "bg-[#FF6B00] text-white",

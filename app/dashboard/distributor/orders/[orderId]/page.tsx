@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowRight } from "lucide-react";
 
 import Header from "../../../component/header";
 import { Skeleton } from "@/components/base";
@@ -135,6 +135,9 @@ export default function DistributorOrderDetailPage() {
   const status = order?.status || demoOrder?.status;
   const statusTone = getOrderStatusTone(status);
   const paid = isPaidOrderStatus(status);
+  // Delivery flow is only meaningful once escrow is funded; stays visible
+  // through completion but hides for refunded (`closed`) and pre-payment states.
+  const showDeliveryButton = paid;
   const paymentStatus = getPaymentStatusDisplay(status, paid);
   const payReference = order?.paymentReference || distributorDemoOrderMeta.paymentReference;
   const displayId =
@@ -222,6 +225,19 @@ export default function DistributorOrderDetailPage() {
               </span>
             </div>
           </div>
+
+          {showDeliveryButton ? (
+            <button
+              type="button"
+              onClick={() =>
+                router.push(`/dashboard/distributor/orders/${orderId}/delivery`)
+              }
+              className="mt-5 inline-flex h-14 min-w-[214px] items-center justify-center gap-3 rounded-xl border border-primary bg-[#F5FAFF] px-6 text-sm font-medium text-primary transition hover:bg-[#EAF4FF]"
+            >
+              View delivery status
+              <ArrowRight size={17} />
+            </button>
+          ) : null}
         </section>
 
         <div className="grid gap-4 xl:grid-cols-3">

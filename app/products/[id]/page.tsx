@@ -257,7 +257,7 @@ export default function ProductDetailsPage() {
   );
 
   const specificationItems = useMemo(
-    () => getProductSpecificationItems(product).slice(0, 9),
+    () => getProductSpecificationItems(product),
     [product],
   );
 

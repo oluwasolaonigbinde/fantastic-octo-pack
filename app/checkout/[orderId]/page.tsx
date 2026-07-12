@@ -10,6 +10,8 @@ import { BigLoader } from "@/components/base";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { useOrderQuery } from "@/hooks/queries/orders";
 import { useWallet } from "@/hooks/useWallet";
+import { useWalletTopup } from "@/hooks/useWalletTopup";
+import { TopUpDrawer } from "@/components/wallet/wallet-topup";
 import { useOrderPayment } from "@/hooks/useOrderPayment";
 import { koboToNaira } from "@/lib/wallet-format";
 import { getOrderProductImage, getPersonName } from "@/constants/demoBuyerOrders";
@@ -66,6 +68,9 @@ export default function CheckoutPage() {
   const role = authData?.role;
 
   const { wallet } = useWallet();
+  const { openTopUp, open: topUpOpen, panelProps: topUpPanelProps } = useWalletTopup({
+    callbackPath: `/checkout/${orderId}`,
+  });
   const {
     isPaying,
     payError,
@@ -244,10 +249,19 @@ export default function CheckoutPage() {
                 </div>
 
                 {insufficientWallet ? (
-                  <p className="mt-4 rounded-lg border border-[#F5A400] bg-[#FFFBEB] px-4 py-3 text-sm text-[#B45309]">
-                    Your wallet balance is too low for this order. Top up your
-                    wallet or pay with Paystack.
-                  </p>
+                  <div className="mt-4 flex flex-col gap-3 rounded-lg border border-[#F5A400] bg-[#FFFBEB] px-4 py-3 text-sm text-[#B45309] sm:flex-row sm:items-center sm:justify-between">
+                    <p>
+                      Your wallet balance is too low for this order. Top up
+                      your wallet or pay with Paystack.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => openTopUp(orderTotal - walletNaira)}
+                      className="shrink-0 rounded-lg border border-[#F5A400] bg-white px-4 py-2 text-sm font-medium text-[#B45309]"
+                    >
+                      Top up now
+                    </button>
+                  </div>
                 ) : null}
 
                 {payError ? (
@@ -392,6 +406,8 @@ export default function CheckoutPage() {
           </div>
         </div>
       ) : null}
+
+      <TopUpDrawer open={topUpOpen} panelProps={topUpPanelProps} />
     </PublicLayout>
   );
 }

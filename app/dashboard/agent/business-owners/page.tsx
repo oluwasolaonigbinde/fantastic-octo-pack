@@ -95,7 +95,7 @@ export default function AgentBusinessOwnersPage() {
             </div>
             <Link
               href="/dashboard/agent/business-owners/new"
-              className="mt-8 inline-flex h-14 w-full items-center justify-center gap-3 rounded-xl bg-[#0669D9] px-8 text-base font-medium text-white md:mt-0 md:w-[250px]"
+              className="mt-8 inline-flex h-12 md:h-14 w-full items-center justify-center gap-3 rounded-xl bg-[#0669D9] px-8 text-base font-medium text-white md:mt-0 md:w-[250px]"
             >
               Add business <Plus size={20} />
             </Link>
@@ -113,12 +113,12 @@ export default function AgentBusinessOwnersPage() {
                   placeholder="Enter business name/email address"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="h-[60px] w-full rounded-xl border border-[#DDE0E5] px-4 text-sm text-[#111827] placeholder:text-[#C0C4CC] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/30"
+                  className="h-11 md:h-[60px] w-full rounded-xl border border-[#DDE0E5] px-4 text-sm text-[#111827] placeholder:text-[#C0C4CC] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/30"
                 />
               </div>
               <button
                 type="button"
-                className="inline-flex h-[60px] w-full items-center justify-center gap-3 rounded-xl bg-[#0669D9] px-6 text-base font-medium text-white md:w-[250px]"
+                className="inline-flex h-11 md:h-[60px] w-full items-center justify-center gap-3 rounded-xl bg-[#0669D9] px-6 text-base font-medium text-white md:w-[250px]"
               >
                 <SlidersHorizontal size={18} />
                 Filter

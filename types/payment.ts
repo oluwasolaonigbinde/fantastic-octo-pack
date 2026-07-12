@@ -140,7 +140,7 @@ export interface ResolveAccountResponse {
 
 export interface AllPaymentsQuery {
   status?: PaymentStatus;
-  intent?: "order_payment" | "wallet_topup" | "service_payment";
+  intent?: "order_payment" | "wallet_topup" | "service_payment" | "withdrawal";
   processor?: string;
   from?: string;
   to?: string;

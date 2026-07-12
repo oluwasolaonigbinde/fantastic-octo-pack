@@ -866,7 +866,7 @@ export default function AdminDisputesPage() {
                       <select
                         value={statusFilter}
                         onChange={(event) => setStatusFilter(event.target.value)}
-                        className={`h-14 w-full appearance-none rounded-2xl border border-[#E6ECF2] bg-white px-4 pr-12 text-base outline-none ${statusFilter ? "text-[#111827]" : "text-[#D0D5DD]"}`}
+                        className={`h-11 lg:h-14 w-full appearance-none rounded-2xl border border-[#E6ECF2] bg-white px-4 pr-12 text-base outline-none ${statusFilter ? "text-[#111827]" : "text-[#D0D5DD]"}`}
                       >
                         <option value="">Select status</option>
                         <option value={ServiceDisputeStatus.UNDER_REVIEW}>
@@ -894,12 +894,12 @@ export default function AdminDisputesPage() {
                       value={dateInputValue}
                       onChange={(event) => handleDateInputChange(event.target.value)}
                       onBlur={handleDateInputBlur}
-                      className="h-14 w-full rounded-2xl border border-[#E6ECF2] px-4 text-base text-[#111827] outline-none placeholder:text-[#D0D5DD]"
+                      className="h-11 lg:h-14 w-full rounded-2xl border border-[#E6ECF2] px-4 text-base text-[#111827] outline-none placeholder:text-[#D0D5DD]"
                     />
                   </div>
                   <button
                     type="button"
-                    className="inline-flex h-14 items-center justify-center gap-3 self-end rounded-2xl bg-primary px-4 text-base font-medium text-white"
+                    className="inline-flex h-11 lg:h-14 items-center justify-center gap-3 lg:self-end rounded-2xl bg-primary px-4 text-base font-medium text-white"
                   >
                     <SlidersHorizontal size={18} />
                     <span>Filter</span>

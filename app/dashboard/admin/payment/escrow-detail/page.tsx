@@ -29,20 +29,20 @@ export default function AdminPaymentEscrowDetailPage() {
 
   return (
     <div className="fixed inset-y-0 right-0 z-[100] w-full max-w-[500px] overflow-hidden bg-white text-gray1 shadow-xl">
-      <header className="flex h-[100px] items-end justify-between border-b border-gray5 px-10 pb-5 pt-10">
+      <header className="flex min-h-16 items-end justify-between border-b border-gray5 px-6 pb-5 pt-10 sm:px-10">
         <h1 className="text-2xl font-semibold leading-10">Escrow Details</h1>
         <Link
           href="/dashboard/admin/payment"
           aria-label="Close escrow details"
-          className="flex size-6 items-center justify-center"
+          className="flex size-6 shrink-0 items-center justify-center"
         >
           <X size={24} strokeWidth={1.75} />
         </Link>
       </header>
 
-      <main className="px-10 pt-6">
-        <section className="flex h-[660px] w-[420px] flex-col gap-5">
-          <div className="flex h-[88px] items-center justify-between rounded-2xl border border-[#FFF7F0] bg-[#FFF7F0] px-8 py-5">
+      <main className="h-[calc(100vh-4rem)] overflow-y-auto px-6 pb-8 pt-6 sm:px-10">
+        <section className="flex w-full flex-col gap-5">
+          <div className="flex min-h-[88px] items-center justify-between rounded-2xl border border-[#FFF7F0] bg-[#FFF7F0] px-8 py-5">
             <p className="text-lg font-medium leading-6 text-[#272B36]">Request Status</p>
             <div className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#FE6E00] px-[18px] py-[11px]">
               <CheckSquare size={18} strokeWidth={2.25} className="text-white" />
@@ -66,14 +66,14 @@ export default function AdminPaymentEscrowDetailPage() {
               </div>
             ))}
           </div>
+
+          <div className="mt-4 flex h-11 w-full items-center justify-center rounded-[14px] bg-primary py-4 opacity-60 sm:h-[60px]">
+            <button type="button" className="cursor-not-allowed text-lg font-normal leading-8 text-white" disabled>
+              Reverse Escrow
+            </button>
+          </div>
         </section>
       </main>
-
-      <div className="absolute left-10 top-[829px] flex h-[60px] w-[420px] items-center justify-center rounded-[14px] bg-primary py-4 opacity-60">
-        <button type="button" className="cursor-not-allowed text-lg font-normal leading-8 text-white" disabled>
-          Reverse Escrow
-        </button>
-      </div>
     </div>
   );
 }
