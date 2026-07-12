@@ -19,7 +19,7 @@ function UserField({
   return (
     <label className="block w-full">
       <span className="block px-4 text-base leading-6 text-gray1">{label}</span>
-      <span className="mt-1 flex h-[60px] w-full items-center rounded-[14px] border border-gray5 px-4 py-4 text-base leading-6 text-gray4">
+      <span className="mt-1 flex h-11 sm:h-[60px] w-full items-center rounded-[14px] border border-gray5 px-4 py-4 text-base leading-6 text-gray4">
         <span className="min-w-0 flex-1">{placeholder}</span>
         {select ? <ChevronDown size={24} className="text-gray3" /> : null}
       </span>
@@ -85,7 +85,7 @@ export default function AdminAddUserPage() {
 
           <Button
             title={cta}
-            className="h-[60px] w-full rounded-[14px] text-lg"
+            className="h-11 sm:h-[60px] w-full rounded-[14px] text-lg"
             type="button"
           />
         </div>

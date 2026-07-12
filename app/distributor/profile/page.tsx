@@ -304,6 +304,10 @@ function DistributorProfileContent() {
     router.push(buildRegisterHref(selectedId));
   };
 
+  const handleGoBack = () => {
+    router.back();
+  };
+
   const handleSendMessage = () => {
     if (!selectedId) {
       return;
@@ -365,7 +369,7 @@ function DistributorProfileContent() {
 
               <button
                 type="button"
-                onClick={redirectToRegister}
+                onClick={handleGoBack}
                 className="hidden h-8 items-center justify-center rounded-[6px] border border-[#d8e5f5] bg-white px-4 text-[10px] font-semibold text-[#64778f] transition hover:border-[#c4d5ea] hover:bg-[#f8fbff] sm:inline-flex"
               >
                 <ChevronRight size={12} className="mr-1 rotate-180" />

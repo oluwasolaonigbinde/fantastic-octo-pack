@@ -5,7 +5,6 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { Button, Input, PopUp } from "@/components/base";
-import { Textarea } from "@/components/ui/textarea";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { reset as clearFeedback, updateUser } from "@/store/slices/auth-slice";
 
@@ -14,18 +13,6 @@ import { editInfoSchema, EditFormData } from "./schemas/editinfoschema";
 interface EditInfoFormProps {
   onClose: () => void;
 }
-
-const toDateInputValue = (value?: Date | string | null) => {
-  if (!value) {
-    return "";
-  }
-
-  if (typeof value === "string") {
-    return value.slice(0, 10);
-  }
-
-  return value.toISOString().slice(0, 10);
-};
 
 const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
   const [open, setOpen] = useState(false);
@@ -46,8 +33,6 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
       firstName: data?.firstName || "",
       lastName: data?.lastName || "",
       phoneNumber: data?.phoneNumber || "",
-      address: data?.address || "",
-      dateOfBirth: toDateInputValue(data?.dateOfBirth),
     },
   });
 
@@ -56,10 +41,8 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
       firstName: data?.firstName || "",
       lastName: data?.lastName || "",
       phoneNumber: data?.phoneNumber || "",
-      address: data?.address || "",
-      dateOfBirth: toDateInputValue(data?.dateOfBirth),
     });
-  }, [data?.address, data?.dateOfBirth, data?.firstName, data?.lastName, data?.phoneNumber, reset]);
+  }, [data?.firstName, data?.lastName, data?.phoneNumber, reset]);
 
   const onSubmit = async (formData: EditFormData) => {
     if (!data?.tokens?.accessToken) {
@@ -138,34 +121,7 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
             : undefined
         }
       />
-      <Input
-        id="dateOfBirth"
-        type="date"
-        {...register("dateOfBirth", {
-          onBlur: () => trigger("dateOfBirth"),
-        })}
-        label="Date of Birth"
-        error={
-          errors.dateOfBirth && touchedFields.dateOfBirth
-            ? errors.dateOfBirth.message
-            : undefined
-        }
-      />
       <Input value={data?.role || ""} label="Role" disabled />
-      <Textarea
-        id="address"
-        maxLength={200}
-        {...register("address", {
-          onBlur: () => trigger("address"),
-        })}
-        rows={3}
-        label="Address"
-        name="address"
-        error={
-          errors.address && touchedFields.address ? errors.address.message : undefined
-        }
-        className="resize-none"
-      />
       {isError && lastCompletedAction === "updateUser" ? (
         <div className="rounded-md bg-red-50 p-4">
           <p className="text-sm text-red-800">{message}</p>

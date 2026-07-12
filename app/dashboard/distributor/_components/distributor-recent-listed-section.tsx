@@ -33,7 +33,7 @@ export function DistributorRecentListedSection({
             title="View All Product"
             iconRight={<ArrowRight className="size-6" />}
             onClick={() => router.push("/dashboard/distributor/catalogue")}
-            className="h-14 min-w-[250px] !w-fit rounded-xl px-6 text-base font-normal"
+            className="h-12 md:h-14 min-w-[250px] !w-fit rounded-xl px-6 text-base font-normal"
             variant="primary"
             size="md"
           />

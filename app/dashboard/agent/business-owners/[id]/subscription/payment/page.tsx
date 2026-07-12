@@ -101,7 +101,7 @@ export default async function AgentBusinessOwnerSubscriptionPaymentPage({
 
                 <button
                   type="button"
-                  className="mt-6 flex h-[60px] w-full items-center justify-center rounded-xl bg-[#77A9E4] text-[16px] font-medium text-white"
+                  className="mt-6 flex h-11 sm:h-[60px] w-full items-center justify-center rounded-xl bg-[#77A9E4] text-[16px] font-medium text-white"
                 >
                   I have made payment
                 </button>
@@ -131,7 +131,7 @@ export default async function AgentBusinessOwnerSubscriptionPaymentPage({
 
                 <button
                   type="button"
-                  className="mt-8 flex h-[60px] w-full items-center justify-center rounded-xl bg-[#77A9E4] text-[16px] font-medium text-white"
+                  className="mt-8 flex h-11 sm:h-[60px] w-full items-center justify-center rounded-xl bg-[#77A9E4] text-[16px] font-medium text-white"
                 >
                   Make payment
                 </button>

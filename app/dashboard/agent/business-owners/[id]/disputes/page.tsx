@@ -40,7 +40,7 @@ export default async function AgentBusinessOwnerDisputesPage({ params }: PagePro
               <input
                 type="text"
                 placeholder="Select status"
-                className="h-[60px] w-full rounded-[14px] border border-[#DDE0E5] px-4 text-sm outline-none"
+                className="h-11 md:h-[60px] w-full rounded-[14px] border border-[#DDE0E5] px-4 text-sm outline-none"
               />
             </label>
             <label>
@@ -48,12 +48,12 @@ export default async function AgentBusinessOwnerDisputesPage({ params }: PagePro
               <input
                 type="text"
                 placeholder="DD/MM/YY"
-                className="h-[60px] w-full rounded-[14px] border border-[#DDE0E5] px-4 text-sm outline-none"
+                className="h-11 md:h-[60px] w-full rounded-[14px] border border-[#DDE0E5] px-4 text-sm outline-none"
               />
             </label>
             <button
               type="button"
-              className="mt-5 inline-flex h-[60px] w-full items-center justify-center gap-3 rounded-[14px] bg-[#0669D9] px-6 text-[18px] font-medium text-white"
+              className="md:mt-5 inline-flex h-11 md:h-[60px] w-full items-center justify-center gap-3 rounded-[14px] bg-[#0669D9] px-6 text-[18px] font-medium text-white"
             >
               <SlidersHorizontal size={16} />
               Filter

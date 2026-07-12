@@ -218,7 +218,7 @@ function OrderDetailInfo({ showDeliveryButton }: { showDeliveryButton: boolean }
         {showDeliveryButton ? (
           <Link
             href="/dashboard/agent/orders/ORDER-0010-0"
-            className="mt-8 inline-flex h-[60px] w-full items-center justify-center gap-3 rounded-xl border border-[#0669D9] bg-[#EAF8FF] text-base font-medium text-[#0B2341]"
+            className="mt-8 inline-flex h-11 sm:h-[60px] w-full items-center justify-center gap-3 rounded-xl border border-[#0669D9] bg-[#EAF8FF] text-base font-medium text-[#0B2341]"
           >
             View delivery status <ArrowRight size={20} />
           </Link>

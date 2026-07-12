@@ -104,7 +104,7 @@ const getAdminTableStatusTextClass = (status: ProductStatus): string => {
 
 function AdminDateChip({ label }: { label: string }) {
   return (
-    <div className="inline-flex h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
+    <div className="inline-flex h-11 sm:h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
       <span>{label}</span>
       <CalendarDays size={18} className="text-gray2" />
     </div>
@@ -322,7 +322,7 @@ export default function AdminProductsPage() {
               title="Export Record"
               iconLeft={<Download size={16} />}
               disabled
-              className="h-[60px] w-full rounded-[14px] opacity-100 disabled:bg-primary disabled:text-white lg:w-[230px]"
+              className="h-11 lg:h-[60px] w-full rounded-[14px] opacity-100 disabled:bg-primary disabled:text-white lg:w-[230px]"
             />
           </div>
 
@@ -384,7 +384,7 @@ export default function AdminProductsPage() {
             <Button
               title="Filter"
               iconLeft={<Filter size={16} />}
-              className="h-[60px] rounded-[14px] lg:self-end"
+              className="h-11 lg:h-[60px] rounded-[14px] lg:self-end"
               onClick={applyFilters}
             />
           </div>

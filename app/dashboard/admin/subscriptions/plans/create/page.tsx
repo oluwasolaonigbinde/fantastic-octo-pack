@@ -28,7 +28,7 @@ function PlanField({
       <span className="block text-base leading-6 text-gray1">{label}</span>
       <span
         className={`mt-3 flex w-full rounded-[14px] border border-gray5 px-4 py-4 text-base leading-6 text-gray4 ${
-          type === "textarea" ? "h-[100px] items-start" : "h-[60px] items-center"
+          type === "textarea" ? "h-[100px] items-start" : "h-11 sm:h-[60px] items-center"
         }`}
       >
         {placeholder}
@@ -74,7 +74,7 @@ export default function AdminCreateSubscriptionPlanPage() {
 
           <Button
             title="Create plan"
-            className="h-[60px] w-full rounded-[14px] text-lg"
+            className="h-11 sm:h-[60px] w-full rounded-[14px] text-lg"
             type="button"
           />
         </div>

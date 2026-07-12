@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Eye,
+  Plus,
   SlidersHorizontal,
   SquareCheck,
 } from "lucide-react";
@@ -354,7 +356,16 @@ export default function AdminServicesPage() {
           </div>
 
           <section className="card space-y-4">
-            <h3 className="medium3 text-gray1">All Service requests</h3>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="medium3 text-gray1">All Service requests</h3>
+              <Link
+                href="/dashboard/admin/services/create"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-white transition-colors hover:opacity-90"
+              >
+                <Plus size={16} />
+                Create job request
+              </Link>
+            </div>
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-gray3">
               Filter table list by:
             </p>

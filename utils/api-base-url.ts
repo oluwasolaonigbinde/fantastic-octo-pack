@@ -38,7 +38,14 @@ export const getApiBaseUrl = (): string => {
       warnedAboutLocalFallback = true;
     }
 
-    cachedApiBaseUrl = DEFAULT_LOCAL_API_BASE_URL;
+    // On the client, anchor the relative default to the current origin so it is
+    // a valid absolute URL (callers wrap it in `new URL(...)`, which rejects a
+    // bare relative path). Same-origin requests are proxied to the backend by
+    // the `/api/v1/:path*` rewrite in next.config, so this keeps dev CORS-free.
+    cachedApiBaseUrl =
+      typeof window !== "undefined"
+        ? `${window.location.origin}${DEFAULT_LOCAL_API_BASE_URL}`
+        : DEFAULT_LOCAL_API_BASE_URL;
     return cachedApiBaseUrl;
   }
 

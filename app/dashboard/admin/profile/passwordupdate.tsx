@@ -137,7 +137,7 @@ const PasswordUpdate = () => {
         <Button
           title="Save Password"
           type="submit"
-          className="h-[60px] w-full rounded-[14px] text-lg md:max-w-[320px]"
+          className="h-11 md:h-[60px] w-full rounded-[14px] text-lg md:max-w-[320px]"
           isBusy={isLoading}
         />
       </form>

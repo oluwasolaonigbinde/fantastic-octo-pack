@@ -72,9 +72,102 @@ function BuyerEngineerCard({ engineer }: { engineer: PublicProfileData }) {
   const verified = Boolean(engineer.oemCertified);
   const primarySpec = engineer.specializations?.[0];
   const extraSpecs = (engineer.specializations?.length ?? 0) - 1;
+  const goToRequest = () =>
+    router.push(`/dashboard/buyer/service-engineers/request?engineerId=${engineer._id}`);
 
   return (
-    <div className="relative h-[198px] rounded-2xl border border-[#DDE0E5] bg-white overflow-hidden">
+    <>
+      {/* Mobile card */}
+      <div className="rounded-2xl border border-[#DDE0E5] bg-white p-4 md:hidden">
+        <div className="flex items-center gap-3">
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded bg-slate-100">
+            {engineer.displayPhoto?.url ? (
+              <Image
+                src={engineer.displayPhoto.url}
+                alt={fullName}
+                width={56}
+                height={56}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span className="text-sm font-semibold text-slate-500">
+                {getInitials(engineer.firstName, engineer.lastName)}
+              </span>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-[#111827]" title={fullName}>
+              {fullName}
+            </p>
+            <p className="text-xs text-[#6B7280]">{formatPhoneDisplay(engineer.phoneNumber)}</p>
+          </div>
+          <span
+            className={`shrink-0 text-xs font-semibold tracking-wide ${
+              busy ? "text-[#FE6E00]" : "text-[#13A83B]"
+            }`}
+          >
+            {busy ? "BUSY" : "AVAILABLE"}
+          </span>
+        </div>
+
+        <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <dt className="text-xs text-[#9CA3AF]">OEM certified</dt>
+            <dd className="text-[#111827]">
+              {verified ? (
+                <span className="flex items-center gap-1">
+                  <CheckCircle2 size={13} className="shrink-0 text-emerald-600" />
+                  Verified
+                </span>
+              ) : (
+                <span className="text-[#9CA3AF]">Not certified</span>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[#9CA3AF]">Location</dt>
+            <dd className="text-[#111827]">
+              {engineer.address || <span className="italic text-[#9CA3AF]">Not specified</span>}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[#9CA3AF]">Specialization</dt>
+            <dd className="text-[#111827]">
+              {primarySpec ?? <span className="text-[#9CA3AF]">—</span>}
+              {extraSpecs > 0 && (
+                <span className="ml-1 text-xs text-[#017BED]">+ {extraSpecs} more</span>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[#9CA3AF]">Ratings</dt>
+            <dd>
+              {typeof engineer.rating === "number" ? (
+                <StarRating rating={engineer.rating} />
+              ) : (
+                <span className="text-xs text-[#9CA3AF]">No ratings yet</span>
+              )}
+            </dd>
+          </div>
+        </dl>
+
+        <Button
+          title="Request service"
+          variant="primary"
+          size="sm"
+          disabled={busy}
+          iconRight={busy ? undefined : <ArrowRight size={14} />}
+          onClick={goToRequest}
+          className={`mt-4 w-full! rounded-xl! ${
+            busy
+              ? "bg-[#DDE0E5]! text-[#6B7280]! border-none! cursor-not-allowed!"
+              : "bg-[#0669D9]! hover:bg-[#0558b8]! text-white! border-none!"
+          }`}
+        />
+      </div>
+
+      {/* Desktop card */}
+      <div className="relative hidden h-[198px] overflow-hidden rounded-2xl border border-[#DDE0E5] bg-white md:block">
 
       {/* Left section: image + info rows — x=20, y=20 */}
       <div className="absolute left-5 top-5 flex flex-row items-center gap-[13px]">
@@ -172,14 +265,15 @@ function BuyerEngineerCard({ engineer }: { engineer: PublicProfileData }) {
         size="sm"
         disabled={busy}
         iconRight={busy ? undefined : <ArrowRight size={14} />}
-        onClick={() => router.push(`/service-engineers/profile?id=${engineer._id}`)}
+        onClick={goToRequest}
         className={`absolute bottom-5 right-5 w-[250px] h-[60px]! rounded-xl! ${
           busy
             ? "bg-[#DDE0E5]! text-[#6B7280]! border-none! cursor-not-allowed!"
             : "bg-[#0669D9]! hover:bg-[#0558b8]! text-white! border-none!"
         }`}
       />
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -298,7 +392,7 @@ export default function BuyerServiceEngineersPage() {
                   placeholder="Enter location"
                   value={locationFilter}
                   onChange={(e) => setLocationFilter(e.target.value)}
-                  className="h-[60px] w-[250px] rounded-xl border border-[#E6ECF2] px-4 text-sm text-[#111827] outline-none placeholder:text-[#C4C8CE]"
+                  className="h-11 w-full lg:h-[60px] lg:w-[250px] rounded-xl border border-[#E6ECF2] px-4 text-sm text-[#111827] outline-none placeholder:text-[#C4C8CE]"
                 />
               </div>
 
@@ -307,7 +401,7 @@ export default function BuyerServiceEngineersPage() {
                 <select
                   value={availabilityFilter}
                   onChange={(e) => setAvailabilityFilter(e.target.value)}
-                  className={`h-[60px] w-[250px] rounded-xl border border-[#E6ECF2] bg-white px-4 text-sm outline-none ${availabilityFilter === "" ? "text-[#C4C8CE]" : "text-[#111827]"}`}
+                  className={`h-11 w-full lg:h-[60px] lg:w-[250px] rounded-xl border border-[#E6ECF2] bg-white px-4 text-sm outline-none ${availabilityFilter === "" ? "text-[#C4C8CE]" : "text-[#111827]"}`}
                 >
                   <option value="">Select available status</option>
                   <option value="available">Available</option>
@@ -320,7 +414,7 @@ export default function BuyerServiceEngineersPage() {
                 <select
                   value={serviceTypeFilter}
                   onChange={(e) => setServiceTypeFilter(e.target.value)}
-                  className={`h-[60px] w-[250px] rounded-xl border border-[#E6ECF2] bg-white px-4 text-sm outline-none ${serviceTypeFilter === "" ? "text-[#C4C8CE]" : "text-[#111827]"}`}
+                  className={`h-11 w-full lg:h-[60px] lg:w-[250px] rounded-xl border border-[#E6ECF2] bg-white px-4 text-sm outline-none ${serviceTypeFilter === "" ? "text-[#C4C8CE]" : "text-[#111827]"}`}
                 >
                   <option value="">Enter specialization</option>
                   {filterOptions.serviceTypes.map((t) => (
@@ -332,7 +426,7 @@ export default function BuyerServiceEngineersPage() {
               <div className="flex items-end gap-3">
                 <button
                   type="button"
-                  className="inline-flex h-[60px] w-[250px] items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-white"
+                  className="inline-flex h-11 w-full lg:h-[60px] lg:w-[250px] items-center justify-center gap-2 rounded-xl bg-primary text-sm font-semibold text-white"
                 >
                   <Filter className="size-4" aria-hidden />
                   Filter
@@ -340,7 +434,7 @@ export default function BuyerServiceEngineersPage() {
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="h-[60px] px-4 text-sm font-medium text-[#6B7280] hover:text-[#111827] transition-colors"
+                  className="h-11 lg:h-[60px] px-4 text-sm font-medium text-[#6B7280] hover:text-[#111827] transition-colors"
                 >
                   Reset
                 </button>

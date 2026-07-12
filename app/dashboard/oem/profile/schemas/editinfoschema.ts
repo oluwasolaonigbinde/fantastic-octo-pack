@@ -13,7 +13,6 @@ export const editInfoSchema = z.object({
     .min(1, "Phone number is required")
     .min(10, "Please provide a valid phone number")
     .max(20, "Please provide a valid phone number"),
-  dateOfBirth: z.string().trim().min(1, "Date of birth is required"),
   address: z
     .string()
     .trim()

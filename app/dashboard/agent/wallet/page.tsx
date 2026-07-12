@@ -67,14 +67,14 @@ function WithdrawModal({
         <input
           type="number"
           placeholder="Enter amount to withdraw"
-          className="mb-6 h-[60px] w-full rounded-[16px] border border-[#D9DFE7] px-4 text-sm text-[#111827] placeholder:text-[#98A2B3] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/20"
+          className="mb-6 h-11 sm:h-[60px] w-full rounded-[16px] border border-[#D9DFE7] px-4 text-sm text-[#111827] placeholder:text-[#98A2B3] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/20"
         />
 
         <label className="mb-2 block text-sm text-[#111827]">Withdraw to</label>
         <input
           type="text"
           defaultValue="GT Bank - 004475839"
-          className="mb-8 h-[60px] w-full rounded-[16px] border border-[#D9DFE7] bg-[#F8FAFC] px-4 text-sm text-[#667085] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/20"
+          className="mb-8 h-11 sm:h-[60px] w-full rounded-[16px] border border-[#D9DFE7] bg-[#F8FAFC] px-4 text-sm text-[#667085] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/20"
         />
 
         <div className="flex gap-3">

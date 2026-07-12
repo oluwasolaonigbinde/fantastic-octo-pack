@@ -265,7 +265,7 @@ export default function DistributorStorePage() {
                 <Button
                   title="Edit Store Info"
                   iconLeft={<Pencil className="size-5" />}
-                  className="!h-16 !w-full !rounded-[14px] sm:!w-72 lg:!w-80"
+                  className="!h-12 !w-full !rounded-[14px] sm:!h-16 sm:!w-72 lg:!w-80"
                 />
               </Link>
             </div>

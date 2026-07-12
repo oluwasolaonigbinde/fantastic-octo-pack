@@ -1,7 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, FileText, SquareCheck, Upload } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
+  Bell,
+  CheckCircle2,
+  Clock,
+  FileText,
+  MapPin,
+  MessageCircle,
+  Send,
+  SquareCheck,
+  Upload,
+  XCircle,
+} from "lucide-react";
 
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/base";
 import {
@@ -43,14 +58,6 @@ function getPartyName(party: ServiceRequestData["engineer"]): string {
   return "--";
 }
 
-function getPartyPhone(party: ServiceRequestData["engineer"]): string {
-  if (party && typeof party === "object" && "phoneNumber" in party) {
-    return party.phoneNumber || "--";
-  }
-
-  return "--";
-}
-
 function getPartyLabel(
   party: string | { firstName?: string; lastName?: string; email?: string } | undefined,
 ): string {
@@ -60,14 +67,6 @@ function getPartyLabel(
 
   const fullName = [party.firstName, party.lastName].filter(Boolean).join(" ").trim();
   return fullName || party.email || "--";
-}
-
-function formatCurrency(value?: number): string {
-  if (typeof value !== "number") {
-    return "--";
-  }
-
-  return `NGN ${value.toLocaleString("en-NG")}`;
 }
 
 function formatDate(value?: string): string {
@@ -87,61 +86,99 @@ function formatDate(value?: string): string {
   }).format(parsedDate);
 }
 
-function statusConfig(status: ServiceRequestStatus): {
+/** e.g. "Feb 1, 2026 10:45 PM" */
+function formatDateTime(value?: string): string {
+  if (!value) return "--";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(parsed);
+}
+
+type StatusVisual = {
   label: string;
-  badgeBg: string;
+  /** Badge pill text + icon color */
+  badgeText: string;
+  /** Badge pill background */
+  badgePill: string;
+  /** Outer container background */
   containerBg: string;
+  /** Outer container border */
   containerBorder: string;
-} {
+  /** Icon shown inside the badge pill */
+  icon: ReactNode;
+};
+
+function statusConfig(status: ServiceRequestStatus): StatusVisual {
   switch (status) {
     case ServiceRequestStatus.PENDING:
       return {
-        label: "Pending",
-        badgeBg: "bg-[#D97627]",
-        containerBg: "bg-[#FFF9F0]",
-        containerBorder: "border-[#D97627]",
+        label: "Pending...",
+        badgeText: "text-[#D97627]",
+        badgePill: "bg-[#FBE4CE]",
+        containerBg: "bg-[#FFF8F3]",
+        containerBorder: "border-[#FFD5BE]",
+        icon: null,
       };
     case ServiceRequestStatus.ACCEPTED:
       return {
         label: "Accepted",
-        badgeBg: "bg-[#1E9E4A]",
-        containerBg: "bg-[#F0FFF5]",
-        containerBorder: "border-[#1E9E4A]",
+        badgeText: "text-[#0AA642]",
+        badgePill: "bg-[#E3F8EB]",
+        containerBg: "bg-[#F5FFF8]",
+        containerBorder: "border-[#92DDAA]",
+        icon: <SquareCheck className="size-[18px] shrink-0 fill-[#0AA642] text-white" />,
       };
     case ServiceRequestStatus.IN_PROGRESS:
       return {
         label: "In progress",
-        badgeBg: "bg-[#FE6E00]",
+        badgeText: "text-white",
+        badgePill: "bg-[#FE6E00]",
         containerBg: "bg-[#FFF7F0]",
-        containerBorder: "border-[#EF7212]",
+        containerBorder: "border-[#F6DEC7]",
+        icon: <Clock className="size-[18px] shrink-0" />,
       };
     case ServiceRequestStatus.COMPLETED:
       return {
         label: "Completed",
-        badgeBg: "bg-[#34A853]",
+        badgeText: "text-white",
+        badgePill: "bg-[#34A853]",
         containerBg: "bg-[#F0FFF5]",
-        containerBorder: "border-[#34A853]",
+        containerBorder: "border-[#CDEBD8]",
+        icon: <CheckCircle2 className="size-[18px] shrink-0" />,
       };
     case ServiceRequestStatus.REJECTED:
       return {
         label: "Rejected",
-        badgeBg: "bg-[#B91C1C]",
-        containerBg: "bg-[#FFF5F5]",
-        containerBorder: "border-[#B91C1C]",
+        badgeText: "text-[#FF4B30]",
+        badgePill: "bg-[#FFD7D1]",
+        containerBg: "bg-[#FFE7E3]",
+        containerBorder: "border-[#FF705B]",
+        icon: <XCircle className="size-[18px] shrink-0" />,
       };
     case ServiceRequestStatus.CLOSED_AFTER_DISPUTE:
       return {
         label: "Closed after dispute",
-        badgeBg: "bg-[#B45309]",
+        badgeText: "text-white",
+        badgePill: "bg-[#B45309]",
         containerBg: "bg-[#FFFBF0]",
-        containerBorder: "border-[#B45309]",
+        containerBorder: "border-[#F0E2C6]",
+        icon: <AlertTriangle className="size-[18px] shrink-0" />,
       };
     default:
       return {
         label: status,
-        badgeBg: "bg-[#6B7280]",
+        badgeText: "text-white",
+        badgePill: "bg-[#6B7280]",
         containerBg: "bg-white",
         containerBorder: "border-[#E6ECF2]",
+        icon: null,
       };
   }
 }
@@ -164,13 +201,13 @@ function StatusBadge({ status }: { status: ServiceRequestStatus }) {
 
   return (
     <div
-      className={`flex items-center justify-between rounded-2xl border px-8 py-5 ${config.containerBg} ${config.containerBorder}`}
+      className={`flex items-center justify-between gap-3 rounded-xl border px-3 py-3 sm:px-4 ${config.containerBg} ${config.containerBorder}`}
     >
-      <span className="text-sm font-medium text-[#272B36]">Request Status</span>
+      <span className="text-xs font-medium text-[#272B36] sm:text-sm">Request Status</span>
       <span
-        className={`inline-flex items-center gap-2 rounded-lg px-[18px] py-[11px] text-sm font-normal text-white ${config.badgeBg}`}
+        className={`inline-flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-xs font-medium sm:px-[18px] sm:py-[11px] sm:text-sm ${config.badgePill} ${config.badgeText}`}
       >
-        <SquareCheck className="size-[18px] shrink-0" />
+        {config.icon}
         {config.label}
       </span>
     </div>
@@ -234,17 +271,74 @@ function AttachmentList({
   );
 }
 
-interface ServiceRequestDetailDrawerProps {
-  open: boolean;
+function IconRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1 py-3 sm:grid sm:grid-cols-[190px_1fr] sm:items-center sm:gap-4">
+      <div className="flex items-center gap-3 text-sm font-medium text-[#111827]">
+        <span className="text-[#5B6778]">{icon}</span>
+        {label}
+      </div>
+      <div className="break-words text-xs text-[#697386] sm:text-sm">{value || "--"}</div>
+    </div>
+  );
+}
+
+type TimelineEntry = {
+  key: string;
+  icon: ReactNode;
+  label: string;
+  date: string;
+  by?: string;
+};
+
+function RequestHistory({ entries }: { entries: TimelineEntry[] }) {
+  return (
+    <div>
+      <h3 className="text-base font-semibold text-[#111827]">Request History</h3>
+      <div className="mt-4 space-y-5">
+        {entries.map((entry, index) => (
+          <div key={entry.key} className="relative flex gap-3">
+            {index < entries.length - 1 ? (
+              <span className="absolute left-3 top-7 h-[calc(100%+4px)] w-px border-l border-dashed border-[#D5DEE8]" />
+            ) : null}
+            <span className="relative z-10 mt-0.5 shrink-0">{entry.icon}</span>
+            <div className="flex w-full flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+              <div>
+                <p className="text-sm font-medium text-[#111827]">{entry.label}</p>
+                <p className="mt-1 text-sm text-[#7A8495]">{entry.date}</p>
+              </div>
+              {entry.by ? (
+                <div className="sm:text-right">
+                  <p className="text-sm text-[#7A8495]">Accepted by</p>
+                  <p className="mt-1 text-sm text-[#697386]">{entry.by}</p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+interface ServiceRequestDetailPanelProps {
+  /** Invoked when the user navigates back to the request list. */
   onClose: () => void;
   request: ServiceRequestData;
 }
 
-export default function ServiceRequestDetailDrawer({
-  open,
+export default function ServiceRequestDetailPanel({
   onClose,
   request,
-}: ServiceRequestDetailDrawerProps) {
+}: ServiceRequestDetailPanelProps) {
   const queryClient = useQueryClient();
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const markCompletedMutation = useBuyerMarkCompletedMutation();
@@ -252,8 +346,10 @@ export default function ServiceRequestDetailDrawer({
   const [markingCompleted, setMarkingCompleted] = useState(false);
   const [drawerError, setDrawerError] = useState("");
 
-  const [dispute, setDispute] = useState<ServiceDisputeData | null>(null);
-  const [disputeError, setDisputeError] = useState("");
+  // Local override lets mutations (create / comment / evidence) reflect
+  // immediately; otherwise the dispute is read from the query.
+  const [disputeOverride, setDisputeOverride] =
+    useState<ServiceDisputeData | null>(null);
 
   const [isRaiseDisputeOpen, setIsRaiseDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
@@ -276,73 +372,65 @@ export default function ServiceRequestDetailDrawer({
   const isClosedAfterDispute =
     request.status === ServiceRequestStatus.CLOSED_AFTER_DISPUTE;
 
-  const detailRows = useMemo(
-    () => [
-      { label: "Name of engineer", value: getPartyName(request.engineer) },
-      { label: "Phone number", value: getPartyPhone(request.engineer) },
-      { label: "Service type", value: request.jobType },
-      { label: "Price", value: formatCurrency(request.price) },
-      { label: "Product name", value: request.equipmentName },
-      { label: "Model", value: request.model || request.brand || "--" },
-      { label: "Unit price", value: formatCurrency(request.unitPrice) },
-      { label: "Date of request", value: formatDate(request.createdAt) },
+  const engineerName = getPartyName(request.engineer);
+
+  const timelineEntries = useMemo<TimelineEntry[]>(() => {
+    const entries: TimelineEntry[] = [
       {
-        label: isCompleted || isClosedAfterDispute ? "Additional note" : "Description",
-        value: request.serviceDescription || "--",
+        key: "sent",
+        icon: <Send className="size-5 text-[#2F80ED]" />,
+        label: "Request Sent",
+        date: formatDateTime(request.createdAt),
+        by: engineerName,
       },
-    ],
-    [
-      isClosedAfterDispute,
-      isCompleted,
-      request.brand,
-      request.createdAt,
-      request.engineer,
-      request.equipmentName,
-      request.jobType,
-      request.model,
-      request.price,
-      request.serviceDescription,
-      request.unitPrice,
-    ],
-  );
+    ];
+
+    if (request.status === ServiceRequestStatus.PENDING) {
+      entries.unshift({
+        key: "pending",
+        icon: <Clock className="size-5 text-[#F08A32]" />,
+        label: "Pending",
+        date: formatDateTime(request.updatedAt),
+        by: engineerName,
+      });
+    } else if (request.status === ServiceRequestStatus.REJECTED) {
+      entries.unshift({
+        key: "rejected",
+        icon: <XCircle className="size-5 text-[#B91C1C]" />,
+        label: "Rejected",
+        date: formatDateTime(request.updatedAt),
+        by: engineerName,
+      });
+    } else {
+      entries.unshift({
+        key: "accepted",
+        icon: <CheckCircle2 className="size-5 text-[#1E9E4A]" />,
+        label: statusConfig(request.status).label,
+        date: formatDateTime(request.updatedAt),
+        by: engineerName,
+      });
+    }
+
+    return entries;
+  }, [engineerName, request.createdAt, request.status, request.updatedAt]);
 
   const activeDisputeQuery = useServiceDisputeQuery(
     request.activeDisputeId,
     false,
-    { enabled: open && Boolean(request.activeDisputeId) },
+    { enabled: Boolean(request.activeDisputeId) },
   );
-  const disputeLoading = activeDisputeQuery.isPending && open && Boolean(request.activeDisputeId);
+  const disputeLoading = activeDisputeQuery.isPending && Boolean(request.activeDisputeId);
 
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
+  const dispute = request.activeDisputeId
+    ? disputeOverride ?? activeDisputeQuery.data ?? null
+    : null;
 
-    setDrawerError("");
-
-    if (!request.activeDisputeId) {
-      setDispute(null);
-      setDisputeError("");
-      return;
-    }
-
-    if (activeDisputeQuery.data) {
-      setDispute(activeDisputeQuery.data);
-      setDisputeError("");
-    } else if (activeDisputeQuery.isError) {
-      setDisputeError(
-        activeDisputeQuery.error instanceof Error
-          ? activeDisputeQuery.error.message
-          : "Failed to load the active dispute.",
-      );
-    }
-  }, [
-    open,
-    request.activeDisputeId,
-    activeDisputeQuery.data,
-    activeDisputeQuery.isError,
-    activeDisputeQuery.error,
-  ]);
+  const disputeError =
+    request.activeDisputeId && activeDisputeQuery.isError
+      ? activeDisputeQuery.error instanceof Error
+        ? activeDisputeQuery.error.message
+        : "Failed to load the active dispute."
+      : "";
 
   const refreshRequests = async () => {
     await queryClient.invalidateQueries({
@@ -406,7 +494,7 @@ export default function ServiceRequestDetailDrawer({
         payload,
       });
 
-      setDispute(result.data.dispute);
+      setDisputeOverride(result.data.dispute);
       setIsRaiseDisputeOpen(false);
       setDisputeReason("");
       setDisputeDescription("");
@@ -439,7 +527,7 @@ export default function ServiceRequestDetailDrawer({
         text: commentDraft.trim(),
       });
 
-      setDispute(updatedDispute);
+      setDisputeOverride(updatedDispute);
       setCommentDraft("");
     } catch (error) {
       setDrawerError(
@@ -469,7 +557,7 @@ export default function ServiceRequestDetailDrawer({
         file: evidenceFile,
       });
 
-      setDispute(updatedDispute);
+      setDisputeOverride(updatedDispute);
       setEvidenceFile(null);
     } catch (error) {
       setDrawerError(
@@ -482,22 +570,125 @@ export default function ServiceRequestDetailDrawer({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto max-w-[500px]">
-          <DialogHeader className="flex flex-row items-center justify-between">
-            <DialogTitle className="text-lg font-bold text-[#111827]">
-              Request For Service Engineer
-            </DialogTitle>
-          </DialogHeader>
+      <section className="p-3 sm:p-5 md:p-8">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="sr-only">Service request details</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#E6ECF2] px-3 py-2 text-xs font-medium text-[#4B5563] transition-colors hover:bg-[#F9FAFB]"
+          >
+            <ArrowLeft className="size-4" aria-hidden />
+            Back to requests
+          </button>
+        </div>
 
-          <div className="mt-4 space-y-4">
+        <div className="mx-auto mt-3 max-w-[910px] rounded-2xl border border-[#D1D9E3] bg-white p-4 shadow-[0_10px_24px_rgba(15,23,42,0.025)] sm:mt-5 sm:p-8">
+          <div className="space-y-5 sm:space-y-7">
             <StatusBadge status={request.status} />
 
-            <div className="divide-y divide-[#F3F4F6]">
-              {detailRows.map((row) => (
-                <DetailRow key={row.label} label={row.label} value={row.value} />
-              ))}
+            <div>
+              <h2 className="text-xl font-semibold tracking-[-0.03em] text-[#111827] sm:text-[27px]">
+                {request.equipmentName || "--"}
+              </h2>
+              {request.model || request.brand ? (
+                <p className="mt-1 text-xs text-[#697386] sm:text-sm">
+                  Model: {request.model || request.brand}
+                </p>
+              ) : null}
             </div>
+
+            {request.jobType ? (
+              <span className="inline-flex items-center rounded-lg border border-[#1683FF] bg-[#EAF6FF] px-5 py-3 text-xs font-medium text-[#1F4773] sm:text-sm">
+                {request.jobType}
+              </span>
+            ) : null}
+
+            <div className="border-y border-[#E5EAF0] py-2 sm:py-3">
+              <IconRow
+                icon={<MapPin className="size-4" />}
+                label="Location"
+                value={request.serviceLocation}
+              />
+              <IconRow
+                icon={<Clock className="size-4" />}
+                label="Requested On"
+                value={formatDateTime(request.createdAt)}
+              />
+              <IconRow
+                icon={<FileText className="size-4" />}
+                label="Description"
+                value={request.serviceDescription}
+              />
+            </div>
+
+            {/* Status-based action panel */}
+            <div className={request.status === ServiceRequestStatus.ACCEPTED || request.status === ServiceRequestStatus.IN_PROGRESS ? "border-b border-[#E5EAF0] pb-6" : ""}>
+              {request.status === ServiceRequestStatus.ACCEPTED || request.status === ServiceRequestStatus.IN_PROGRESS ? (
+                <h3 className="text-base font-semibold text-[#111827]">Action</h3>
+              ) : null}
+              <div className="mt-3">
+                {request.status === ServiceRequestStatus.ACCEPTED ||
+                request.status === ServiceRequestStatus.IN_PROGRESS ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Link
+                      href="/dashboard/buyer/messages"
+                      className="flex min-h-[90px] items-center justify-between gap-3 rounded-xl bg-[#079C3D] px-5 py-4 text-white transition-colors hover:bg-[#078536]"
+                    >
+                      <span className="flex items-center gap-2">
+                        <MessageCircle className="size-5 shrink-0" />
+                        <span className="text-left">
+                          <span className="block text-sm font-semibold">
+                            Chat with Engineer
+                          </span>
+                          <span className="block text-xs text-white/80">
+                            Discuss details in next steps
+                          </span>
+                        </span>
+                      </span>
+                      <ArrowRight className="size-4 shrink-0" />
+                    </Link>
+                    <div className="flex min-h-[90px] items-start gap-3 rounded-xl border border-[#1683FF] px-5 py-4">
+                      <Bell className="size-5 shrink-0 text-[#2F80ED]" />
+                      <span className="text-sm">
+                        <span className="block font-medium text-[#111827]">
+                          Engineer accepted your request.
+                        </span>
+                        <span className="block text-xs text-[#6B7280]">
+                          You can chat and finalize the details.
+                        </span>
+                      </span>
+                    </div>
+                  </div>
+                ) : request.status === ServiceRequestStatus.PENDING ? (
+                  <button type="button" className="flex min-h-[68px] items-start gap-3 rounded-xl border border-[#1683FF] px-5 py-4 text-left transition-colors hover:bg-[#F5FAFF]">
+                    <Bell className="size-5 shrink-0 text-[#2F80ED]" />
+                    <span className="text-sm">
+                      <span className="block font-semibold text-[#2F80ED]">
+                        Send Reminder
+                      </span>
+                      <span className="block text-xs text-[#6B7280]">
+                        Remind the Engineer
+                      </span>
+                    </span>
+                  </button>
+                ) : request.status === ServiceRequestStatus.REJECTED ? (
+                  <div className="flex min-h-[68px] items-start gap-3 rounded-xl border border-[#1683FF] px-5 py-4">
+                    <Bell className="size-5 shrink-0 text-[#2F80ED]" />
+                    <span className="text-sm">
+                      <span className="block font-medium text-[#111827]">
+                        Engineer rejected your request.
+                      </span>
+                      <span className="block text-xs text-[#6B7280]">
+                        You can request again
+                      </span>
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <RequestHistory entries={timelineEntries} />
 
             {(isCompleted || isClosedAfterDispute) && (
               <AttachmentList
@@ -701,8 +892,8 @@ export default function ServiceRequestDetailDrawer({
               </div>
             ) : null}
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </section>
 
       <Dialog open={isRaiseDisputeOpen} onOpenChange={setIsRaiseDisputeOpen}>
         <DialogContent className="sm:max-w-md">

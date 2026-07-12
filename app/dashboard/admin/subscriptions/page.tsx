@@ -251,11 +251,11 @@ function ManageSubscriptionDrawer({
 
         {/* Actions (non-functional) */}
         <div className="space-y-3">
-          <Button title="Upgrade Plan" type="button" className="h-14" />
+          <Button title="Upgrade Plan" type="button" className="h-12 md:h-14" />
           <button
             type="button"
             onClick={onDowngrade}
-            className="h-14 w-full rounded-xl border border-[#FE6E00] text-base font-medium text-[#FE6E00]"
+            className="h-12 md:h-14 w-full rounded-xl border border-[#FE6E00] text-base font-medium text-[#FE6E00]"
           >
             Downgrade
           </button>
@@ -374,7 +374,7 @@ function DowngradeDrawer({
         <Button
           title="Downgrade"
           type="button"
-          className="h-14"
+          className="h-12 md:h-14"
           iconRight={<ArrowRight size={16} />}
         />
       </div>
@@ -719,7 +719,7 @@ export default function AdminSubscriptionsPage() {
                   title="Export"
                   variant="secondaryLight"
                   iconLeft={<Download size={16} />}
-                  className="h-14 self-end"
+                  className="h-11 lg:h-14 lg:self-end"
                   type="button"
                 />
               </div>

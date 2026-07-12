@@ -154,7 +154,7 @@ export default async function AgentBusinessOwnerSubscriptionPlansPage({
           <div className="mt-5 rounded-xl border border-[#E7EAEE] p-5">
             <Link
               href={`/dashboard/agent/business-owners/${id}/subscription/payment`}
-              className="inline-flex h-[60px] items-center gap-3 rounded-xl bg-[#FE6E00] px-16 text-[18px] font-medium text-white"
+              className="inline-flex h-11 sm:h-[60px] w-full sm:w-auto items-center justify-center gap-3 rounded-xl bg-[#FE6E00] px-8 sm:px-16 text-[18px] font-medium text-white"
             >
               Activate plan
               <ArrowRight size={20} />

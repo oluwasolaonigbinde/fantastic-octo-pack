@@ -132,9 +132,9 @@ function PlanCard({ plan, expanded }: { plan: (typeof plans)[number]; expanded: 
       </div>
 
       {plan.action ? (
-        <Button title={plan.action} className="mt-10 h-14 w-full rounded-lg" type="button" />
+        <Button title={plan.action} className="mt-10 h-12 md:h-14 w-full rounded-lg" type="button" />
       ) : (
-        <div className="mt-10 h-14" />
+        <div className="mt-10 h-12 md:h-14" />
       )}
     </article>
   );

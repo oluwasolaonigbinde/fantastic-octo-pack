@@ -120,7 +120,7 @@ export default function AdminPersonalDetails() {
             <Button
               title="Edit Personal Info"
               iconLeft={<Edit size={20} />}
-              className="h-14 w-full rounded-[12px] md:w-[250px]"
+              className="h-11 md:h-14 w-full rounded-[12px] md:w-[250px]"
               type="button"
               onClick={() => {
                 setForm(profile);
@@ -210,7 +210,7 @@ export default function AdminPersonalDetails() {
             />
             <div className="flex w-full flex-col gap-[var(--control-label-gap)]">
               <label className="type-label font-medium text-gray2">Role</label>
-              <div className="flex h-[60px] items-center justify-between rounded-[14px] border border-gray5 bg-white px-4 text-base leading-6 text-gray1">
+              <div className="flex h-11 md:h-[60px] items-center justify-between rounded-[14px] border border-gray5 bg-white px-4 text-base leading-6 text-gray1">
                 <span>{form.role}</span>
                 <ChevronDown size={20} className="text-gray3" />
               </div>
@@ -231,7 +231,7 @@ export default function AdminPersonalDetails() {
             title="Update Personal Information"
             type="submit"
             isBusy={isLoading}
-            className="h-[60px] rounded-[14px] text-lg"
+            className="h-11 md:h-[60px] rounded-[14px] text-lg"
           />
         </form>
       </RightSlider>

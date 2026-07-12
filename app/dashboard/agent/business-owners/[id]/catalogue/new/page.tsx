@@ -46,7 +46,7 @@ export default function AgentBusinessOwnerAddProductPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35">
           <div
             data-testid="submission-error-modal"
-            className="w-[400px] rounded-[28px] border-2 border-[#0669D9] bg-white px-10 py-9"
+            className="w-[calc(100vw-2rem)] max-w-[400px] rounded-[28px] border-2 border-[#0669D9] bg-white px-6 py-9 sm:px-10"
           >
             <div className="rounded-xl border border-[#FFD6C2] bg-[#FFFDFC] p-4">
               <AlertCircle size={28} className="text-[#FE6E00]" />
@@ -62,7 +62,7 @@ export default function AgentBusinessOwnerAddProductPage() {
             </div>
             <Link
               href={`/dashboard/agent/business-owners/${params.id}/catalogue`}
-              className="mt-8 inline-flex h-14 w-full items-center justify-center rounded-xl border border-[#0669D9] bg-[#EAF9FF] text-sm font-medium text-[#03265C]"
+              className="mt-8 inline-flex h-12 md:h-14 w-full items-center justify-center rounded-xl border border-[#0669D9] bg-[#EAF9FF] text-sm font-medium text-[#03265C]"
             >
               Cancel
             </Link>
@@ -190,7 +190,7 @@ export default function AgentBusinessOwnerAddProductPage() {
             <div className="mt-10">
               <button
                 type="button"
-                className="inline-flex h-[60px] min-w-[320px] items-center justify-center gap-3 rounded-xl bg-[#0669D9] px-6 text-base font-medium text-white"
+                className="inline-flex h-11 sm:h-[60px] w-full sm:w-auto sm:min-w-[320px] items-center justify-center gap-3 rounded-xl bg-[#0669D9] px-6 text-base font-medium text-white"
               >
                 Save & Continue
                 <ArrowRight size={20} />

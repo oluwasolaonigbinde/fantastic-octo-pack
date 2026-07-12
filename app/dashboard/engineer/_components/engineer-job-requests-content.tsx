@@ -277,7 +277,7 @@ export function EngineerJobRequestsPageFilterPanel({
           Filter table list by:
         </p>
       </div>
-      <div className="mt-[20px] flex gap-[20px]">
+      <div className="mt-[20px] flex flex-col gap-[20px] lg:flex-row lg:flex-wrap lg:items-end">
         <label className="flex flex-col gap-[4px]">
           <span className="px-[16px] text-[16px] leading-[24px] text-[#111827]">
             Job type
@@ -288,7 +288,7 @@ export function EngineerJobRequestsPageFilterPanel({
             placeholder="Enter job type"
             value={jobTypeFilter}
             onChange={(event) => onJobTypeChange(event.target.value)}
-            className="h-[60px] w-[250px] rounded-[12px] border border-[#DDE0E5] px-[16px] text-[16px] leading-[24px] text-[#111827] outline-none placeholder:text-[#C4C8CE]"
+            className="h-11 w-full lg:h-[60px] lg:w-[250px] rounded-[12px] border border-[#DDE0E5] px-[16px] text-[16px] leading-[24px] text-[#111827] outline-none placeholder:text-[#C4C8CE]"
           />
         </label>
         <label className="flex flex-col gap-[4px]">
@@ -299,7 +299,7 @@ export function EngineerJobRequestsPageFilterPanel({
             aria-label="Job status filter"
             value={statusFilter}
             onChange={(event) => onStatusChange(event.target.value)}
-            className="h-[60px] w-[250px] rounded-[12px] border border-[#DDE0E5] bg-white px-[16px] text-[16px] leading-[24px] text-[#111827] outline-none"
+            className="h-11 w-full lg:h-[60px] lg:w-[250px] rounded-[12px] border border-[#DDE0E5] bg-white px-[16px] text-[16px] leading-[24px] text-[#111827] outline-none"
           >
             <option value="">Select status</option>
             <option value={ServiceRequestStatus.PENDING}>Pending</option>
@@ -318,13 +318,13 @@ export function EngineerJobRequestsPageFilterPanel({
             type="date"
             value={dateFilter}
             onChange={(event) => onDateChange(event.target.value)}
-            className="h-[60px] w-[250px] rounded-[12px] border border-[#DDE0E5] px-[16px] text-[16px] leading-[24px] text-[#111827] outline-none placeholder:text-[#C4C8CE]"
+            className="h-11 w-full lg:h-[60px] lg:w-[250px] rounded-[12px] border border-[#DDE0E5] px-[16px] text-[16px] leading-[24px] text-[#111827] outline-none placeholder:text-[#C4C8CE]"
           />
         </label>
         <button
           type="button"
           onClick={onFilter}
-          className="mt-[28px] inline-flex h-[60px] w-[250px] items-center justify-center gap-[8px] rounded-[12px] bg-primary text-[16px] font-normal leading-[24px] text-white"
+          className="inline-flex h-11 w-full lg:mt-[28px] lg:h-[60px] lg:w-[250px] items-center justify-center gap-[8px] rounded-[12px] bg-primary text-[16px] font-normal leading-[24px] text-white"
         >
           <SlidersHorizontal className="size-6" aria-hidden />
           Filter
@@ -554,7 +554,7 @@ function StatusUpdateDialog({
             disabled={busy}
             isBusy={busy}
             onClick={onConfirm}
-            className="mt-[20px] h-[60px] w-full rounded-[8px] border-0 bg-[#FE6E00] px-5 text-[16px] font-normal leading-[24px] hover:bg-[#E86200]"
+            className="mt-[20px] h-12 md:h-[60px] w-full rounded-[8px] border-0 bg-[#FE6E00] px-5 text-[16px] font-normal leading-[24px] hover:bg-[#E86200]"
           >
             Mark as In progress
           </Button>
@@ -898,7 +898,7 @@ export function EngineerJobCards({
                     disabled={busy}
                     isBusy={busy}
                     onClick={() => void updateStatus(request, ServiceRequestStatus.ACCEPTED)}
-                    className="h-[60px] w-full rounded-[14px] border-0 px-5 text-[18px] font-normal leading-[32px] md:w-[320px]"
+                    className="h-12 md:h-[60px] w-full rounded-[14px] border-0 px-5 text-[18px] font-normal leading-[32px] md:w-[320px]"
                   >
                     Accept
                   </Button>
@@ -906,7 +906,7 @@ export function EngineerJobCards({
                     type="button"
                     disabled={busy}
                     onClick={() => void updateStatus(request, ServiceRequestStatus.REJECTED)}
-                    className="inline-flex h-[60px] w-full items-center justify-center rounded-[14px] border border-[#FE6E00] bg-[#FFF7F0] px-5 text-[18px] font-normal leading-[32px] text-[#FE6E00] disabled:opacity-60 md:w-[320px]"
+                    className="inline-flex h-12 md:h-[60px] w-full items-center justify-center rounded-[14px] border border-[#FE6E00] bg-[#FFF7F0] px-5 text-[18px] font-normal leading-[32px] text-[#FE6E00] disabled:opacity-60 md:w-[320px]"
                   >
                     Reject
                   </button>
@@ -919,7 +919,7 @@ export function EngineerJobCards({
                   {requesterChatHref ? (
                     <Link
                       href={requesterChatHref}
-                      className="inline-flex h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
+                      className="inline-flex h-12 md:h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
                     >
                       Open chat
                     </Link>
@@ -941,7 +941,7 @@ export function EngineerJobCards({
                   {requesterChatHref ? (
                     <Link
                       href={requesterChatHref}
-                      className="inline-flex h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
+                      className="inline-flex h-12 md:h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
                     >
                       Open chat
                     </Link>
@@ -957,7 +957,7 @@ export function EngineerJobCards({
               requesterChatHref ? (
                 <Link
                   href={requesterChatHref}
-                  className="inline-flex h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
+                  className="inline-flex h-12 md:h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
                 >
                   Open chat
                 </Link>
@@ -968,7 +968,7 @@ export function EngineerJobCards({
                   {requesterChatHref ? (
                     <Link
                       href={requesterChatHref}
-                      className="inline-flex h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
+                      className="inline-flex h-12 md:h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
                     >
                       Open chat
                     </Link>

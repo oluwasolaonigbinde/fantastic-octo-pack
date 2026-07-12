@@ -228,7 +228,7 @@ function getUserPhone(
 
 function AdminDateChip({ label }: { label: string }) {
   return (
-    <div className="inline-flex h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
+    <div className="inline-flex h-11 sm:h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
       <span>{label}</span>
       <CalendarDays size={18} className="text-gray2" />
     </div>
@@ -438,7 +438,7 @@ export default function AdminOrdersPage() {
             <Button
               title="Filter"
               iconLeft={<Filter size={16} />}
-              className="h-[60px] rounded-[14px] lg:self-end"
+              className="h-11 lg:h-[60px] rounded-[14px] lg:self-end"
               type="button"
               onClick={applyFilters}
               isBusy={loading}

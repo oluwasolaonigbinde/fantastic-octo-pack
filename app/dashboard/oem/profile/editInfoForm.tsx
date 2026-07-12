@@ -50,8 +50,6 @@ export default function EditInfoForm({ onClose }: EditInfoFormProps) {
     defaultValues: {
       name: defaultName,
       phoneNumber: data?.phoneNumber || "",
-      dateOfBirth:
-        typeof data?.dateOfBirth === "string" ? data.dateOfBirth.slice(0, 10) : "",
       address: data?.address || "",
     },
   });
@@ -70,7 +68,6 @@ export default function EditInfoForm({ onClose }: EditInfoFormProps) {
           firstName,
           lastName,
           phoneNumber: values.phoneNumber,
-          dateOfBirth: values.dateOfBirth,
           address: values.address,
         },
       }),
@@ -96,13 +93,6 @@ export default function EditInfoForm({ onClose }: EditInfoFormProps) {
           id="oem-edit-phone"
           label="Phone number"
           error={touchedFields.phoneNumber ? errors.phoneNumber?.message : undefined}
-        />
-        <Input
-          {...register("dateOfBirth")}
-          id="oem-edit-dob"
-          label="Date of birth"
-          type="date"
-          error={touchedFields.dateOfBirth ? errors.dateOfBirth?.message : undefined}
         />
         <SingleSelect
           label="Role"

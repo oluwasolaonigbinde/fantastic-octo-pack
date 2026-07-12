@@ -87,7 +87,7 @@ export default function AgentOrdersPage() {
                 placeholder="Enter business type"
                 value={search.businessType}
                 onChange={(e) => setSearch((s) => ({ ...s, businessType: e.target.value }))}
-                className="h-[60px] w-full rounded-2xl border border-[#DDE0E5] px-4 text-base placeholder:text-[#C4CBD5] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/30"
+                className="h-11 sm:h-[60px] w-full rounded-2xl border border-[#DDE0E5] px-4 text-base placeholder:text-[#C4CBD5] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/30"
               />
             </div>
             <div className="flex-1 sm:min-w-[140px] lg:flex-none lg:w-[251px]">
@@ -97,7 +97,7 @@ export default function AgentOrdersPage() {
                 placeholder="Enter order ID"
                 value={search.orderId}
                 onChange={(e) => setSearch((s) => ({ ...s, orderId: e.target.value }))}
-                className="h-[60px] w-full rounded-2xl border border-[#DDE0E5] px-4 text-base placeholder:text-[#C4CBD5] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/30"
+                className="h-11 sm:h-[60px] w-full rounded-2xl border border-[#DDE0E5] px-4 text-base placeholder:text-[#C4CBD5] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/30"
               />
             </div>
             <div className="flex-1 sm:min-w-[140px] lg:flex-none lg:w-[251px]">
@@ -107,12 +107,12 @@ export default function AgentOrdersPage() {
                 placeholder="Enter status"
                 value={search.status}
                 onChange={(e) => setSearch((s) => ({ ...s, status: e.target.value }))}
-                className="h-[60px] w-full rounded-2xl border border-[#DDE0E5] px-4 text-base placeholder:text-[#C4CBD5] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/30"
+                className="h-11 sm:h-[60px] w-full rounded-2xl border border-[#DDE0E5] px-4 text-base placeholder:text-[#C4CBD5] focus:outline-none focus:ring-2 focus:ring-[#0669D9]/30"
               />
             </div>
             <button
               type="button"
-              className="inline-flex h-[60px] w-full items-center justify-center gap-3 rounded-xl bg-[#0669D9] px-6 text-base font-medium text-white sm:w-[250px]"
+              className="inline-flex h-11 sm:h-[60px] w-full items-center justify-center gap-3 rounded-xl bg-[#0669D9] px-6 text-base font-medium text-white sm:w-[250px]"
             >
               <SlidersHorizontal size={16} />
               Filter

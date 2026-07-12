@@ -319,7 +319,7 @@ export default function EditStorePage() {
             type="submit"
             isBusy={isLoading}
             disabled={isLoading || !token}
-            className="!h-16 !w-72 !rounded-[14px] lg:!w-80"
+            className="!h-12 !w-full !rounded-[14px] lg:!h-16 lg:!w-80"
           />
         </form>
       </div>

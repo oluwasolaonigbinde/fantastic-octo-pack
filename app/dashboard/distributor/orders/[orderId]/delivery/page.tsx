@@ -438,7 +438,7 @@ export default function DistributorDeliveryStatusPage() {
                     setActionError("");
                     setModal("action");
                   }}
-                  className="mt-5 h-14 w-full max-w-[300px] rounded-xl bg-primary text-sm font-medium text-white transition hover:bg-primary-dark"
+                  className="mt-5 h-12 md:h-14 w-full max-w-[300px] rounded-xl bg-primary text-sm font-medium text-white transition hover:bg-primary-dark"
                 >
                   {stageCopy.panelButton}
                 </button>
