@@ -15,6 +15,7 @@ import {
   useMutation,
   useQuery,
   useQueryClient,
+  useQueries,
 } from "@tanstack/react-query";
 
 import { useAppSelector } from "@/hooks/useAppSelector";
@@ -67,6 +68,24 @@ export const useRfqDetailQuery = (
   });
 };
 
+/**
+ * The RFQ list deliberately stays lightweight. The buyer hub uses this small
+ * batch of existing detail reads to render returned quote price/status data in
+ * the Figma table without relying on an undocumented aggregate endpoint.
+ */
+export const useBuyerRfqDetails = (rfqIds: string[]) => {
+  const token = useAuthToken();
+
+  return useQueries({
+    queries: rfqIds.slice(0, 25).map((rfqId) => ({
+      queryKey: queryKeys.rfqs.detail(rfqId),
+      queryFn: () => rfqService.fetchRfqDetail(token as string, rfqId),
+      enabled: Boolean(token) && Boolean(rfqId),
+      select: (res: Awaited<ReturnType<typeof rfqService.fetchRfqDetail>>) => res.data,
+    })),
+  });
+};
+
 /* ------------------------------------------------------------------ */
 /* Mutations                                                          */
 /* ------------------------------------------------------------------ */
@@ -109,13 +128,13 @@ export const useRespondToQuoteMutation = () => {
   });
 };
 
-export const useSelectQuoteMutation = () => {
+export const useApproveQuoteMutation = () => {
   const token = useAuthToken();
   const qc = useQueryClient();
 
   return useMutation({
     mutationFn: (quoteId: string) =>
-      rfqService.selectQuote(token as string, quoteId),
+      rfqService.approveQuote(token as string, quoteId),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rfqs.all }),
   });
 };

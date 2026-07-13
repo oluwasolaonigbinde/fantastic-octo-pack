@@ -1,378 +1,96 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Download, FileText } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, FileText, MapPin, MessageCircle } from "lucide-react";
 import Header from "../../../component/header";
 import { Button, Skeleton } from "@/components/base";
-import { useAppSelector } from "@/hooks/useAppSelector";
-import { useRfqDetailQuery } from "@/hooks/queries/rfqs";
-import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS } from "@/types/rfq";
-import type { Quote, UserRef } from "@/types/rfq";
-import rfqService from "@/services/rfqService";
+import { useRfqDetailQuery, useApproveQuoteMutation } from "@/hooks/queries/rfqs";
+import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS, type Quote, type UserRef } from "@/types/rfq";
+import { buildMessagingComposeHref } from "@/utils/messagingRoutes";
 
-// ─── Sub-component ────────────────────────────────────────────────────────────
+const money = (value?: number | null) =>
+  value == null
+    ? "--"
+    : new Intl.NumberFormat("en-NG", {
+        style: "currency",
+        currency: "NGN",
+        minimumFractionDigits: 0,
+      }).format(value);
 
-function DetailRow({
-  label,
-  value,
-}: {
-  label: string;
-  value?: string | null;
-}) {
-  if (!value) return null;
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-gray2">{label}</span>
-      <span className="text-sm text-gray1">{value}</span>
-    </div>
-  );
-}
+const distributorName = (quote: Quote) => {
+  if (typeof quote.distributor === "string") return "Verified supplier";
+  const distributor = quote.distributor as UserRef;
+  return distributor.businessName || distributor.distributorStoreProfile?.businessName ||
+    `${distributor.firstName || ""} ${distributor.lastName || ""}`.trim() || "Verified supplier";
+};
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+const distributorId = (quote: Quote) =>
+  typeof quote.distributor === "string" ? quote.distributor : quote.distributor?._id;
 
 export default function BuyerRfqDetailPage() {
-  const params = useParams();
+  const params = useParams<{ rfqId: string }>();
   const router = useRouter();
-  const { data: authData } = useAppSelector((state) => state.auth);
-  const rfqId = params.rfqId as string;
-  const { data: currentRfq, isLoading } = useRfqDetailQuery(rfqId);
+  const { data, isLoading, isError, refetch } = useRfqDetailQuery(params.rfqId);
+  const approveQuote = useApproveQuoteMutation();
 
-  const [isActing, setIsActing] = useState<string | null>(null); // quoteId being acted on
-  const [isSendingReminder, setIsSendingReminder] = useState(false);
-  const [reminderSent, setReminderSent] = useState(false);
-  const [localQuoteStatuses, setLocalQuoteStatuses] = useState<
-    Record<string, Quote["status"]>
-  >({});
+  if (isLoading) {
+    return <div><Header title="Quote details" /><div className="p-6 space-y-4"><Skeleton className="h-12 w-48" /><Skeleton className="h-80" /></div></div>;
+  }
 
-  const handleAcceptOffer = useCallback(
-    async (quoteId: string) => {
-      if (!authData?.tokens?.accessToken) return;
-      setIsActing(quoteId);
-      try {
-        const result = await rfqService.acceptOffer(
-          authData.tokens.accessToken,
-          quoteId
-        );
-        if (result.success && result.data) {
-          router.push(`/dashboard/buyer/orders/${result.data._id}`);
-        }
-      } catch {
-        // silent
-      } finally {
-        setIsActing(null);
-      }
-    },
-    [authData, router]
-  );
-
-  const handleRejectOffer = useCallback(
-    async (quoteId: string) => {
-      if (!authData?.tokens?.accessToken) return;
-      setIsActing(quoteId);
-      try {
-        await rfqService.rejectOffer(authData.tokens.accessToken, quoteId);
-        setLocalQuoteStatuses((prev) => ({
-          ...prev,
-          [quoteId]: "rejected_by_buyer",
-        }));
-      } catch {
-        // silent
-      } finally {
-        setIsActing(null);
-      }
-    },
-    [authData]
-  );
-
-  const handleSendReminder = useCallback(async () => {
-    if (!authData?.tokens?.accessToken || !rfqId) return;
-    setIsSendingReminder(true);
-    try {
-      await rfqService.sendReminder(authData.tokens.accessToken, rfqId);
-      setReminderSent(true);
-      setTimeout(() => setReminderSent(false), 3000);
-    } catch {
-      // silent
-    } finally {
-      setIsSendingReminder(false);
-    }
-  }, [authData, rfqId]);
-
-  const getDistributorName = (q: Quote) => {
-    const d = q.distributor;
-    if (typeof d === "object" && d !== null) {
-      return (
-        `${(d as UserRef).firstName || ""} ${(d as UserRef).lastName || ""}`.trim() ||
-        "Unknown distributor"
-      );
-    }
-    return "Unknown distributor";
-  };
-
-  const formatCurrency = (val?: number) =>
-    val != null
-      ? new Intl.NumberFormat("en-NG", {
-          style: "currency",
-          currency: "NGN",
-          minimumFractionDigits: 0,
-        }).format(val)
-      : "—";
-
-  const rfq = currentRfq?.rfq;
-  const quotes = currentRfq?.quotes || [];
-
-  if (isLoading || !currentRfq) {
+  if (!data || isError) {
     return (
       <div>
-        <Header title="RFQ Details" />
-        <div className="p-6 space-y-3">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-64" />
-        </div>
+        <Header title="Quote details" />
+        <div className="p-6"><p className="text-gray2">This RFQ could not be loaded.</p><Button title="Try again" variant="primary" size="sm" onClick={() => void refetch()} className="mt-4 !w-auto" /></div>
       </div>
     );
   }
 
-  const canAct =
-    rfq &&
-    (rfq.status === "responded_partial" || rfq.status === "responded_complete");
+  const { rfq, quotes } = data;
+  const address = rfq.deliveryAddress
+    ? [rfq.deliveryAddress.address, rfq.deliveryAddress.city, rfq.deliveryAddress.state].filter(Boolean).join(", ")
+    : "No delivery address provided";
+  const actionable = rfq.status === "responded_partial" || rfq.status === "responded_complete";
 
   return (
-    <div>
-      <Header title="RFQ Details" />
-      <div className="p-4 md:p-6 bg-gray7 space-y-4">
-        <Button
-          title="Back to RFQs"
-          variant="secondaryLight"
-          size="sm"
-          iconLeft={<ArrowLeft size={16} />}
-          onClick={() => router.push("/dashboard/buyer/rfqs")}
-          className="!w-auto"
-        />
+    <div className="min-h-full bg-gray7">
+      <Header title="Quote details" />
+      <main className="mx-auto max-w-6xl p-4 md:p-6 space-y-5">
+        <Button title="Back to RFQs" variant="secondaryLight" size="sm" iconLeft={<ArrowLeft size={16} />} onClick={() => router.push("/dashboard/buyer/rfqs")} className="!w-auto" />
 
-        {/* RFQ summary */}
-        <div className="card p-4 md:p-6 space-y-3">
-          <div className="flex items-start justify-between gap-4">
+        <section className="bg-white border border-gray5 rounded-[12px] p-5 md:p-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
-              <h2 className="text-lg font-semibold">
-                {rfq?.items[0]?.productName || "Request for Quote"}
-              </h2>
-              <p className="text-sm text-gray3 mt-0.5">
-                {rfq?.items.length} item(s) &middot;{" "}
-                {rfq?.targetDistributors.length} distributor(s)
-              </p>
+              <p className="text-sm text-gray3">Request for quote</p>
+              <h1 className="mt-1 text-xl font-semibold text-gray1">{rfq.title || rfq.items[0]?.productName || "Sourcing request"}</h1>
+              <p className="mt-2 text-sm text-gray2">{rfq.items.length} item{rfq.items.length === 1 ? "" : "s"} · {rfq.targetDistributors.length} matched supplier{rfq.targetDistributors.length === 1 ? "" : "s"}</p>
             </div>
-            <span
-              className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium ${
-                rfq?.status === "converted_to_order"
-                  ? "bg-success-light text-success"
-                  : rfq?.status === "closed"
-                    ? "bg-gray-100 text-gray3"
-                    : rfq?.status?.startsWith("responded")
-                      ? "bg-primary-light text-primary"
-                      : "bg-warning-light text-warning"
-              }`}
-            >
-              {RFQ_STATUS_LABELS[rfq?.status || ""] || rfq?.status}
-            </span>
+            <span className="inline-flex self-start rounded-full bg-primary-light px-3 py-1 text-sm font-medium text-primary">{RFQ_STATUS_LABELS[rfq.status]}</span>
           </div>
-
-          {rfq?.additionalNotes && (
-            <p className="text-sm text-gray2">{rfq.additionalNotes}</p>
-          )}
-          {rfq?.deliveryLocation && (
-            <p className="text-sm text-gray2">
-              Delivery to: {rfq.deliveryLocation}
-            </p>
-          )}
-
-          {/* Attachments */}
-          {rfq?.attachments && rfq.attachments.length > 0 && (
-            <div className="flex flex-col gap-2 pt-1">
-              <p className="text-sm font-medium text-gray2">Attachments</p>
-              {rfq.attachments.map((att) => (
-                <a
-                  key={att.cloudinary_id}
-                  href={att.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 text-sm text-primary underline"
-                >
-                  <FileText size={14} />
-                  {att.originalName || "Attachment"}
-                </a>
-              ))}
-            </div>
-          )}
-
-          {/* Send Reminder */}
-          <div className="pt-2">
-            <Button
-              title={
-                isSendingReminder
-                  ? "Sending..."
-                  : reminderSent
-                    ? "Reminder Sent!"
-                    : "Send Reminder"
-              }
-              variant={reminderSent ? "primaryLight" : "secondaryLight"}
-              size="sm"
-              isBusy={isSendingReminder}
-              onClick={handleSendReminder}
-              disabled={isSendingReminder || reminderSent}
-              className="!w-auto"
-            />
+          <div className="mt-6 grid gap-4 md:grid-cols-2">
+            <div className="rounded-[8px] bg-gray7 p-4"><p className="text-xs text-gray3">Delivery timeline</p><p className="mt-1 text-sm font-medium text-gray1">{rfq.deliveryTimeline || "Not specified"}</p></div>
+            <div className="rounded-[8px] bg-gray7 p-4"><p className="text-xs text-gray3">Delivery address</p><p className="mt-1 flex gap-2 text-sm font-medium text-gray1"><MapPin size={16} className="mt-0.5 shrink-0 text-primary" />{address}</p></div>
           </div>
-        </div>
+          {rfq.additionalNotes ? <p className="mt-4 text-sm text-gray2">{rfq.additionalNotes}</p> : null}
+          {rfq.attachments?.length ? <div className="mt-4 flex flex-wrap gap-3">{rfq.attachments.map((file) => <a key={file.cloudinary_id} href={file.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-primary hover:underline"><FileText size={16} />{file.originalName || "Attachment"}</a>)}</div> : null}
+        </section>
 
-        {/* Quote responses */}
-        <div className="card p-4 md:p-6">
-          <h3 className="font-semibold mb-4">
-            Quote Responses ({quotes.length})
-          </h3>
-          {quotes.length === 0 ? (
-            <p className="text-sm text-gray3">
-              No responses yet. Distributors will reply to your request here.
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {quotes.map((q) => {
-                const effectiveStatus = localQuoteStatuses[q._id] ?? q.status;
-                const isQuoteActing = isActing === q._id;
-                const canActOnQuote =
-                  canAct && effectiveStatus === "quoted";
-
-                return (
-                  <div
-                    key={q._id}
-                    className={`rounded-xl border p-4 space-y-3 ${
-                      effectiveStatus === "selected_for_order"
-                        ? "border-success bg-success-light/20"
-                        : effectiveStatus === "rejected_by_buyer"
-                          ? "border-gray5 bg-gray-50 opacity-60"
-                          : "border-gray5"
-                    }`}
-                  >
-                    {/* Header row */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium">{getDistributorName(q)}</p>
-                        <span
-                          className={`text-xs font-medium ${
-                            effectiveStatus === "selected_for_order"
-                              ? "text-success"
-                              : effectiveStatus === "rejected_by_buyer"
-                                ? "text-gray3"
-                                : effectiveStatus === "quoted"
-                                  ? "text-primary"
-                                  : "text-warning"
-                          }`}
-                        >
-                          {QUOTE_STATUS_LABELS[effectiveStatus] || effectiveStatus}
-                        </span>
-                      </div>
-                      {q.totalPrice != null && (
-                        <p className="text-lg font-bold text-primary shrink-0">
-                          {formatCurrency(q.totalPrice)}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Quote fields */}
-                    <div className="grid grid-cols-2 gap-3">
-                      {q.pricePerUnit != null && (
-                        <DetailRow
-                          label="Unit price"
-                          value={formatCurrency(q.pricePerUnit)}
-                        />
-                      )}
-                      {q.availableModel && (
-                        <DetailRow label="Model" value={q.availableModel} />
-                      )}
-                      {q.warranty && (
-                        <DetailRow label="Warranty" value={q.warranty} />
-                      )}
-                      {q.leadTimeDays != null && (
-                        <DetailRow
-                          label="Delivery time"
-                          value={`${q.leadTimeDays} days`}
-                        />
-                      )}
-                      {q.stockStatus && (
-                        <DetailRow label="Stock" value={q.stockStatus} />
-                      )}
-                    </div>
-
-                    {q.notes && (
-                      <p className="text-sm text-gray2">{q.notes}</p>
-                    )}
-                    {q.terms && (
-                      <p className="text-sm text-gray2">
-                        <span className="font-medium">Terms:</span> {q.terms}
-                      </p>
-                    )}
-
-                    {/* Images */}
-                    {q.images && q.images.length > 0 && (
-                      <div className="flex flex-wrap gap-2">
-                        {q.images.map((img) => (
-                          <a
-                            key={img.cloudinary_id}
-                            href={img.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-xs text-primary underline"
-                          >
-                            {img.originalName || "Image"}
-                          </a>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Catalogue */}
-                    {q.catalogue && (
-                      <a
-                        href={q.catalogue.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-xs text-primary underline"
-                      >
-                        <Download size={12} />
-                        {q.catalogue.originalName || "Catalogue.pdf"}
-                      </a>
-                    )}
-
-                    {/* Accept / Reject */}
-                    {canActOnQuote && (
-                      <div className="flex gap-3 pt-1">
-                        <Button
-                          title={isQuoteActing ? "Processing..." : "Accept Offer"}
-                          variant="primary"
-                          size="sm"
-                          isBusy={isQuoteActing}
-                          onClick={() => handleAcceptOffer(q._id)}
-                          disabled={!!isActing}
-                          className="!w-auto"
-                        />
-                        <Button
-                          title={isQuoteActing ? "..." : "Reject Offer"}
-                          variant="secondaryLight"
-                          size="sm"
-                          isBusy={isQuoteActing}
-                          onClick={() => handleRejectOffer(q._id)}
-                          disabled={!!isActing}
-                          className="!w-auto"
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+        <section className="space-y-3">
+          <div className="flex items-center justify-between"><h2 className="text-lg font-semibold text-gray1">Supplier responses</h2><span className="text-sm text-gray3">{quotes.length} received</span></div>
+          {quotes.length === 0 ? <div className="rounded-[12px] border border-gray5 bg-white p-8 text-center text-sm text-gray3">Matched suppliers will appear here when they respond.</div> : quotes.map((quote) => {
+            const availableLines = quote.items.filter((item) => item.available);
+            const canApprove = actionable && quote.status === "quoted" && availableLines.length > 0;
+            const chatHref = buildMessagingComposeHref("buyer", distributorId(quote));
+            return <article key={quote._id} className="rounded-[12px] border border-gray5 bg-white p-5 md:p-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="font-semibold text-gray1">{distributorName(quote)}</h3><p className="mt-1 text-sm text-gray3">{QUOTE_STATUS_LABELS[quote.status]}</p></div><p className="text-xl font-semibold text-primary">{money(quote.totalPrice)}</p></div>
+              <div className="mt-5 overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="border-b border-gray5 text-gray3"><tr><th className="pb-3 font-medium">Item</th><th className="pb-3 font-medium">Availability</th><th className="pb-3 font-medium">Qty</th><th className="pb-3 text-right font-medium">Unit price</th></tr></thead><tbody>{rfq.items.map((rfqItem, index) => { const line = quote.items.find((item) => item.rfqItemIndex === index); return <tr key={`${quote._id}-${index}`} className="border-b border-gray6 last:border-0"><td className="py-3 text-gray1">{rfqItem.productName}</td><td className={`py-3 ${line?.available ? "text-success" : "text-danger"}`}>{line?.available ? "Available" : "Unavailable"}</td><td className="py-3 text-gray1">{line?.quantity ?? "--"}</td><td className="py-3 text-right text-gray1">{money(line?.pricePerUnit)}</td></tr>; })}</tbody></table></div>
+              {quote.warranty || quote.notes ? <p className="mt-4 text-sm text-gray2">{[quote.warranty, quote.notes].filter(Boolean).join(" · ")}</p> : null}
+              {canApprove || chatHref ? <div className="mt-5 flex flex-wrap justify-end gap-3">{chatHref ? <Link href={chatHref} className="inline-flex h-12 items-center gap-2 rounded-lg border border-fuchsia-300 px-5 text-sm font-medium text-fuchsia-500 hover:bg-fuchsia-50"><MessageCircle size={17} />Open chat</Link> : null}{canApprove ? <Button title={approveQuote.isPending ? "Approving..." : "Approve quote"} variant="primary" size="md" isBusy={approveQuote.isPending} onClick={() => approveQuote.mutate(quote._id, { onSuccess: (result) => router.push(`/dashboard/buyer/orders/${result.data._id}`) })} className="!w-auto" /> : null}</div> : null}
+            </article>;
+          })}
+        </section>
+      </main>
     </div>
   );
 }

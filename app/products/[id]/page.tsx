@@ -19,7 +19,6 @@ import MarkdownContent from "@/components/product/MarkdownContent";
 import RelatedProducts from "./RelatedProducts";
 import ConfirmOrderModal from "./ConfirmOrderModal";
 import EditDeliveryAddressModal from "./EditDeliveryAddressModal";
-import SendInquiryModal from "./SendInquiryModal";
 import BuyerOnlyModal from "./BuyerOnlyModal";
 import { useProductQuery } from "@/hooks/queries/products";
 import { useAppSelector } from "@/hooks/useAppSelector";
@@ -34,6 +33,7 @@ import {
   getPrimaryProductLocation,
   getProductCategoryId,
   getProductCategoryName,
+  getProductSubcategoryId,
 } from "@/utils/productDisplay";
 import {
   clearPendingAuthIntent,
@@ -170,7 +170,6 @@ export default function ProductDetailsPage() {
   const [showWarrantyDetails, setShowWarrantyDetails] = useState(false);
   const [isConfirmOrderOpen, setIsConfirmOrderOpen] = useState(false);
   const [isAddressEditorOpen, setIsAddressEditorOpen] = useState(false);
-  const [isInquiryOpen, setIsInquiryOpen] = useState(false);
   const [isBuyerOnlyOpen, setIsBuyerOnlyOpen] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderQuantity, setOrderQuantity] = useState(1);
@@ -425,8 +424,29 @@ export default function ProductDetailsPage() {
   );
 
   const handleSendInquiry = useCallback(() => {
-    setIsInquiryOpen(true);
-  }, []);
+    if (!authData) {
+      persistPendingAuthIntent("send_inquiry");
+      router.push("/register");
+      return;
+    }
+
+    if (authData.role !== UserRole.BUYER) {
+      setIsBuyerOnlyOpen(true);
+      return;
+    }
+
+    if (!product) return;
+
+    const params = new URLSearchParams({
+      action: "create",
+      productName: product.name,
+    });
+    const category = getProductCategoryId(product);
+    const subCategory = getProductSubcategoryId(product);
+    if (category) params.set("category", category);
+    if (subCategory) params.set("subCategory", subCategory);
+    router.push(`/dashboard/buyer/rfqs?${params.toString()}`);
+  }, [authData, persistPendingAuthIntent, product, router]);
 
   const handleOrderNow = useCallback(async () => {
     if (!authData) {
@@ -905,11 +925,6 @@ export default function ProductDetailsPage() {
           />
         </div>
       </div>
-
-      <SendInquiryModal
-        isOpen={isInquiryOpen}
-        onClose={() => setIsInquiryOpen(false)}
-      />
 
       <BuyerOnlyModal
         isOpen={isBuyerOnlyOpen}

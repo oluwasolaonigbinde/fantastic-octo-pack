@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Area,
@@ -27,12 +27,10 @@ import {
 
 import Header from "../component/header";
 import { OverviewNoticeBanner } from "../component/overview-primitives";
-import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { useAppSelector } from "@/hooks/useAppSelector";
 import { useOrdersQuery } from "@/hooks/queries/orders";
 import { useThreadsQuery } from "@/hooks/queries/messaging";
 import { useBuyerServiceRequestsQuery } from "@/hooks/queries/service-requests";
-import rfqService from "@/services/rfqService";
-import type { Quote } from "@/types/rfq";
 
 import {
   buildBuyerDashboardModel,
@@ -250,51 +248,29 @@ function RecentActivityItem({
 }
 
 const BuyerDashboard: React.FC = () => {
-  const dispatch = useAppDispatch();
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const { data: orders } = useOrdersQuery();
   const { data: serviceRequestsData } = useBuyerServiceRequestsQuery();
-  const serviceRequests = serviceRequestsData?.requests ?? [];
   const serviceRequestStatusCounts = serviceRequestsData?.statusCounts ?? null;
   const [showKycBanner, setShowKycBanner] = useState(true);
-  const [quotes, setQuotes] = useState<Quote[] | null>(null);
-
   const { data: conversations = null } = useThreadsQuery(5);
-
-  useEffect(() => {
-    if (!token) return;
-
-    let isMounted = true;
-
-    rfqService
-      .fetchBuyerReceivedQuotes(token)
-      .then((result) => {
-        if (isMounted) setQuotes(result.data || []);
-      })
-      .catch(() => {
-        if (isMounted) setQuotes([]);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [token]);
 
   const dashboardModel = useMemo(
     () =>
       buildBuyerDashboardModel({
         orders: orders ?? null,
-        serviceRequests,
+        serviceRequests: serviceRequestsData?.requests ?? [],
         serviceRequestStatusCounts,
-        quotes: token ? quotes : null,
+        // The deployed RFQ API exposes quote responses through an RFQ detail,
+        // not a dashboard-wide received-quotes endpoint.
+        quotes: null,
         conversations: token ? conversations : null,
       }),
     [
       conversations,
       orders,
-      quotes,
       serviceRequestStatusCounts,
-      serviceRequests,
+      serviceRequestsData,
       token,
     ],
   );
