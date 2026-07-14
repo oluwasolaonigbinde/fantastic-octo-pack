@@ -1,9 +1,11 @@
 export type RfqStatus =
   | "draft"
+  | "discovering"
   | "submitted"
   | "responded_partial"
   | "responded_complete"
   | "converted_to_order"
+  | "expired"
   | "closed";
 
 export type QuoteStatus =
@@ -13,7 +15,8 @@ export type QuoteStatus =
   | "selected_for_order"
   | "not_selected"
   | "expired_no_response"
-  | "rejected_by_buyer";
+  | "rejected_by_buyer"
+  | "expired";
 
 export interface AttachmentRef {
   url: string;
@@ -21,22 +24,12 @@ export interface AttachmentRef {
   originalName?: string;
 }
 
-export interface RfqLineItem {
-  product?: string | ProductRef;
-  productName: string;
-  quantity: number;
-  notes?: string;
-  model?: string;
-  description?: string;
-}
-
-export interface ProductRef {
-  _id: string;
-  name: string;
-  pricePerUnit?: number;
-  images?: { url: string; cloudinary_id: string }[];
-  /** Category id (RFQ/order product refs are not deep-populated to the Category). */
-  category?: string;
+export interface DeliveryAddressSnapshot {
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  phone?: string | null;
 }
 
 export interface UserRef {
@@ -47,23 +40,54 @@ export interface UserRef {
   displayPhoto?: { url: string; cloudinary_id: string };
   phoneNumber?: string;
   businessName?: string;
-  distributorStoreProfile?: {
-    businessName?: string;
-  };
+  distributorStoreProfile?: { businessName?: string };
+}
+
+export interface ProductRef {
+  _id: string;
+  name: string;
+  category?: string;
+  images?: AttachmentRef[];
+}
+
+/** The buyer's RFQ line. `category` is the backend routing floor. */
+export interface RfqLineItem {
+  productName: string;
+  quantity: number;
+  category: string;
+  subCategory?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  description?: string | null;
+  notes?: string | null;
+}
+
+/** One distributor response for an RFQ line. */
+export interface QuoteLineItem {
+  rfqItemIndex: number;
+  available: boolean;
+  product?: string | ProductRef | null;
+  pricePerUnit?: number | null;
+  quantity?: number | null;
+  availableModel?: string | null;
+  notes?: string | null;
 }
 
 export interface Rfq {
   _id: string;
   buyer: string | UserRef;
+  title?: string | null;
   items: RfqLineItem[];
+  /** Populated by the backend routing engine when the draft is submitted. */
   targetDistributors: (string | UserRef)[];
-  status: RfqStatus;
-  additionalNotes?: string;
-  isBulk: boolean;
-  bulkBatch?: string;
-  title?: string;
-  deliveryLocation?: string;
+  additionalNotes?: string | null;
+  deliveryAddress?: DeliveryAddressSnapshot | null;
+  deliveryAddressId?: string | null;
+  deliveryTimeline?: string | null;
   attachments?: AttachmentRef[];
+  isBulk: boolean;
+  status: RfqStatus;
+  submittedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -73,98 +97,57 @@ export interface Quote {
   rfq: string | Rfq;
   distributor: string | UserRef;
   status: QuoteStatus;
-  pricePerUnit?: number;
-  totalPrice?: number;
-  quantity?: number;
-  terms?: string;
-  notes?: string;
-  leadTimeDays?: number;
-  validUntil?: string;
-  availableModel?: string;
-  warranty?: string;
-  stockStatus?: string;
+  items: QuoteLineItem[];
+  totalPrice?: number | null;
+  warranty?: string | null;
+  notes?: string | null;
   images?: AttachmentRef[];
-  catalogue?: AttachmentRef;
-  rejectionReason?: string;
+  catalogue?: AttachmentRef | null;
   createdAt: string;
   updatedAt: string;
 }
 
+/** `GET /rfqs/:id` returns this shape from the deployed backend. */
 export interface RfqDetailResponse {
   rfq: Rfq;
   quotes: Quote[];
 }
 
-export interface QuoteStatusLabel {
-  internal: QuoteStatus;
-  display: string;
+export type CreateRfqItem = RfqLineItem;
+
+export interface CreateRfqPayload {
+  items: CreateRfqItem[];
+  additionalNotes?: string;
+  isBulk?: boolean;
+  title?: string;
+  addressId?: string;
+  deliveryTimeline?: string;
 }
 
-export const QUOTE_STATUS_LABELS: Record<string, string> = {
+export interface RespondToQuotePayload {
+  items: QuoteLineItem[];
+  warranty?: string;
+  notes?: string;
+}
+
+export const QUOTE_STATUS_LABELS: Record<QuoteStatus, string> = {
   pending_response: "Open",
-  quoted: "Responded",
-  unavailable: "Not Available",
-  selected_for_order: "Selected",
-  not_selected: "Not Selected",
+  quoted: "Quoted",
+  unavailable: "Not available",
+  selected_for_order: "Approved",
+  not_selected: "Not selected",
   expired_no_response: "Expired",
-  rejected_by_buyer: "Rejected",
+  rejected_by_buyer: "Declined",
+  expired: "Expired",
 };
 
-export const RFQ_STATUS_LABELS: Record<string, string> = {
+export const RFQ_STATUS_LABELS: Record<RfqStatus, string> = {
   draft: "Draft",
-  submitted: "Submitted",
-  responded_partial: "Partially Responded",
-  responded_complete: "Fully Responded",
-  converted_to_order: "Converted to Order",
+  discovering: "Finding suppliers",
+  submitted: "Open",
+  responded_partial: "Partially quoted",
+  responded_complete: "Quotes received",
+  converted_to_order: "Approved",
+  expired: "Expired",
   closed: "Closed",
 };
-
-// ─── Bulk RFQ ───────────────────────────────────────────────────────
-
-export type BulkRfqBatchStatus =
-  | "submitted"
-  | "partially_quoted"
-  | "fully_quoted"
-  | "closed";
-
-export interface BulkRfqBatch {
-  _id: string;
-  buyer: string | UserRef;
-  title?: string;
-  itemCount: number;
-  status: BulkRfqBatchStatus;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface BulkRfqBatchListItem extends BulkRfqBatch {
-  quotes: Quote[];
-  quoteCount: number;
-  pendingCount: number;
-  quotedCount: number;
-}
-
-export interface BulkBatchDetailItem {
-  rfq: Rfq;
-  quote: Quote | null;
-}
-
-export interface BulkBatchDetailResponse {
-  batch: BulkRfqBatch;
-  items: BulkBatchDetailItem[];
-}
-
-export interface BulkRfqItemPayload {
-  productName: string;
-  quantity: number;
-  distributorEmail: string;
-  proposedDeliveryDate?: string;
-  deliveryLocation?: string;
-  additionalNote?: string;
-}
-
-export interface CreateBulkRfqResponse {
-  batch: BulkRfqBatch;
-  created: number;
-  errors: { row: number; message: string }[];
-}

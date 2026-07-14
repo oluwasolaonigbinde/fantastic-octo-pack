@@ -8,7 +8,6 @@ import {
   ClipboardList,
   Download,
   Eye,
-  FileText,
   Filter,
   Loader2,
   UsersRound,
@@ -235,16 +234,17 @@ function getFirstRfqItem(rfq?: Rfq) {
 function getItemProductName(rfq?: Rfq, fallback = "Not available"): string {
   const item = getFirstRfqItem(rfq);
   if (!item) return fallback;
-  if (item.product && typeof item.product === "object") return item.product.name;
   return item.productName || fallback;
 }
 
 function getItemUnitPrice(rfq?: Rfq, fallback?: number | null): string {
-  const item = getFirstRfqItem(rfq);
-  if (item?.product && typeof item.product === "object") {
-    return formatMoney(item.product.pricePerUnit ?? fallback);
-  }
+  // RFQ request lines do not carry a seller price. Pricing belongs to the
+  // distributor quote response, so only show the table fallback here.
   return formatMoney(fallback);
+}
+
+function getFirstQuoteItem(quote?: Quote) {
+  return quote?.items?.[0];
 }
 
 function getOrderProductName(order?: Order, fallback = "Not available"): string {
@@ -1065,7 +1065,7 @@ function DetailPanel({
           label="Proposed delivery date"
           value={
             pickFirstText(
-              rfq?.deliveryLocation,
+              rfq?.deliveryTimeline,
               target.row.deliveryTime
             ) ?? "Not available"
           }
@@ -1117,14 +1117,14 @@ function DetailPanel({
         <DetailField
           label="Quantity"
           value={presentText(
-            formatQuantity(quote?.quantity ?? target.row.quantity),
+            formatQuantity(getFirstQuoteItem(quote)?.quantity ?? target.row.quantity),
             FIGMA_DETAIL_FALLBACK.quantity
           )}
         />
         <DetailField
           label="Unit price"
           value={formatMoney(
-            quote?.pricePerUnit ?? target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice
+            getFirstQuoteItem(quote)?.pricePerUnit ?? target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice
           )}
         />
         <DetailField
@@ -1140,9 +1140,7 @@ function DetailPanel({
         <DetailField
           label="Proposed delivery date"
           value={
-            quote?.leadTimeDays
-              ? `${quote.leadTimeDays} days`
-              : "Not available"
+            rfq?.deliveryTimeline ?? "Not available"
           }
         />
         <DetailField
@@ -1150,7 +1148,7 @@ function DetailPanel({
           value={
             pickFirstText(
               quote?.notes,
-              quote?.terms
+              getFirstQuoteItem(quote)?.notes
             ) ?? "Not available"
           }
         />
