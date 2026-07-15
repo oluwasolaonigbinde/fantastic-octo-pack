@@ -7,6 +7,8 @@ import {
   Button,
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogTitle,
   Input,
   SingleSelect,
   Spinner,
@@ -60,6 +62,11 @@ export default function CategoriesManagement() {
   const [addSubcategoryOpen, setAddSubcategoryOpen] = useState(false);
   const [specModalOpen, setSpecModalOpen] = useState(false);
   const [editingSpecIndex, setEditingSpecIndex] = useState<number | null>(null);
+  const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<Category | null>(
+    null,
+  );
+  const [deletingCategory, setDeletingCategory] = useState(false);
+  const [deleteCategoryError, setDeleteCategoryError] = useState("");
 
   const refresh = useCallback(() => setReloadKey((k) => k + 1), []);
 
@@ -149,6 +156,23 @@ export default function CategoriesManagement() {
       requiresInstallation,
     });
     refresh();
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!token || !deleteCategoryTarget) return;
+    setDeletingCategory(true);
+    setDeleteCategoryError("");
+    try {
+      await categoryService.deleteCategory(token, deleteCategoryTarget._id);
+      setDeleteCategoryTarget(null);
+      refresh();
+    } catch (err) {
+      setDeleteCategoryError(
+        err instanceof Error ? err.message : "Deleting category failed.",
+      );
+    } finally {
+      setDeletingCategory(false);
+    }
   };
 
   const handleSaveSpec = async (spec: BaseSpecification) => {
@@ -243,6 +267,7 @@ export default function CategoriesManagement() {
               subCount={subCount}
               specCount={specCount}
               onView={openCategory}
+              onDelete={setDeleteCategoryTarget}
             />
           ) : view === "subcategories" ? (
             <SubcategoriesTable
@@ -283,6 +308,48 @@ export default function CategoriesManagement() {
         }
         onSave={handleSaveSpec}
       />
+
+      <Dialog
+        open={!!deleteCategoryTarget}
+        onOpenChange={() => !deletingCategory && setDeleteCategoryTarget(null)}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="max-w-[440px] rounded-2xl bg-white p-6"
+        >
+          <DialogTitle className="text-lg font-semibold text-gray1">
+            Delete category
+          </DialogTitle>
+          <DialogDescription className="mt-2 text-sm text-gray2">
+            Are you sure you want to delete{" "}
+            <span className="font-medium text-gray1">
+              “{deleteCategoryTarget?.name}”
+            </span>
+            ? This will also remove its subcategories and required
+            specifications. This action cannot be undone.
+          </DialogDescription>
+          {deleteCategoryError ? (
+            <p className="mt-2 text-sm text-danger">{deleteCategoryError}</p>
+          ) : null}
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button
+              title="Cancel"
+              variant="secondaryLight"
+              type="button"
+              className="w-full sm:w-auto"
+              disabled={deletingCategory}
+              onClick={() => setDeleteCategoryTarget(null)}
+            />
+            <Button
+              title="Delete category"
+              type="button"
+              className="w-full bg-[#D92D20] hover:bg-[#b9241a] sm:w-auto"
+              isBusy={deletingCategory}
+              onClick={handleDeleteCategory}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -295,12 +362,14 @@ function CategoriesTable({
   subCount,
   specCount,
   onView,
+  onDelete,
 }: {
   loading: boolean;
   categories: Category[];
   subCount: (c: Category) => number;
   specCount: (c: Category) => number;
   onView: (c: Category) => void;
+  onDelete: (c: Category) => void;
 }) {
   return (
     <Table className="min-w-[760px]">
@@ -341,7 +410,10 @@ function CategoriesTable({
               <TableCell>{subCount(category)}</TableCell>
               <TableCell>{specCount(category)}</TableCell>
               <TableCell>
-                <ViewButton onClick={() => onView(category)} />
+                <div className="flex items-center justify-end gap-4">
+                  <ViewButton onClick={() => onView(category)} />
+                  <DeleteButton onClick={() => onDelete(category)} />
+                </div>
               </TableCell>
             </TableRow>
           ))
@@ -394,7 +466,9 @@ function SubcategoriesTable({
                 {sub.requiresInstallation ? "Required" : "Not required"}
               </TableCell>
               <TableCell>
-                <ViewButton onClick={() => onView(sub)} />
+                <div className="flex justify-end">
+                  <ViewButton onClick={() => onView(sub)} />
+                </div>
               </TableCell>
             </TableRow>
           ))
@@ -442,7 +516,9 @@ function SpecsTable({
               </TableCell>
               <TableCell>{fieldTypeLabel(spec.type)}</TableCell>
               <TableCell>
-                <ViewButton onClick={() => onView(index)} />
+                <div className="flex justify-end">
+                  <ViewButton onClick={() => onView(index)} />
+                </div>
               </TableCell>
             </TableRow>
           ))
@@ -454,18 +530,32 @@ function SpecsTable({
 
 function ViewButton({ onClick }: { onClick: () => void }) {
   return (
-    <div className="flex justify-end">
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onClick();
-        }}
-        className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-      >
-        <Eye size={16} /> View
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+    >
+      <Eye size={16} /> View
+    </button>
+  );
+}
+
+function DeleteButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label="Delete category"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className="flex items-center text-[#D92D20] hover:opacity-80"
+    >
+      <Trash2 size={16} />
+    </button>
   );
 }
 
