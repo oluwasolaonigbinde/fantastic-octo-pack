@@ -51,6 +51,7 @@ export default function BuyerRfqsPage() {
   const [additionalNotes, setAdditionalNotes] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
+  const [mode, setMode] = useState<"single" | "bulk">("single");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,16 +71,17 @@ export default function BuyerRfqsPage() {
   }, [loadAddresses]);
 
   const detailById = useMemo(() => new Map((rfqs ?? []).map((rfq, index) => [rfq._id, details[index]?.data])), [details, rfqs]);
+  const modeScoped = useMemo(() => (rfqs ?? []).filter((rfq) => rfq.isBulk === (mode === "bulk")), [rfqs, mode]);
   const totals = useMemo(() => ({
-    total: rfqs?.length ?? 0,
-    responded: (rfqs ?? []).filter((rfq) => quoteStatus(rfq, quoteFor(detailById.get(rfq._id))) === "received").length,
-    open: (rfqs ?? []).filter((rfq) => quoteStatus(rfq, quoteFor(detailById.get(rfq._id))) === "open").length,
-  }), [detailById, rfqs]);
-  const visibleRfqs = useMemo(() => (rfqs ?? []).filter((rfq) => {
+    total: modeScoped.length,
+    responded: modeScoped.filter((rfq) => quoteStatus(rfq, quoteFor(detailById.get(rfq._id))) === "received").length,
+    open: modeScoped.filter((rfq) => quoteStatus(rfq, quoteFor(detailById.get(rfq._id))) === "open").length,
+  }), [detailById, modeScoped]);
+  const visibleRfqs = useMemo(() => modeScoped.filter((rfq) => {
     if (filter === "all") return true;
     const status = quoteStatus(rfq, quoteFor(detailById.get(rfq._id)));
     return filter === "sent" ? status === "open" : status === filter;
-  }), [detailById, filter, rfqs]);
+  }), [detailById, filter, modeScoped]);
   const selectedCategories = items.map((item) => categories.find((category) => category._id === item.category));
 
   const openComposer = () => { setItems([blankItem()]); setIsComposerOpen(true); };
@@ -114,9 +116,13 @@ export default function BuyerRfqsPage() {
     <div className="min-h-full bg-gray7">
       <Header title="Request For Quotes" description="View all and send request for quotes" />
       <main className="mx-auto max-w-[1160px] space-y-4 p-4 md:space-y-5 md:p-6">
+        <div className="grid grid-cols-2 border-b border-gray5 text-sm md:text-base">
+          <button type="button" onClick={() => { setMode("single"); setFilter("all"); }} className={`h-14 border-b-2 transition-colors ${mode === "single" ? "border-primary bg-primary text-white" : "border-transparent text-gray1"}`}>Single Quotes</button>
+          <button type="button" onClick={() => { setMode("bulk"); setFilter("all"); }} className={`h-14 border-b-2 transition-colors ${mode === "bulk" ? "border-primary bg-primary text-white" : "border-transparent text-gray1"}`}>Bulk Quotes</button>
+        </div>
         <section className="rounded-lg border border-gray5 bg-white p-5 md:p-5">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <div><p className="text-3xl font-semibold leading-none text-gray1">{totals.total}</p><p className="mt-3 text-lg text-gray1">Total quotes sent</p><p className="mt-3 text-sm text-gray3">Responded request: {totals.responded} <span className="mx-2 text-gray5">|</span> Pending request: {totals.open}</p></div>
+            <div><p className="text-3xl font-semibold leading-none text-gray1">{totals.total}</p><p className="mt-3 text-lg text-gray1">{mode === "bulk" ? "Bulk requests sent" : "Single requests sent"}</p><p className="mt-3 text-sm text-gray3">Responded request: {totals.responded} <span className="mx-2 text-gray5">|</span> Pending request: {totals.open}</p></div>
             <div className="grid gap-3 sm:grid-cols-2 md:w-[480px]"><Button title="Bulk Quote" variant="secondaryLight" size="md" iconLeft={<Plus size={20} />} onClick={() => setIsBulkOpen(true)} className="!border-[#fe6e00] !bg-white !text-[#fe6e00] hover:!bg-[#fff7f0]" /><Button title="Send Quote" variant="primary" size="md" iconLeft={<Plus size={20} />} onClick={openComposer} /></div>
           </div>
         </section>
@@ -131,7 +137,7 @@ export default function BuyerRfqsPage() {
 
         <section className="overflow-hidden rounded-xl border border-gray5 bg-white p-5 md:p-5">
           <h2 className="text-xl font-medium text-gray1">Your requests</h2>
-          <p className="mt-1 text-sm text-gray3">Each request routes to matching suppliers. Expand a request to see who responded and their offers.</p>
+          <p className="mt-1 text-sm text-gray3">Each request routes to matching suppliers. Open a request to see who responded and their offers.</p>
           {isLoading ? (
             <div className="mt-8 space-y-3"><Skeleton className="h-12" /><Skeleton className="h-12" /></div>
           ) : visibleRfqs.length === 0 ? (
