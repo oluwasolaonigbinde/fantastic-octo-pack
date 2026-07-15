@@ -232,6 +232,9 @@ export default function SubmitterKycView({
   const { data: authUser } = useAppSelector((state) => state.auth);
   const token = authUser?.tokens?.accessToken ?? "";
 
+  const isEngineer = role === UserRole.ENGINEER;
+  const isBuyer = role === UserRole.BUYER;
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTier, setActiveTier] = useState<KycTierDefinition | null>(null);
   const [textValues, setTextValues] = useState<Record<string, string>>({});
@@ -1042,29 +1045,35 @@ export default function SubmitterKycView({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent
           className={cn(
-            role === UserRole.ENGINEER
-              ? "left-auto right-0 top-0 h-dvh max-h-dvh w-full max-w-full translate-x-0 translate-y-0 overflow-y-auto rounded-none border-0 bg-white p-0 duration-300 sm:max-w-[500px]"
-              : "sm:max-w-xl",
+            isEngineer
+              ? "left-auto right-0 top-0 flex h-dvh max-h-dvh w-full max-w-full translate-x-0 translate-y-0 flex-col overflow-hidden rounded-none border-0 bg-white p-0 duration-300 sm:max-w-[500px]"
+              : isBuyer
+                ? "sm:max-w-md"
+                : "sm:max-w-xl",
           )}
-          showCloseButton={false}
+          showCloseButton={isBuyer}
         >
           <DialogHeader
             className={cn(
-              role === UserRole.ENGINEER
-                ? "relative h-[90px] justify-center border-b border-[#EEF1F5] px-10 text-left"
-                : "",
+              isEngineer
+                ? "relative h-[90px] shrink-0 justify-center border-b border-[#EEF1F5] px-10 text-left"
+                : isBuyer
+                  ? "border-b border-[#EEF1F5] pb-4 text-left"
+                  : "",
             )}
           >
             <DialogTitle
               className={cn(
-                role === UserRole.ENGINEER
+                isEngineer
                   ? "max-w-[350px] text-[16px] font-medium leading-6 text-black"
-                  : "",
+                  : isBuyer
+                    ? "max-w-[300px] text-left text-[16px] font-medium leading-6 text-black"
+                    : "",
               )}
             >
               Enter information below to upgrade KYC status.
             </DialogTitle>
-            {role === UserRole.ENGINEER ? (
+            {isEngineer ? (
               <DialogClose className="absolute right-10 top-6 rounded-full p-1 text-black">
                 <X size={18} />
                 <span className="sr-only">Close</span>
@@ -1074,7 +1083,10 @@ export default function SubmitterKycView({
 
           <div
             className={cn(
-              role === UserRole.ENGINEER ? "space-y-5 px-10 pb-10 pt-5" : "space-y-4",
+              isEngineer
+                ? "flex-1 space-y-5 overflow-y-auto px-10 pb-10 pt-5"
+                : "space-y-4",
+              isBuyer ? "pt-2" : "",
             )}
           >
             {activeTier?.requiredTextFields.map((field) =>
@@ -1082,6 +1094,7 @@ export default function SubmitterKycView({
                 <SingleSelect
                   key={field.fieldName}
                   label={field.label}
+                  placeholder={`Select ${field.label.toLowerCase()}`}
                   value={textValues[field.fieldName] || ""}
                   onValueChange={(value) =>
                     setTextValues((current) => ({ ...current, [field.fieldName]: value }))
@@ -1095,6 +1108,7 @@ export default function SubmitterKycView({
                 <Input
                   key={field.fieldName}
                   label={field.label}
+                  placeholder={`Enter ${field.label.toLowerCase()}`}
                   value={textValues[field.fieldName] || ""}
                   onChange={(event) =>
                     setTextValues((current) => ({
@@ -1111,26 +1125,30 @@ export default function SubmitterKycView({
                 key={document.fieldName}
                 className={cn(
                   "block cursor-pointer text-center",
-                  role === UserRole.ENGINEER
+                  isEngineer
                     ? "rounded-[14px] border border-[#DDE0E5] px-5 py-4"
-                    : "rounded-[24px] border border-dashed border-[#D7E6FF] p-5",
+                    : isBuyer
+                      ? "rounded-[12px] border border-[#E4E7EC] px-5 py-6"
+                      : "rounded-[24px] border border-dashed border-[#D7E6FF] p-5",
                 )}
               >
-                {role === UserRole.ENGINEER ? (
+                {isEngineer || isBuyer ? (
                   <p className="mb-3 text-left text-[13px] font-normal leading-5 text-black">
                     {document.label}
                   </p>
                 ) : null}
-                {role === UserRole.ENGINEER ? (
+                {isEngineer || isBuyer ? (
                   <FileText className="mx-auto mb-2 text-[#65758B]" size={24} />
                 ) : (
                   <Upload className="mx-auto mb-3 text-primary" size={28} />
                 )}
                 <p
                   className={cn(
-                    role === UserRole.ENGINEER
+                    isEngineer
                       ? "text-[12px] font-medium leading-4 text-[#F97316]"
-                      : "text-sm font-medium text-gray1",
+                      : isBuyer
+                        ? "text-[13px] font-medium leading-5 text-[#F97316]"
+                        : "text-sm font-medium text-gray1",
                   )}
                 >
                   Click here <span className="text-[#9CA3AF]">to upload file</span>
@@ -1138,9 +1156,11 @@ export default function SubmitterKycView({
                 <p
                   className={cn(
                     "mt-1",
-                    role === UserRole.ENGINEER
+                    isEngineer
                       ? "text-[10px] leading-[14px] text-[#9CA3AF]"
-                      : "text-xs text-gray3",
+                      : isBuyer
+                        ? "text-[11px] leading-4 text-[#9CA3AF]"
+                        : "text-xs text-gray3",
                   )}
                 >
                   Allowed format - {KYC_UPLOAD_FORMAT_LABEL}
@@ -1163,13 +1183,8 @@ export default function SubmitterKycView({
               </label>
             ))}
 
-            {activeTier && Object.keys(textValues).length > 0 ? (
-              <div
-                className={cn(
-                  "space-y-2 rounded-[20px] bg-[#F8FAFC] p-4 text-sm text-gray2",
-                  role === UserRole.ENGINEER ? "hidden" : "",
-                )}
-              >
+            {activeTier && !isEngineer && !isBuyer && Object.keys(textValues).length > 0 ? (
+              <div className="space-y-2 rounded-[20px] bg-[#F8FAFC] p-4 text-sm text-gray2">
                 {Object.entries(textValues).map(([fieldName, value]) => (
                   <p key={fieldName}>
                     <span className="font-medium">
@@ -1183,21 +1198,24 @@ export default function SubmitterKycView({
 
             {submitError ? <p className="text-sm text-danger">{submitError}</p> : null}
 
-            {role === UserRole.ENGINEER ? (
+            {(isEngineer || isBuyer) &&
+            (activeTier?.requiredDocuments.length ?? 0) > 0 ? (
               <p className="text-[11px] leading-4 text-[#F97316]">
                 Note: Document should be clear and fit the file format.
               </p>
             ) : null}
 
-            <div className={cn(role === UserRole.ENGINEER ? "" : "flex justify-end")}>
+            <div className={cn(isEngineer || isBuyer ? "" : "flex justify-end")}>
               <Button
                 title="Submit"
                 isBusy={submitting}
                 disabled={submitting}
                 className={cn(
-                  role === UserRole.ENGINEER
+                  isEngineer
                     ? "h-[60px] rounded-[14px] text-[12px]"
-                    : "max-w-[180px]",
+                    : isBuyer
+                      ? "h-[52px] w-full"
+                      : "max-w-[180px]",
                 )}
                 onClick={() => activeTier && void submitTier(activeTier, textValues)}
               />

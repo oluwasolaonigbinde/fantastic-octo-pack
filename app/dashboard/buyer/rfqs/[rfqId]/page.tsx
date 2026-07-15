@@ -35,13 +35,13 @@ export default function BuyerRfqDetailPage() {
   const approveQuote = useApproveQuoteMutation();
 
   if (isLoading) {
-    return <div><Header title="Quote details" /><div className="p-6 space-y-4"><Skeleton className="h-12 w-48" /><Skeleton className="h-80" /></div></div>;
+    return <div><Header title="Request details" /><div className="p-6 space-y-4"><Skeleton className="h-12 w-48" /><Skeleton className="h-80" /></div></div>;
   }
 
   if (!data || isError) {
     return (
       <div>
-        <Header title="Quote details" />
+        <Header title="Request details" />
         <div className="p-6"><p className="text-gray2">This RFQ could not be loaded.</p><Button title="Try again" variant="primary" size="sm" onClick={() => void refetch()} className="mt-4 !w-auto" /></div>
       </div>
     );
@@ -55,7 +55,7 @@ export default function BuyerRfqDetailPage() {
 
   return (
     <div className="min-h-full bg-gray7">
-      <Header title="Quote details" />
+      <Header title="Request details" />
       <main className="mx-auto max-w-6xl p-4 md:p-6 space-y-5">
         <Button title="Back to RFQs" variant="secondaryLight" size="sm" iconLeft={<ArrowLeft size={16} />} onClick={() => router.push("/dashboard/buyer/rfqs")} className="!w-auto" />
 
@@ -76,12 +76,22 @@ export default function BuyerRfqDetailPage() {
           {rfq.attachments?.length ? <div className="mt-4 flex flex-wrap gap-3">{rfq.attachments.map((file) => <a key={file.cloudinary_id} href={file.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-primary hover:underline"><FileText size={16} />{file.originalName || "Attachment"}</a>)}</div> : null}
         </section>
 
+        <section className="bg-white border border-gray5 rounded-[12px] p-5 md:p-6">
+          <h2 className="text-lg font-semibold text-gray1">Items requested</h2>
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-gray5 text-gray3"><tr><th className="pb-3 font-medium">Product</th><th className="pb-3 font-medium">Qty</th><th className="pb-3 font-medium">Details</th></tr></thead>
+              <tbody>{rfq.items.map((item, index) => <tr key={index} className="border-b border-gray6 last:border-0"><td className="py-3 text-gray1">{item.productName}</td><td className="py-3 text-gray1">{item.quantity}</td><td className="py-3 text-gray2">{[item.brand, item.model].filter(Boolean).join(" · ") || "--"}</td></tr>)}</tbody>
+            </table>
+          </div>
+        </section>
+
         <section className="space-y-3">
           <div className="flex items-center justify-between"><h2 className="text-lg font-semibold text-gray1">Supplier responses</h2><span className="text-sm text-gray3">{quotes.length} received</span></div>
           {quotes.length === 0 ? <div className="rounded-[12px] border border-gray5 bg-white p-8 text-center text-sm text-gray3">Matched suppliers will appear here when they respond.</div> : quotes.map((quote) => {
             const availableLines = quote.items.filter((item) => item.available);
             const canApprove = actionable && quote.status === "quoted" && availableLines.length > 0;
-            const chatHref = buildMessagingComposeHref("buyer", distributorId(quote));
+            const chatHref = quote.status === "selected_for_order" ? buildMessagingComposeHref("buyer", distributorId(quote)) : null;
             return <article key={quote._id} className="rounded-[12px] border border-gray5 bg-white p-5 md:p-6">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><h3 className="font-semibold text-gray1">{distributorName(quote)}</h3><p className="mt-1 text-sm text-gray3">{QUOTE_STATUS_LABELS[quote.status]}</p></div><p className="text-xl font-semibold text-primary">{money(quote.totalPrice)}</p></div>
               <div className="mt-5 overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="border-b border-gray5 text-gray3"><tr><th className="pb-3 font-medium">Item</th><th className="pb-3 font-medium">Availability</th><th className="pb-3 font-medium">Qty</th><th className="pb-3 text-right font-medium">Unit price</th></tr></thead><tbody>{rfq.items.map((rfqItem, index) => { const line = quote.items.find((item) => item.rfqItemIndex === index); return <tr key={`${quote._id}-${index}`} className="border-b border-gray6 last:border-0"><td className="py-3 text-gray1">{rfqItem.productName}</td><td className={`py-3 ${line?.available ? "text-success" : "text-danger"}`}>{line?.available ? "Available" : "Unavailable"}</td><td className="py-3 text-gray1">{line?.quantity ?? "--"}</td><td className="py-3 text-right text-gray1">{money(line?.pricePerUnit)}</td></tr>; })}</tbody></table></div>

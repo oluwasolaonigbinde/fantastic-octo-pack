@@ -62,6 +62,7 @@
     "slick-carousel": "^1.8.1",
     "swiper": "^12.0.3",
     "tailwind-merge": "^3.3.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.1.12"
   },
   "devDependencies": {

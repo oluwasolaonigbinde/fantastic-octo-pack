@@ -24,13 +24,19 @@ export function Drawer({
 }: DrawerProps) {
   return (
     <Sheet open={open} onOpenChange={onClose}>
-      <SheetContent className={contentClassName ?? "overflow-y-auto"}>
-        <SheetHeader className="h-[72px] justify-center border-b border-gray6 px-10 py-0">
+      <SheetContent className={contentClassName ?? "overflow-hidden"}>
+        <SheetHeader className="h-[72px] shrink-0 justify-center border-b border-gray6 px-10 py-0">
           <SheetTitle className="text-xl font-medium leading-8 text-gray1">
             {title}
           </SheetTitle>
         </SheetHeader>
-        <div className={bodyClassName ?? "px-10 pb-10"}>{children}</div>
+        <div
+          className={
+            bodyClassName ?? "flex-1 overflow-y-auto px-10 pb-10"
+          }
+        >
+          {children}
+        </div>
       </SheetContent>
     </Sheet>
   );

@@ -2,8 +2,8 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Eye, FileText, MessageCircle, Plus, ThumbsUp, X } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Eye, FileText, Plus, ThumbsUp, Upload, X } from "lucide-react";
 import Header from "../../component/header";
 import { Button, EmptyState, Input, Skeleton } from "@/components/base";
 import { useAppSelector } from "@/hooks/useAppSelector";
@@ -11,16 +11,17 @@ import { useBuyerRfqDetails, useBuyerRfqsQuery, useCreateRfqMutation } from "@/h
 import { useCategoriesQuery } from "@/hooks/queries/categories";
 import addressService from "@/services/addressService";
 import rfqService from "@/services/rfqService";
-import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS, type CreateRfqItem, type Quote, type Rfq, type RfqDetailResponse, type UserRef } from "@/types/rfq";
+import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS, type CreateRfqItem, type Quote, type Rfq, type RfqDetailResponse } from "@/types/rfq";
 import type { UserAddress } from "@/types/address";
-import { buildMessagingComposeHref } from "@/utils/messagingRoutes";
+import BulkQuoteFlow from "./BulkQuoteFlow";
 
 type FormItem = CreateRfqItem;
-type Filter = "all" | "received" | "approved" | "declined";
+type Filter = "all" | "sent" | "received" | "approved" | "declined";
 
 const blankItem = (): FormItem => ({ productName: "", quantity: 1, category: "", subCategory: "", brand: "", model: "", description: "" });
-const money = (value?: number | null) => value == null ? "--" : new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", minimumFractionDigits: 0 }).format(value);
 const addressLabel = (address: UserAddress) => [address.address, address.city, address.state].filter(Boolean).join(", ");
+const RESPONDED_STATUSES: Quote["status"][] = ["quoted", "unavailable", "selected_for_order", "not_selected", "rejected_by_buyer"];
+const respondedCount = (quotes: Quote[] = []) => quotes.filter((quote) => RESPONDED_STATUSES.includes(quote.status)).length;
 
 const quoteFor = (detail?: RfqDetailResponse) => detail?.quotes.find((quote) => quote.status === "selected_for_order") || detail?.quotes.find((quote) => quote.status === "quoted") || detail?.quotes[0];
 const quoteStatus = (rfq: Rfq, quote?: Quote) => {
@@ -31,9 +32,9 @@ const quoteStatus = (rfq: Rfq, quote?: Quote) => {
 };
 const quoteStatusLabel = (rfq: Rfq, quote?: Quote) => quote ? QUOTE_STATUS_LABELS[quote.status] : RFQ_STATUS_LABELS[rfq.status];
 const quoteStatusClass = (status: ReturnType<typeof quoteStatus>) => ({ approved: "text-success", declined: "text-danger", received: "text-primary", open: "text-primary" })[status];
-const userId = (user: string | UserRef | undefined) => typeof user === "string" ? user : user?._id;
 
 export default function BuyerRfqsPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const { data: rfqs, isLoading, refetch } = useBuyerRfqsQuery();
@@ -42,7 +43,7 @@ export default function BuyerRfqsPage() {
   const createRfq = useCreateRfqMutation();
   const hasCreateIntent = searchParams.get("action") === "create";
   const [isComposerOpen, setIsComposerOpen] = useState(hasCreateIntent);
-  const [mode, setMode] = useState<"single" | "bulk">("single");
+  const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [items, setItems] = useState<FormItem[]>(() => [{ ...blankItem(), productName: hasCreateIntent ? searchParams.get("productName") || "" : "", category: hasCreateIntent ? searchParams.get("category") || "" : "", subCategory: hasCreateIntent ? searchParams.get("subCategory") || "" : "" }]);
   const [addresses, setAddresses] = useState<UserAddress[]>([]);
   const [addressId, setAddressId] = useState("");
@@ -74,16 +75,16 @@ export default function BuyerRfqsPage() {
     responded: (rfqs ?? []).filter((rfq) => quoteStatus(rfq, quoteFor(detailById.get(rfq._id))) === "received").length,
     open: (rfqs ?? []).filter((rfq) => quoteStatus(rfq, quoteFor(detailById.get(rfq._id))) === "open").length,
   }), [detailById, rfqs]);
-  const visibleRfqs = useMemo(() => (rfqs ?? []).filter((rfq) => filter === "all" || quoteStatus(rfq, quoteFor(detailById.get(rfq._id))) === filter), [detailById, filter, rfqs]);
+  const visibleRfqs = useMemo(() => (rfqs ?? []).filter((rfq) => {
+    if (filter === "all") return true;
+    const status = quoteStatus(rfq, quoteFor(detailById.get(rfq._id)));
+    return filter === "sent" ? status === "open" : status === filter;
+  }), [detailById, filter, rfqs]);
   const selectedCategories = items.map((item) => categories.find((category) => category._id === item.category));
 
-  const chooseMode = (nextMode: "single" | "bulk") => {
-    setMode(nextMode);
-    setItems((current) => nextMode === "single" ? [current[0] ?? blankItem()] : current.length > 1 ? current : [...current, blankItem()]);
-  };
-  const openComposer = (nextMode: "single" | "bulk") => { chooseMode(nextMode); setIsComposerOpen(true); };
+  const openComposer = () => { setItems([blankItem()]); setIsComposerOpen(true); };
   const updateItem = (index: number, update: Partial<FormItem>) => setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...update } : item));
-  const resetComposer = () => { setItems([blankItem()]); setMode("single"); setDeliveryTimeline(""); setAdditionalNotes(""); setAttachments([]); setError(null); setIsComposerOpen(false); };
+  const resetComposer = () => { setItems([blankItem()]); setDeliveryTimeline(""); setAdditionalNotes(""); setAttachments([]); setError(null); setIsComposerOpen(false); };
 
   const submit = async () => {
     if (!token) return;
@@ -101,7 +102,7 @@ export default function BuyerRfqsPage() {
     }));
     setError(null);
     try {
-      const created = await createRfq.mutateAsync({ data: { items: requestItems, addressId, deliveryTimeline: deliveryTimeline || undefined, additionalNotes: additionalNotes || undefined, isBulk: mode === "bulk" }, attachments });
+      const created = await createRfq.mutateAsync({ data: { items: requestItems, addressId, deliveryTimeline: deliveryTimeline || undefined, additionalNotes: additionalNotes || undefined }, attachments });
       await rfqService.submitRfq(token, created.data._id);
       await refetch();
       resetComposer();
@@ -113,40 +114,101 @@ export default function BuyerRfqsPage() {
     <div className="min-h-full bg-gray7">
       <Header title="Request For Quotes" description="View all and send request for quotes" />
       <main className="mx-auto max-w-[1160px] space-y-4 p-4 md:space-y-5 md:p-6">
-        <div className="grid grid-cols-2 border-b border-gray5 text-sm md:text-base">
-          <button type="button" onClick={() => chooseMode("single")} className={`h-14 border-b-2 transition-colors ${mode === "single" ? "border-primary bg-primary text-white" : "border-transparent text-gray1"}`}>Single Quote</button>
-          <button type="button" onClick={() => chooseMode("bulk")} className={`h-14 border-b-2 transition-colors ${mode === "bulk" ? "border-primary bg-primary text-white" : "border-transparent text-gray1"}`}>Bulk Quotes</button>
-        </div>
-
         <section className="rounded-lg border border-gray5 bg-white p-5 md:p-5">
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div><p className="text-3xl font-semibold leading-none text-gray1">{totals.total}</p><p className="mt-3 text-lg text-gray1">Total quotes sent</p><p className="mt-3 text-sm text-gray3">Responded request: {totals.responded} <span className="mx-2 text-gray5">|</span> Pending request: {totals.open}</p></div>
-            <div className="grid gap-3 sm:grid-cols-2 md:w-[480px]"><Button title="Bulk Quote" variant="secondaryLight" size="md" iconLeft={<Plus size={20} />} onClick={() => openComposer("bulk")} className="!border-[#fe6e00] !bg-white !text-[#fe6e00] hover:!bg-[#fff7f0]" /><Button title="Send Quote" variant="primary" size="md" iconLeft={<Plus size={20} />} onClick={() => openComposer("single")} /></div>
+            <div className="grid gap-3 sm:grid-cols-2 md:w-[480px]"><Button title="Bulk Quote" variant="secondaryLight" size="md" iconLeft={<Plus size={20} />} onClick={() => setIsBulkOpen(true)} className="!border-[#fe6e00] !bg-white !text-[#fe6e00] hover:!bg-[#fff7f0]" /><Button title="Send Quote" variant="primary" size="md" iconLeft={<Plus size={20} />} onClick={openComposer} /></div>
           </div>
         </section>
 
         <nav aria-label="Quote status" className="flex overflow-x-auto border-b border-gray5">
           <Tab label="All Quotes" active={filter === "all"} onClick={() => setFilter("all")} />
+          <Tab label="Quote Sent" active={filter === "sent"} onClick={() => setFilter("sent")} />
           <Tab label="Quote Received" active={filter === "received"} onClick={() => setFilter("received")} />
           <Tab label="Quotes Approved" active={filter === "approved"} onClick={() => setFilter("approved")} />
           <Tab label="Quotes Declined" active={filter === "declined"} onClick={() => setFilter("declined")} />
         </nav>
 
         <section className="overflow-hidden rounded-xl border border-gray5 bg-white p-5 md:p-5">
-          <h2 className="text-xl font-medium text-gray1">All Quote Sent</h2>
-          {isLoading ? <div className="mt-8 space-y-3"><Skeleton className="h-12" /><Skeleton className="h-12" /></div> : visibleRfqs.length === 0 ? <EmptyState title="No quotes to show" description="Start a sourcing request to receive supplier quotes." /> : <div className="mt-8 overflow-x-auto"><table className="min-w-[900px] w-full text-left"><thead className="border-b border-gray6 text-sm text-gray3"><tr><th className="pb-5 font-medium">Product&apos;s name</th><th className="pb-5 font-medium">Qty</th><th className="pb-5 font-medium">Unit price</th><th className="pb-5 font-medium">Total price</th><th className="pb-5 font-medium">Delivery time</th><th className="pb-5 font-medium">Status</th><th className="pb-5 font-medium">Action</th></tr></thead><tbody>{visibleRfqs.map((rfq) => {
-            const detail = detailById.get(rfq._id); const quote = quoteFor(detail); const line = quote?.items.find((item) => item.available); const currentStatus = quoteStatus(rfq, quote); const total = quote?.totalPrice ?? (line?.pricePerUnit && line.quantity ? line.pricePerUnit * line.quantity : undefined); const chatHref = currentStatus === "approved" ? buildMessagingComposeHref("buyer", userId(quote?.distributor)) : null;
-            return <tr key={rfq._id} className="border-b border-gray6 last:border-0 text-sm"><td className="py-5 font-medium text-gray1">{rfq.title || rfq.items[0]?.productName || "Sourcing request"}</td><td className="py-5 text-gray1">{rfq.items.reduce((sum, item) => sum + item.quantity, 0)}</td><td className="py-5 text-gray1">{money(line?.pricePerUnit)}</td><td className="py-5 text-gray1">{money(total)}</td><td className="py-5 text-gray1">{rfq.deliveryTimeline || "--"}</td><td className={`py-5 font-medium ${quoteStatusClass(currentStatus)}`}>{quoteStatusLabel(rfq, quote)}</td><td className="py-5">{chatHref ? <Link href={chatHref} className="inline-flex items-center gap-2 font-medium text-fuchsia-500 hover:underline"><MessageCircle size={17} />Open chat</Link> : <Link href={`/dashboard/buyer/rfqs/${rfq._id}`} className="inline-flex items-center gap-2 font-medium text-success hover:underline"><Eye size={18} />View</Link>}</td></tr>;
-          })}</tbody></table></div>}
+          <h2 className="text-xl font-medium text-gray1">Your requests</h2>
+          <p className="mt-1 text-sm text-gray3">Each request routes to matching suppliers. Expand a request to see who responded and their offers.</p>
+          {isLoading ? (
+            <div className="mt-8 space-y-3"><Skeleton className="h-12" /><Skeleton className="h-12" /></div>
+          ) : visibleRfqs.length === 0 ? (
+            <EmptyState title="No requests to show" description="Start a sourcing request to receive supplier quotes." />
+          ) : (
+            <>
+              {/* Desktop table */}
+              <div className="mt-8 hidden overflow-x-auto md:block">
+                <table className="w-full table-fixed text-left">
+                  <thead className="border-b border-gray6 text-sm text-gray3">
+                    <tr>
+                      <th className="w-[36%] pb-5 pr-4 font-medium">Request</th>
+                      <th className="w-[10%] pb-5 pr-4 font-medium">Items</th>
+                      <th className="w-[16%] pb-5 pr-4 font-medium">Responses</th>
+                      <th className="w-[16%] pb-5 pr-4 font-medium">Delivery time</th>
+                      <th className="w-[14%] pb-5 pr-4 font-medium">Status</th>
+                      <th className="w-[8%] pb-5 font-medium">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRfqs.map((rfq) => {
+                      const detail = detailById.get(rfq._id);
+                      const currentStatus = quoteStatus(rfq, quoteFor(detail));
+                      const totalQuotes = detail?.quotes.length ?? 0;
+                      const responded = respondedCount(detail?.quotes);
+                      const extraItems = rfq.items.length - 1;
+                      const requestName = rfq.title || rfq.items[0]?.productName || "Sourcing request";
+                      return (
+                        <tr key={rfq._id} className="cursor-pointer border-b border-gray6 text-sm hover:bg-gray7/60" onClick={() => router.push(`/dashboard/buyer/rfqs/${rfq._id}`)}>
+                          <td className="py-5 pr-4 font-medium text-gray1"><span className="block truncate">{requestName}{extraItems > 0 ? <span className="text-gray3"> +{extraItems} more</span> : null}</span></td>
+                          <td className="py-5 pr-4 text-gray1">{rfq.items.length}</td>
+                          <td className="py-5 pr-4 text-gray1">{totalQuotes === 0 ? <span className="text-gray3">Finding…</span> : `${responded} of ${totalQuotes}`}</td>
+                          <td className="py-5 pr-4 text-gray1"><span className="block truncate">{rfq.deliveryTimeline || "--"}</span></td>
+                          <td className={`py-5 pr-4 font-medium ${quoteStatusClass(currentStatus)}`}><span className="block truncate">{quoteStatusLabel(rfq, quoteFor(detail))}</span></td>
+                          <td className="py-5"><Link href={`/dashboard/buyer/rfqs/${rfq._id}`} onClick={(event) => event.stopPropagation()} className="inline-flex items-center gap-1.5 font-medium text-success hover:underline"><Eye size={18} />View</Link></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="mt-6 space-y-3 md:hidden">
+                {visibleRfqs.map((rfq) => {
+                  const detail = detailById.get(rfq._id);
+                  const currentStatus = quoteStatus(rfq, quoteFor(detail));
+                  const totalQuotes = detail?.quotes.length ?? 0;
+                  const responded = respondedCount(detail?.quotes);
+                  const requestName = rfq.title || rfq.items[0]?.productName || "Sourcing request";
+                  return (
+                    <Link key={rfq._id} href={`/dashboard/buyer/rfqs/${rfq._id}`} className="block rounded-xl border border-gray5 p-4 hover:bg-gray7/60">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-gray1">{requestName}</p>
+                          <p className="mt-1 text-xs text-gray3">{rfq.items.length} item{rfq.items.length === 1 ? "" : "s"} · {totalQuotes === 0 ? "Finding suppliers…" : `${responded} of ${totalQuotes} responded`}{rfq.deliveryTimeline ? ` · ${rfq.deliveryTimeline}` : ""}</p>
+                        </div>
+                        <span className={`shrink-0 text-sm font-medium ${quoteStatusClass(currentStatus)}`}>{quoteStatusLabel(rfq, quoteFor(detail))}</span>
+                      </div>
+                      <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-success"><Eye size={16} />View request</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </section>
       </main>
 
-      {isComposerOpen ? <div className="fixed inset-0 z-50 bg-gray1/40 p-0 md:p-6"><section role="dialog" aria-modal="true" aria-label="Request a quote" className="ml-auto flex h-full w-full max-w-2xl flex-col bg-[#fbfbfc] shadow-xl"><header className="flex items-center justify-between border-b border-gray5 bg-white px-5 py-5"><div><h2 className="text-xl font-semibold text-gray1">{mode === "bulk" ? "Bulk Quotes" : "Single Quote"}</h2><p className="mt-1 text-sm text-gray3">Matching suppliers will receive your request after submission.</p></div><button type="button" aria-label="Close request form" onClick={resetComposer} className="rounded p-2 text-gray2 hover:bg-gray7"><X size={22} /></button></header><div className="flex-1 space-y-6 overflow-y-auto p-5 md:p-8">{items.map((item, index) => { const category = selectedCategories[index]; return <fieldset key={index} className="space-y-4 rounded-lg border border-gray5 bg-white p-4"><div className="flex items-center justify-between"><legend className="font-semibold text-gray1">Item {index + 1}</legend>{mode === "bulk" && items.length > 1 ? <button type="button" onClick={() => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index))} className="text-sm text-danger">Remove</button> : null}</div><label className="block text-sm text-gray1">Category<select value={item.category} onChange={(event) => updateItem(index, { category: event.target.value, subCategory: "" })} className="mt-2 h-12 w-full rounded-lg border border-gray5 bg-white px-3"><option value="">Select category</option>{categories.map((category) => <option key={category._id} value={category._id}>{category.name}</option>)}</select></label><label className="block text-sm text-gray1">Sub-category<select value={item.subCategory || ""} onChange={(event) => updateItem(index, { subCategory: event.target.value })} disabled={!category} className="mt-2 h-12 w-full rounded-lg border border-gray5 bg-white px-3 disabled:bg-gray7"><option value="">Select sub-category (optional)</option>{category?.subcategories.map((subcategory) => <option key={subcategory._id} value={subcategory._id}>{subcategory.name}</option>)}</select></label><Input id={`rfq-product-${index}`} label="Product name" placeholder="Enter product name" value={item.productName} onValueChange={(value) => updateItem(index, { productName: value })} /><div className="grid gap-4 sm:grid-cols-2"><Input id={`rfq-model-${index}`} label="Model (optional)" placeholder="Enter model" value={item.model || ""} onValueChange={(value) => updateItem(index, { model: value })} /><Input id={`rfq-quantity-${index}`} label="Quantity" type="number" placeholder="Enter quantity" value={String(item.quantity)} onValueChange={(value) => updateItem(index, { quantity: Math.max(1, Number(value) || 1) })} /></div><label className="block text-sm text-gray1">Description<textarea value={item.description || ""} onChange={(event) => updateItem(index, { description: event.target.value })} placeholder="Describe the item or specification" rows={3} className="mt-2 w-full rounded-lg border border-gray5 p-3 text-sm" /></label></fieldset>; })}{mode === "bulk" ? <Button title="Add another item" variant="secondaryLight" size="sm" iconLeft={<Plus size={16} />} onClick={() => setItems((current) => [...current, blankItem()])} className="!w-auto" /> : null}<fieldset className="space-y-4"><label className="block text-sm text-gray1">Delivery address<select value={addressId} onChange={(event) => setAddressId(event.target.value)} className="mt-2 h-12 w-full rounded-lg border border-gray5 bg-white px-3"><option value="">Select saved address</option>{addresses.map((address) => <option key={address._id} value={address._id}>{addressLabel(address)}</option>)}</select></label>{addresses.length === 0 ? <p className="text-sm text-warning">You need a saved delivery address before submitting an RFQ.</p> : null}<Input id="rfq-timeline" label="Delivery timeline" placeholder="e.g. Within 2 weeks" value={deliveryTimeline} onValueChange={setDeliveryTimeline} /><label className="block text-sm text-gray1">Additional notes<textarea value={additionalNotes} onChange={(event) => setAdditionalNotes(event.target.value)} placeholder="Enter notes for suppliers" rows={3} className="mt-2 w-full rounded-lg border border-gray5 p-3 text-sm" /></label><label className="block text-sm text-gray1">Attachments (optional)<input type="file" multiple accept=".pdf,.doc,.docx,.png,.jpg,.jpeg" onChange={(event: ChangeEvent<HTMLInputElement>) => setAttachments(Array.from(event.target.files ?? []).slice(0, 3))} className="mt-2 block w-full text-sm" /><span className="mt-1 block text-xs text-gray3">Up to 3 documents or images.</span></label>{attachments.length ? <div className="flex flex-wrap gap-2">{attachments.map((file) => <span key={file.name} className="inline-flex items-center gap-1 rounded bg-primary-light px-2 py-1 text-xs text-primary"><FileText size={13} />{file.name}</span>)}</div> : null}</fieldset>{error ? <p className="text-sm text-danger">{error}</p> : null}</div><footer className="border-t border-gray5 bg-white p-5"><Button title={createRfq.isPending ? "Submitting..." : "Submit request"} variant="primary" size="md" isBusy={createRfq.isPending} onClick={() => void submit()} className="w-full" /></footer></section></div> : null}
+      <BulkQuoteFlow open={isBulkOpen} onClose={() => setIsBulkOpen(false)} categories={categories} addresses={addresses} onSubmitted={() => { void refetch(); setSubmitted(true); }} />
+
+      {isComposerOpen ? <div className="fixed inset-0 z-50 flex bg-gray1/40 p-0 md:items-center md:justify-center md:p-6"><section role="dialog" aria-modal="true" aria-label="Request a quote" className="flex h-full w-full max-w-2xl flex-col overflow-hidden bg-[#fbfbfc] shadow-xl md:h-auto md:max-h-[90vh] md:rounded-2xl"><header className="flex items-center justify-between border-b border-gray5 bg-white px-5 py-5"><div><h2 className="text-xl font-semibold text-gray1">Single Quote</h2><p className="mt-1 text-sm text-gray3">Matching suppliers will receive your request after submission.</p></div><button type="button" aria-label="Close request form" onClick={resetComposer} className="rounded p-2 text-gray2 hover:bg-gray7"><X size={22} /></button></header><div className="flex-1 space-y-6 overflow-y-auto p-5 md:p-8">{items.map((item, index) => { const category = selectedCategories[index]; return <fieldset key={index} className="space-y-4 rounded-lg border border-gray5 bg-white p-4"><div className="flex items-center justify-between"><legend className="font-semibold text-gray1">Item {index + 1}</legend></div><label className="block text-sm text-gray1">Category<select value={item.category} onChange={(event) => updateItem(index, { category: event.target.value, subCategory: "" })} className="mt-2 h-12 w-full rounded-lg border border-gray5 bg-white px-3"><option value="">Select category</option>{categories.map((category) => <option key={category._id} value={category._id}>{category.name}</option>)}</select></label><label className="block text-sm text-gray1">Sub-category<select value={item.subCategory || ""} onChange={(event) => updateItem(index, { subCategory: event.target.value })} disabled={!category} className="mt-2 h-12 w-full rounded-lg border border-gray5 bg-white px-3 disabled:bg-gray7"><option value="">Select sub-category (optional)</option>{category?.subcategories.map((subcategory) => <option key={subcategory._id} value={subcategory._id}>{subcategory.name}</option>)}</select></label><Input id={`rfq-product-${index}`} label="Product name" placeholder="Enter product name" value={item.productName} onValueChange={(value) => updateItem(index, { productName: value })} /><div className="grid gap-4 sm:grid-cols-2"><Input id={`rfq-model-${index}`} label="Model (optional)" placeholder="Enter model" value={item.model || ""} onValueChange={(value) => updateItem(index, { model: value })} /><Input id={`rfq-quantity-${index}`} label="Quantity" type="number" placeholder="Enter quantity" value={String(item.quantity)} onValueChange={(value) => updateItem(index, { quantity: Math.max(1, Number(value) || 1) })} /></div><label className="block text-sm text-gray1">Description<textarea value={item.description || ""} onChange={(event) => updateItem(index, { description: event.target.value })} placeholder="Describe the item or specification" rows={3} className="mt-2 w-full rounded-lg border border-gray5 p-3 text-sm" /></label></fieldset>; })}<fieldset className="space-y-4"><label className="block text-sm text-gray1">Delivery address<select value={addressId} onChange={(event) => setAddressId(event.target.value)} className="mt-2 h-12 w-full rounded-lg border border-gray5 bg-white px-3"><option value="">Select saved address</option>{addresses.map((address) => <option key={address._id} value={address._id}>{addressLabel(address)}</option>)}</select></label>{addresses.length === 0 ? <p className="text-sm text-warning">You need a saved delivery address before submitting an RFQ.</p> : null}<Input id="rfq-timeline" label="Delivery timeline" placeholder="e.g. Within 2 weeks" value={deliveryTimeline} onValueChange={setDeliveryTimeline} /><label className="block text-sm text-gray1">Additional notes<textarea value={additionalNotes} onChange={(event) => setAdditionalNotes(event.target.value)} placeholder="Enter notes for suppliers" rows={3} className="mt-2 w-full rounded-lg border border-gray5 p-3 text-sm" /></label><div className="text-sm text-gray1"><p>Attachments (optional)</p><label htmlFor="rfq-attachments" className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-gray5 bg-white px-4 py-4 text-sm font-medium text-primary transition-colors hover:bg-primary-light"><Upload size={18} />{attachments.length ? "Add more files" : "Upload files"}<input id="rfq-attachments" type="file" multiple accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp" onChange={(event: ChangeEvent<HTMLInputElement>) => setAttachments(Array.from(event.target.files ?? []).slice(0, 3))} className="hidden" /></label><span className="mt-1 block text-xs text-gray3">Up to 3 documents or images.</span></div>{attachments.length ? <div className="flex flex-wrap gap-2">{attachments.map((file) => <span key={file.name} className="inline-flex items-center gap-1 rounded bg-primary-light px-2 py-1 text-xs text-primary"><FileText size={13} />{file.name}</span>)}</div> : null}</fieldset>{error ? <p className="text-sm text-danger">{error}</p> : null}</div><footer className="border-t border-gray5 bg-white p-5"><Button title={createRfq.isPending ? "Submitting..." : "Submit request"} variant="primary" size="md" isBusy={createRfq.isPending} onClick={() => void submit()} className="w-full" /></footer></section></div> : null}
       {submitted ? <div className="fixed inset-0 z-[60] grid place-items-center bg-gray1/40 p-4"><section role="dialog" aria-modal="true" aria-label="RFQ submitted" className="w-full max-w-[400px] rounded-[30px] border-2 border-primary bg-white px-7 py-10 text-center shadow-xl"><ThumbsUp aria-hidden className="mx-auto size-11 text-success" strokeWidth={1.8} /><h2 className="mt-8 text-xl font-medium text-success">Congratulations</h2><p className="mt-4 text-base leading-6 text-gray1">You have successfully submitted a request for quote. You will be contacted shortly.</p><Button title="Okay" variant="primary" size="md" onClick={() => setSubmitted(false)} className="mx-auto mt-8 !w-[160px]" /></section></div> : null}
     </div>
   );
 }
 
 function Tab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
-  return <button type="button" onClick={onClick} className={`min-w-[170px] shrink-0 flex-1 border-b-2 px-5 py-4 text-base font-medium transition-colors md:px-5 ${active ? "border-primary text-primary" : "border-transparent text-gray3"}`}>{label}</button>;
+  return <button type="button" onClick={onClick} className={`min-w-[150px] shrink-0 flex-1 border-b-2 px-5 py-4 text-base font-medium transition-colors md:px-5 ${active ? "border-primary text-primary" : "border-transparent text-gray3"}`}>{label}</button>;
 }

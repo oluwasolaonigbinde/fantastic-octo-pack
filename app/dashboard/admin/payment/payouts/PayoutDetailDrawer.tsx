@@ -106,8 +106,8 @@ export function PayoutDetailDrawer({
           </span>
         </div>
       }
-      contentClassName="overflow-y-auto"
-      bodyClassName="space-y-6 px-6 pb-10 pt-6"
+      contentClassName="overflow-hidden"
+      bodyClassName="flex-1 overflow-y-auto space-y-6 px-6 pb-10 pt-6"
     >
       {/* Requested amount */}
       <div className="rounded-2xl bg-[#F3F7FF] p-5">

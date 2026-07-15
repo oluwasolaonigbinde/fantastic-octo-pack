@@ -533,8 +533,8 @@ export default function AdminOrdersPage() {
         title="Order Details"
         open={Boolean(detailTarget)}
         onClose={closeDetail}
-        contentClassName="left-0 right-0 w-screen max-w-none overflow-y-auto [&>button]:!right-10 [&>button]:!top-[34px] [&_[data-slot=sheet-header]]:!h-[93px] [&_[data-slot=sheet-header]]:!justify-start [&_[data-slot=sheet-header]]:!px-5 [&_[data-slot=sheet-header]]:!pb-0 [&_[data-slot=sheet-header]]:!pt-9 sm:left-auto sm:right-0 sm:w-full sm:max-w-[500px] sm:[&_[data-slot=sheet-header]]:!px-10"
-        bodyClassName="px-5 pb-10 pt-6 sm:px-10 sm:pt-10"
+        contentClassName="left-0 right-0 w-screen max-w-none overflow-hidden [&>button]:!right-10 [&>button]:!top-[34px] [&_[data-slot=sheet-header]]:!h-[93px] [&_[data-slot=sheet-header]]:!justify-start [&_[data-slot=sheet-header]]:!px-5 [&_[data-slot=sheet-header]]:!pb-0 [&_[data-slot=sheet-header]]:!pt-9 sm:left-auto sm:right-0 sm:w-full sm:max-w-[500px] sm:[&_[data-slot=sheet-header]]:!px-10"
+        bodyClassName="flex-1 overflow-y-auto px-5 pb-10 pt-6 sm:px-10 sm:pt-10"
       >
         {detailLoading ? (
           <div className="flex min-h-[240px] items-center justify-center">
