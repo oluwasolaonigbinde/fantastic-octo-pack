@@ -1,4 +1,4 @@
-import { ORDER_STATUS_LABELS, type Order } from "@/types/order";
+import { ORDER_STATUS_LABELS, type Order, type OrderLineItem } from "@/types/order";
 import type { ProductRef, UserRef } from "@/types/rfq";
 
 export type BuyerOrderStage =
@@ -8,10 +8,22 @@ export type BuyerOrderStage =
   | "installation"
   | "completed";
 
+/** One product line within an order, normalized for display. */
+export interface BuyerOrderItem {
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  productImage?: string;
+}
+
 export interface BuyerOrderRow {
   id: string;
   sourceId: string;
   status: string;
+  /**
+   * First product's name (single-product back-compat). For multi-product orders
+   * prefer `productSummary` for a one-line label and `items` for the breakdown.
+   */
   productName: string;
   quantity: number;
   unitPrice: number;
@@ -19,6 +31,14 @@ export interface BuyerOrderRow {
   createdAt: string;
   supplierName: string;
   productImage?: string;
+  /** Every product line on the order (always at least one). */
+  items: BuyerOrderItem[];
+  /** Number of distinct product lines. */
+  itemCount: number;
+  /** Total units across all lines. */
+  totalQuantity: number;
+  /** One-line label: the product name, or "First item +N more" when multiple. */
+  productSummary: string;
 }
 
 export const buyerOrderMilestones = [
@@ -77,7 +97,7 @@ export const buyerDemoOrderMeta = {
   ],
 };
 
-export const buyerDemoOrders: BuyerOrderRow[] = [
+const demoOrderSeeds = [
   {
     id: "ORD-123456",
     sourceId: "ORD-123456",
@@ -134,6 +154,32 @@ export const buyerDemoOrders: BuyerOrderRow[] = [
     supplierName: "Fika Store",
   },
 ];
+
+/** One-line label for an order's products: the name, or "First +N more". */
+export const buildOrderItemSummary = (items: BuyerOrderItem[]): string => {
+  if (items.length === 0) return "Name of the product";
+  if (items.length === 1) return items[0].productName;
+  return `${items[0].productName} +${items.length - 1} more`;
+};
+
+// The demo orders are single-product; derive the multi-item shape from their
+// core fields so they satisfy BuyerOrderRow like live orders do.
+export const buyerDemoOrders: BuyerOrderRow[] = demoOrderSeeds.map((seed) => {
+  const items: BuyerOrderItem[] = [
+    {
+      productName: seed.productName,
+      quantity: seed.quantity,
+      unitPrice: seed.unitPrice,
+    },
+  ];
+  return {
+    ...seed,
+    items,
+    itemCount: items.length,
+    totalQuantity: seed.quantity,
+    productSummary: buildOrderItemSummary(items),
+  };
+});
 
 const toTitleCase = (value: string) =>
   value
@@ -223,23 +269,54 @@ export const getOrderProductImage = (order: Order | null | undefined) => {
   return undefined;
 };
 
+const productRefImage = (product: OrderLineItem["product"] | undefined) =>
+  product && typeof product === "object"
+    ? (product as ProductRef).images?.[0]?.url
+    : undefined;
+
 export const toBuyerOrderRow = (order: Order): BuyerOrderRow => {
-  // Prefer the flat live-API fields, falling back to legacy items[0].
-  const item = order.items?.[0];
-  const quantity = order.quantity ?? item?.quantity ?? 1;
-  const productName =
-    order.productName || item?.productName || "Name of the product";
-  const productImage = getOrderProductImage(order);
+  // An order carries either a normalized items[] (RFQ / multi-product orders) or
+  // flat top-level product fields (single-product buy-now). Build a uniform line
+  // list from whichever is present so the UI never assumes a single product.
+  const items: BuyerOrderItem[] =
+    order.items && order.items.length > 0
+      ? order.items.map((line) => ({
+          productName: line.productName || "Name of the product",
+          quantity: line.quantity ?? 1,
+          unitPrice:
+            line.pricePerUnit ??
+            (line.quantity ? order.totalPrice / line.quantity : order.totalPrice),
+          productImage: productRefImage(line.product),
+        }))
+      : [
+          {
+            productName: order.productName || "Name of the product",
+            quantity: order.quantity ?? 1,
+            unitPrice: order.quantity
+              ? order.totalPrice / order.quantity
+              : order.totalPrice,
+            productImage: getOrderProductImage(order),
+          },
+        ];
+
+  const totalQuantity = items.reduce((sum, line) => sum + line.quantity, 0);
+  const first = items[0];
+
   return {
     id: getOrderDisplayId(order._id),
     sourceId: order._id,
-    productName,
-    quantity,
-    unitPrice: quantity ? order.totalPrice / quantity : order.totalPrice,
+    // Single-product back-compat fields mirror the first line.
+    productName: first.productName,
+    quantity: first.quantity,
+    unitPrice: first.unitPrice,
     totalPrice: order.totalPrice,
     createdAt: order.createdAt,
     status: order.status,
     supplierName: getPersonName(order.seller, buyerDemoOrderMeta.supplier.name),
-    productImage,
+    productImage: first.productImage,
+    items,
+    itemCount: items.length,
+    totalQuantity,
+    productSummary: buildOrderItemSummary(items),
   };
 };

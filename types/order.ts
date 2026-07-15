@@ -29,6 +29,8 @@ export interface OrderLineItem {
   product: string | ProductRef;
   productName: string;
   quantity: number;
+  /** Agreed unit price, snapshotted from the quote line when RFQ-sourced. */
+  pricePerUnit?: number;
   notes?: string;
 }
 

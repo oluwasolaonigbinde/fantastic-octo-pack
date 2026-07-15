@@ -55,7 +55,20 @@ function DistributorQuotesPageInner() {
   const auth = useAppSelector((state) => state.auth.data);
   const { data: inbox = [], isLoading, refetch } = useDistributorInboxQuery();
   const { data: myProducts } = useMyProductsQuery(auth?._id, { enabled: Boolean(auth?._id) });
-  const productOptions = useMemo(() => (myProducts?.products ?? []).map((product: { _id: string; name: string }) => ({ label: product.name, value: product._id })), [myProducts]);
+  // Free (unreserved) on-hand stock per product. A distributor can only quote
+  // what they can fulfil, so out-of-stock products are hidden from the picker
+  // and quoted quantities are capped to this — otherwise the order fails later
+  // at payment with "Insufficient stock".
+  const productFreeStock = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const product of myProducts?.products ?? []) {
+      map.set(product._id, Number(product.quantityAvailable ?? 0) - Number(product.quantityReserved ?? 0));
+    }
+    return map;
+  }, [myProducts]);
+  const productOptions = useMemo(() => (myProducts?.products ?? [])
+    .filter((product: { _id: string }) => (productFreeStock.get(product._id) ?? 0) > 0)
+    .map((product: { _id: string; name: string }) => ({ label: product.name, value: product._id })), [myProducts, productFreeStock]);
   const respond = useRespondToQuoteMutation();
   const [selected, setSelected] = useState<Quote | null>(null);
   const [view, setView] = useState<"detail" | "respond" | "bulk">("detail");
@@ -103,7 +116,19 @@ function DistributorQuotesPageInner() {
 
   const startQuoteItem = (index: number) => { updateLine(index, { available: true }); setError(null); setEditingItem(index); };
   const markItemUnavailable = (index: number) => { updateLine(index, { available: false }); setItemStatus((current) => ({ ...current, [index]: "unavailable" })); if (editingItem === index) setEditingItem(null); };
-  const saveQuoteItem = (index: number) => { const line = lines[index]; if (!line?.product || !line.price || !line.stockCount) { setError("Select the product, price, and stock count for this item."); return; } setItemStatus((current) => ({ ...current, [index]: "quoted" })); setError(null); setEditingItem(null); };
+  // Guard a single available line against over-quoting its product's free stock.
+  // Returns an error message, or null when the quantity is fulfillable.
+  const stockError = (line?: OfferLine): string | null => {
+    if (!line?.available || !line.product || !line.stockCount) return null;
+    const free = productFreeStock.get(line.product) ?? 0;
+    if (Number(line.stockCount) > free) {
+      const name = productOptions.find((option) => option.value === line.product)?.label ?? "this product";
+      return `Only ${free} in stock for "${name}". Reduce the quantity to ${free} or less.`;
+    }
+    return null;
+  };
+
+  const saveQuoteItem = (index: number) => { const line = lines[index]; if (!line?.product || !line.price || !line.stockCount) { setError("Select the product, price, and stock count for this item."); return; } const overStock = stockError(line); if (overStock) { setError(overStock); return; } setItemStatus((current) => ({ ...current, [index]: "quoted" })); setError(null); setEditingItem(null); };
   const applyFilters = () => { setAppliedFilters({ product: draftProduct, dateRange: draftDateRange }); setPage(1); };
 
   const sendResponse = async (payload: QuoteLineItem[], withFiles: boolean) => {
@@ -126,6 +151,8 @@ function DistributorQuotesPageInner() {
     if (!rfq) { setError("This request is missing the RFQ line items required to respond."); return; }
     const payload: QuoteLineItem[] = rfq.items.map((item, index) => { const line = lines[index]; return { rfqItemIndex: index, available: line.available, product: line.available ? line.product || undefined : undefined, pricePerUnit: line.available ? Number(line.price) : undefined, quantity: line.available ? Number(line.stockCount) : undefined, availableModel: line.available ? line.availableModel || undefined : undefined }; });
     if (payload.some((line) => line.available && (!line.product || !line.pricePerUnit || !line.quantity))) { setError("Select the product from your catalogue, a price, and stock count for every available item."); return; }
+    const overStock = rfq.items.map((_, index) => stockError(lines[index])).find(Boolean);
+    if (overStock) { setError(overStock); return; }
     await sendResponse(payload, true);
   };
 

@@ -215,6 +215,53 @@ function OrderSummaryCard({ order }: { order: BuyerOrderRow }) {
   );
 }
 
+/** Per-product breakdown for a multi-product order. */
+function OrderItemsCard({ order }: { order: BuyerOrderRow }) {
+  return (
+    <InfoCard title={`Products (${order.itemCount})`}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-[#F3F4F6] text-[#6B7280]">
+              <th className="py-2.5 pr-4 font-medium">Product</th>
+              <th className="py-2.5 pr-4 font-medium">Quantity</th>
+              <th className="py-2.5 pr-4 font-medium">Unit price</th>
+              <th className="py-2.5 font-medium">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {order.items.map((item, index) => (
+              <tr
+                key={`${item.productName}-${index}`}
+                className="border-b border-[#F3F4F6] last:border-b-0"
+              >
+                <td className="py-3 pr-4 text-[#111827]">{item.productName}</td>
+                <td className="py-3 pr-4 text-[#111827]">{item.quantity}</td>
+                <td className="py-3 pr-4 text-[#111827]">
+                  {formatCurrency(item.unitPrice)}
+                </td>
+                <td className="py-3 font-medium text-[#111827]">
+                  {formatCurrency(item.unitPrice * item.quantity)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td className="py-3 pr-4 font-medium text-[#111827]" colSpan={3}>
+                Order total
+              </td>
+              <td className="py-3 font-semibold text-primary">
+                {formatCurrency(order.totalPrice)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </InfoCard>
+  );
+}
+
 /** Shown under the delivery stepper while the order is frozen by an open dispute. */
 function DisputeBanner() {
   return (
@@ -525,7 +572,9 @@ export default function BuyerOrderDetailPage() {
   };
 
   // Persist edits to a draft order (PATCH /orders/:id/draft). On success the
-  // refreshed order flows back through the query cache; we close the editor.
+  // refreshed order flows back through the query cache. Confirming the details
+  // is the buyer's cue to pay, so we take them straight to the payment screen
+  // (the backend accepts paying a draft directly, reserving stock at payment).
   const handleSaveDraft = async (payload: {
     quantity?: number;
     notes?: string;
@@ -535,10 +584,7 @@ export default function BuyerOrderDetailPage() {
     try {
       await draftMutation.mutateAsync({ orderId, payload });
       setModal(null);
-      // Drop ?view=edit so the editor doesn't immediately reopen.
-      if (requestedView === "edit") {
-        router.replace(`/dashboard/buyer/orders/${orderId}`);
-      }
+      router.replace(`/dashboard/buyer/orders/${orderId}?view=payment`);
     } catch {
       // Error surfaced via draftError in the editor.
     }
@@ -755,14 +801,21 @@ export default function BuyerOrderDetailPage() {
           <>
             <section className="rounded-2xl border border-[#DDE0E5] bg-white p-4 md:p-5">
               <div className="grid gap-5 lg:grid-cols-[180px_1fr]">
-                <ProductVisual image={productImage} name={order.productName} />
+                <ProductVisual image={productImage} name={order.productSummary} />
 
                 <div className="grid content-start gap-5 xl:grid-cols-[1fr_auto]">
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
                     <DetailStat label="Order ID" value={order.id || getOrderDisplayId(orderId)} />
-                    <DetailStat label="Name of product" value={order.productName} />
-                    <DetailStat label="Quantity" value={String(order.quantity)} />
-                    <DetailStat label="Unit price" value={formatCurrency(order.unitPrice)} />
+                    <DetailStat
+                      label={order.itemCount > 1 ? "Products" : "Name of product"}
+                      value={order.productSummary}
+                    />
+                    <DetailStat label="Total quantity" value={String(order.totalQuantity)} />
+                    {order.itemCount > 1 ? (
+                      <DetailStat label="Items" value={`${order.itemCount} products`} />
+                    ) : (
+                      <DetailStat label="Unit price" value={formatCurrency(order.unitPrice)} />
+                    )}
                     <DetailStat label="Total price" value={formatCurrency(order.totalPrice)} />
                     <DetailStat label="Date created" value={formatDate(order.createdAt)} />
                     <DetailStat
@@ -835,6 +888,8 @@ export default function BuyerOrderDetailPage() {
                 </p>
               ) : null}
             </section>
+
+            {order.itemCount > 1 ? <OrderItemsCard order={order} /> : null}
 
             {stage !== "ongoing" ? (
               <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5 md:p-6">
@@ -1418,7 +1473,7 @@ function ReceiptPreview({
       <div className="mt-5 border-y border-[#DDE0E5] bg-[#F3F4F6] px-5 py-4">
         <p className="text-sm text-[#4B5563]">Description</p>
         <p className="mt-1 text-sm leading-6 text-[#0C0F16]">
-          Payment for {order.productName} (Order {order.id}) held in escrow until
+          Payment for {order.productSummary} (Order {order.id}) held in escrow until
           delivery is confirmed.
         </p>
       </div>
@@ -1489,7 +1544,7 @@ function DisputeForm({
         <label className="block">
           <span className="text-sm text-[#111827]">Name of item</span>
           <input
-            value={order.productName}
+            value={order.productSummary}
             readOnly
             className="mt-1.5 h-11 w-full rounded-xl border border-[#DDE0E5] bg-[#F9FAFB] px-3 text-sm text-[#6B7280]"
           />
