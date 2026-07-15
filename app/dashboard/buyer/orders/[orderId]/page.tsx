@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -39,6 +40,8 @@ import { useCreateOrderDisputeMutation } from "@/hooks/queries/order-disputes";
 import { useWallet } from "@/hooks/useWallet";
 import { useOrderPayment } from "@/hooks/useOrderPayment";
 import { koboToNaira } from "@/lib/wallet-format";
+import addressService from "@/services/addressService";
+import type { UserAddress } from "@/types/address";
 import type { Order, OrderPaymentMethod } from "@/types/order";
 import {
   formatDeliveryAddress,
@@ -311,6 +314,12 @@ export default function BuyerOrderDetailPage() {
   const draftError =
     draftMutation.error instanceof Error ? draftMutation.error.message : "";
 
+  // The buyer's saved address book — used to let them pick a delivery address
+  // (by id) when confirming a distributor-created draft. Quote-based drafts
+  // don't need this; their address is fixed at approval.
+  const [addresses, setAddresses] = useState<UserAddress[]>([]);
+  const token = authData?.tokens?.accessToken;
+
   const { wallet } = useWallet();
   const {
     isPaying,
@@ -339,6 +348,11 @@ export default function BuyerOrderDetailPage() {
   // behalf. The buyer reviews it (notably adding a delivery address) before
   // paying. Delivery address is required before payment can proceed.
   const isDraft = liveStatus === "draft_pending_buyer";
+  // An order created from an approved quote/RFQ is the agreed contract: its
+  // quantity and delivery address are fixed at approval and copied onto the
+  // draft server-side. Only notes may be edited (see UpdateDraftOrderDto on the
+  // API — it rejects quantity/addressId for quote-based orders).
+  const isQuoteBased = Boolean(liveOrder?.quote || liveOrder?.rfq);
   const needsDeliveryAddress =
     isDraft && !formatDeliveryAddress(liveOrder?.deliveryAddress);
   // The payment form only opens when explicitly requested AND still unpaid.
@@ -481,6 +495,24 @@ export default function BuyerOrderDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoOrder, isDraft, requestedView]);
 
+  // Load the buyer's saved addresses once for a live, non-quote draft so the
+  // confirm modal can offer them as delivery-address choices (by id).
+  useEffect(() => {
+    if (demoOrder || !isDraft || isQuoteBased || !token) return;
+    let active = true;
+    addressService
+      .fetchAddresses(token)
+      .then((result) => {
+        if (active && result.success) setAddresses(result.data ?? []);
+      })
+      .catch(() => {
+        // Non-fatal: the modal shows a "no saved addresses" hint instead.
+      });
+    return () => {
+      active = false;
+    };
+  }, [demoOrder, isDraft, isQuoteBased, token]);
+
   const handleSubmitPayment = () => {
     if (!selectedOption?.method || insufficientWallet) return;
     // A draft order must carry a delivery address before it can be paid for.
@@ -497,7 +529,7 @@ export default function BuyerOrderDetailPage() {
   const handleSaveDraft = async (payload: {
     quantity?: number;
     notes?: string;
-    deliveryAddress?: string;
+    addressId?: string;
   }) => {
     if (isSavingDraft) return;
     try {
@@ -1031,8 +1063,11 @@ export default function BuyerOrderDetailPage() {
 
             {modal === "editDraft" ? (
               <DraftEditForm
+                isQuoteBased={isQuoteBased}
+                addresses={addresses}
                 initialQuantity={order.quantity}
                 initialNotes={liveOrder?.notes ?? ""}
+                initialAddressId={liveOrder?.deliveryAddressId ?? ""}
                 initialDeliveryAddress={formatDeliveryAddress(
                   liveOrder?.deliveryAddress,
                 )}
@@ -1109,31 +1144,56 @@ export default function BuyerOrderDetailPage() {
   );
 }
 
+/** One-line label for a saved address, shown in the picker. */
+function formatUserAddress(addr: UserAddress): string {
+  return [addr.address, addr.city, addr.state, addr.country]
+    .filter(Boolean)
+    .join(", ");
+}
+
 function DraftEditForm({
+  isQuoteBased,
+  addresses,
   initialQuantity,
   initialNotes,
+  initialAddressId,
   initialDeliveryAddress,
   saving,
   error,
   onSubmit,
 }: {
+  isQuoteBased: boolean;
+  addresses: UserAddress[];
   initialQuantity: number;
   initialNotes: string;
+  initialAddressId: string;
   initialDeliveryAddress: string;
   saving: boolean;
   error: string;
   onSubmit: (payload: {
     quantity?: number;
     notes?: string;
-    deliveryAddress?: string;
+    addressId?: string;
   }) => void;
 }) {
   const [quantity, setQuantity] = useState(initialQuantity || 1);
   const [notes, setNotes] = useState(initialNotes);
-  const [deliveryAddress, setDeliveryAddress] = useState(initialDeliveryAddress);
+  // Preselect the address already on the draft, else the buyer's default, else
+  // the first saved one. Empty when the address book is empty.
+  const [addressId, setAddressId] = useState(
+    () =>
+      initialAddressId ||
+      addresses.find((item) => item.isDefault)?._id ||
+      addresses[0]?._id ||
+      "",
+  );
 
-  const trimmedAddress = deliveryAddress.trim();
-  const canSubmit = trimmedAddress.length > 0 && quantity > 0 && !saving;
+  const hasAddresses = addresses.length > 0;
+  // A quote-based draft has its quantity and delivery address locked at approval
+  // (the API rejects changing them), so we only ever submit the note here.
+  const canSubmit = isQuoteBased
+    ? !saving
+    : addressId.length > 0 && quantity > 0 && !saving;
 
   return (
     <form
@@ -1141,46 +1201,93 @@ function DraftEditForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (!canSubmit) return;
-        onSubmit({
-          quantity,
-          notes: notes.trim(),
-          deliveryAddress: trimmedAddress,
-        });
+        onSubmit(
+          isQuoteBased
+            ? { notes: notes.trim() }
+            : {
+                quantity,
+                notes: notes.trim(),
+                addressId,
+              },
+        );
       }}
     >
       <h2 className="text-center text-lg font-medium text-[#111827]">
-        Review your order
+        {isQuoteBased ? "Confirm order details" : "Review your order"}
       </h2>
       <p className="mt-1 text-center text-sm text-[#6B7280]">
-        Confirm the details and add a delivery address before paying.
+        {isQuoteBased
+          ? "These terms were agreed in the quote and can't be changed. Add a note if needed, then confirm."
+          : "Confirm the details and choose a delivery address before paying."}
       </p>
 
-      <label className="mt-5 block">
-        <span className="mb-1.5 block text-sm font-medium text-[#374151]">
-          Delivery address
-        </span>
-        <textarea
-          value={deliveryAddress}
-          onChange={(event) => setDeliveryAddress(event.target.value)}
-          placeholder="Street, city, state"
-          className="h-20 w-full resize-none rounded-lg border border-[#DDE0E5] px-3 py-2 text-sm text-[#111827] outline-none placeholder:text-[#98A2B3] focus:border-primary"
-        />
-      </label>
+      {isQuoteBased ? (
+        <div className="mt-5">
+          <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+            Delivery address
+          </span>
+          <p className="rounded-lg border border-[#EEF2F7] bg-[#F9FAFB] px-3 py-2.5 text-sm text-[#111827]">
+            {initialDeliveryAddress.trim() || "—"}
+          </p>
+        </div>
+      ) : (
+        <label className="mt-5 block">
+          <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+            Delivery address
+          </span>
+          {hasAddresses ? (
+            <select
+              value={addressId}
+              onChange={(event) => setAddressId(event.target.value)}
+              className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none focus:border-primary"
+            >
+              {addresses.map((item) => (
+                <option key={item._id} value={item._id}>
+                  {formatUserAddress(item)}
+                  {item.isDefault ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5 text-sm text-[#B45309]">
+              You have no saved addresses. Add one in your{" "}
+              <Link
+                href="/dashboard/buyer/profile"
+                className="font-medium underline"
+              >
+                profile
+              </Link>{" "}
+              to continue.
+            </p>
+          )}
+        </label>
+      )}
 
-      <label className="mt-4 block">
-        <span className="mb-1.5 block text-sm font-medium text-[#374151]">
-          Quantity
-        </span>
-        <input
-          type="number"
-          min={1}
-          value={quantity}
-          onChange={(event) =>
-            setQuantity(Math.max(1, Number(event.target.value) || 1))
-          }
-          className="h-11 w-full rounded-lg border border-[#DDE0E5] px-3 text-sm text-[#111827] outline-none focus:border-primary"
-        />
-      </label>
+      {isQuoteBased ? (
+        <div className="mt-4">
+          <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+            Quantity
+          </span>
+          <p className="rounded-lg border border-[#EEF2F7] bg-[#F9FAFB] px-3 py-2.5 text-sm text-[#111827]">
+            {quantity}
+          </p>
+        </div>
+      ) : (
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+            Quantity
+          </span>
+          <input
+            type="number"
+            min={1}
+            value={quantity}
+            onChange={(event) =>
+              setQuantity(Math.max(1, Number(event.target.value) || 1))
+            }
+            className="h-11 w-full rounded-lg border border-[#DDE0E5] px-3 text-sm text-[#111827] outline-none focus:border-primary"
+          />
+        </label>
+      )}
 
       <label className="mt-4 block">
         <span className="mb-1.5 block text-sm font-medium text-[#374151]">
@@ -1206,7 +1313,11 @@ function DraftEditForm({
         disabled={!canSubmit}
         className="mt-6 h-11 w-full rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60"
       >
-        {saving ? "Saving…" : "Save order details"}
+        {saving
+          ? "Saving…"
+          : isQuoteBased
+            ? "Confirm order details"
+            : "Save order details"}
       </button>
     </form>
   );

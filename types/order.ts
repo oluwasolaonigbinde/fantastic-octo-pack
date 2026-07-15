@@ -116,12 +116,16 @@ export interface OnBehalfOrderPayload {
 
 /**
  * Request body for PATCH /orders/:id/draft — the buyer edits a draft order that
- * was created on their behalf before paying (e.g. sets a delivery address).
+ * was created on their behalf before paying. The delivery address is set by
+ * referencing a saved address from the buyer's address book (`addressId`); the
+ * server resolves it into an immutable snapshot. A free-text address is NOT
+ * accepted. Quote-based drafts have quantity/address locked at approval, so only
+ * `notes` is editable there.
  */
 export interface DraftOrderUpdate {
   quantity?: number;
   notes?: string;
-  deliveryAddress?: string;
+  addressId?: string;
 }
 
 /** Payment rails supported on the order Make Payment screen. */
