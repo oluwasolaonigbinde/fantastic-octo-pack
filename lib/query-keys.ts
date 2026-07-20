@@ -47,6 +47,8 @@ export const queryKeys = {
       [...queryKeys.payments.all, "order", orderId] as const,
     withdrawals: (filters: Record<string, unknown>) =>
       [...queryKeys.payments.all, "withdrawals", filters] as const,
+    banks: (filters: Record<string, unknown>) =>
+      [...queryKeys.payments.all, "banks", filters] as const,
   },
   subscription: {
     all: ["subscription"] as const,

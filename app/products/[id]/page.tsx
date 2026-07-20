@@ -27,6 +27,7 @@ import { UserRole, type UserData } from "@/types/user";
 import { BigLoader } from "@/components/base";
 import {
   getProductAvailabilityLabel,
+  getProductFreeStock,
   getProductDefaultImageUrl,
   getProductImageUrls,
   getProductSpecificationItems,
@@ -496,7 +497,7 @@ export default function ProductDetailsPage() {
 
     // Don't attempt payment when there isn't enough stock — the backend would
     // reject it with "Insufficient stock". Surface it up front instead.
-    const availableQuantity = product.quantityAvailable;
+    const availableQuantity = getProductFreeStock(product);
     if (typeof availableQuantity === "number" && orderQuantity > availableQuantity) {
       setOrderError(
         availableQuantity <= 0
@@ -939,7 +940,7 @@ export default function ProductDetailsPage() {
         sellerName={sellerName}
         unitPrice={product.pricePerUnit || 0}
         quantity={orderQuantity}
-        availableQuantity={product.quantityAvailable}
+        availableQuantity={getProductFreeStock(product)}
         errorMessage={orderError}
         isSubmitting={isOrdering}
         addresses={addresses}

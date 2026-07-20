@@ -9,6 +9,7 @@ import type { Product } from "@/types/product";
 import {
   getPrimaryProductLocation,
   getProductDefaultImageUrl,
+  getProductFreeStock,
   isProductAvailable,
 } from "@/utils/productDisplay";
 
@@ -97,8 +98,8 @@ export default function RelatedProducts({
                       }`}
                     >
                       <CheckSquare className="size-3 md:size-3.5" />
-                      {typeof product.quantityAvailable === "number"
-                        ? `${product.quantityAvailable} in stock`
+                      {typeof getProductFreeStock(product) === "number"
+                        ? `${getProductFreeStock(product)} in stock`
                         : product.availability_status === "in_stock"
                           ? "In stock"
                           : "Stock on request"}

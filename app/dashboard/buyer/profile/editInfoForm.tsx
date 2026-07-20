@@ -5,7 +5,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { Button, Input, PopUp } from "@/components/base";
+import { Textarea } from "@/components/base";
 import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
+import { UserRole } from "@/types/user";
 import { reset as clearFeedback, updateUser } from "@/store/slices/auth-slice";
 
 import { editInfoSchema, EditFormData } from "./schemas/editinfoschema";
@@ -21,6 +23,10 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
     (state) => state.auth,
   );
 
+  // Buyers keep a structured delivery-address book instead; the backend strips
+  // `address` from their profile updates, so we only surface it for other roles.
+  const supportsAddress = !!data?.role && data.role !== UserRole.BUYER;
+
   const {
     register,
     handleSubmit,
@@ -33,6 +39,7 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
       firstName: data?.firstName || "",
       lastName: data?.lastName || "",
       phoneNumber: data?.phoneNumber || "",
+      address: data?.address || "",
     },
   });
 
@@ -41,8 +48,15 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
       firstName: data?.firstName || "",
       lastName: data?.lastName || "",
       phoneNumber: data?.phoneNumber || "",
+      address: data?.address || "",
     });
-  }, [data?.firstName, data?.lastName, data?.phoneNumber, reset]);
+  }, [
+    data?.firstName,
+    data?.lastName,
+    data?.phoneNumber,
+    data?.address,
+    reset,
+  ]);
 
   const onSubmit = async (formData: EditFormData) => {
     if (!data?.tokens?.accessToken) {
@@ -51,11 +65,13 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
 
     await dispatch(clearFeedback());
 
+    const { address, ...rest } = formData;
+
     try {
       await dispatch(
         updateUser({
           token: data.tokens.accessToken,
-          formData,
+          formData: supportsAddress ? { ...rest, address: address || undefined } : rest,
         }),
       ).unwrap();
       setOpen(true);
@@ -122,6 +138,22 @@ const EditInfoForm = ({ onClose }: EditInfoFormProps) => {
         }
       />
       <Input value={data?.role || ""} label="Role" disabled />
+      {supportsAddress ? (
+        <Textarea
+          id="address"
+          rows={3}
+          maxLength={255}
+          {...register("address", {
+            onBlur: () => trigger("address"),
+          })}
+          label="Address"
+          placeholder="e.g. No 38 Ashiek Jarma Street, Nasarawa State"
+          className="resize-none"
+          error={
+            errors.address && touchedFields.address ? errors.address.message : undefined
+          }
+        />
+      ) : null}
       {isError && lastCompletedAction === "updateUser" ? (
         <div className="rounded-md bg-red-50 p-4">
           <p className="text-sm text-red-800">{message}</p>

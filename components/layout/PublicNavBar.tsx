@@ -194,7 +194,7 @@ export default function PublicNavBar() {
           ...(accountPaths.sourcing
             ? [
                 {
-                  label: "Sourcing & Quoting",
+                  label: "Quotes",
                   href: accountPaths.sourcing,
                   icon: FileSearch2,
                 },
@@ -227,7 +227,7 @@ export default function PublicNavBar() {
             icon: ListChecks,
           },
           {
-            label: "Sourcing & Quoting",
+            label: "Quotes",
             href: PUBLIC_SIGN_UP_PATH,
             icon: FileSearch2,
           },

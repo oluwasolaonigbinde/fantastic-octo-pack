@@ -25,6 +25,18 @@ import rfqService from "@/services/rfqService";
 const useAuthToken = () =>
   useAppSelector((s) => s.auth.data?.tokens?.accessToken);
 
+/**
+ * Every RFQ/quote list renders newest first — a buyer or seller opening the
+ * hub must see the request that just came in, not the oldest one. The API is
+ * not consistent about this (the RFQ detail read returns quotes in insertion
+ * order, i.e. oldest first), so ordering is enforced here in `select` and
+ * every consumer of these hooks inherits it.
+ */
+const newestFirst = <T>(items: T[] | undefined, at: (item: T) => string | undefined) =>
+  [...(items ?? [])].sort(
+    (a, b) => new Date(at(b) ?? 0).getTime() - new Date(at(a) ?? 0).getTime(),
+  );
+
 /* ------------------------------------------------------------------ */
 /* Reads                                                              */
 /* ------------------------------------------------------------------ */
@@ -37,7 +49,7 @@ export const useBuyerRfqsQuery = (options?: { enabled?: boolean }) => {
     queryKey: queryKeys.rfqs.list({ scope: "buyer" }),
     queryFn: () => rfqService.fetchBuyerRfqs(token as string),
     enabled: Boolean(token) && (options?.enabled ?? true),
-    select: (res) => res.data,
+    select: (res) => newestFirst(res.data, (rfq) => rfq.createdAt),
   });
 };
 
@@ -49,7 +61,12 @@ export const useDistributorInboxQuery = (options?: { enabled?: boolean }) => {
     queryKey: queryKeys.rfqs.list({ scope: "distributor-inbox" }),
     queryFn: () => rfqService.fetchDistributorInbox(token as string),
     enabled: Boolean(token) && (options?.enabled ?? true),
-    select: (res) => res.data,
+    // Ordered on the request date the inbox actually shows (the RFQ's), not the
+    // quote row's, so the list matches its own "Request date" column.
+    select: (res) =>
+      newestFirst(res.data, (quote) =>
+        typeof quote.rfq === "string" ? quote.createdAt : quote.rfq?.createdAt ?? quote.createdAt,
+      ),
   });
 };
 
@@ -64,7 +81,10 @@ export const useRfqDetailQuery = (
     queryKey: queryKeys.rfqs.detail(rfqId ?? ""),
     queryFn: () => rfqService.fetchRfqDetail(token as string, rfqId as string),
     enabled: Boolean(token) && Boolean(rfqId) && (options?.enabled ?? true),
-    select: (res) => res.data,
+    select: (res) => ({
+      ...res.data,
+      quotes: newestFirst(res.data?.quotes, (quote) => quote.createdAt),
+    }),
   });
 };
 
@@ -81,7 +101,10 @@ export const useBuyerRfqDetails = (rfqIds: string[]) => {
       queryKey: queryKeys.rfqs.detail(rfqId),
       queryFn: () => rfqService.fetchRfqDetail(token as string, rfqId),
       enabled: Boolean(token) && Boolean(rfqId),
-      select: (res: Awaited<ReturnType<typeof rfqService.fetchRfqDetail>>) => res.data,
+      select: (res: Awaited<ReturnType<typeof rfqService.fetchRfqDetail>>) => ({
+        ...res.data,
+        quotes: newestFirst(res.data?.quotes, (quote) => quote.createdAt),
+      }),
     })),
   });
 };

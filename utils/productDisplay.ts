@@ -224,10 +224,30 @@ export const getProductImageUrls = (
     ?.map((image: ProductImage) => image.url?.trim())
     .filter((url): url is string => Boolean(url)) ?? [];
 
+/**
+ * Units a buyer can actually order right now: on-hand stock minus what open
+ * orders already hold. The backend reserves against this same figure and
+ * rejects anything above it with "Insufficient stock", so every buyer-facing
+ * stock number must be derived here — showing raw `quantityAvailable` lets a
+ * buyer order units that are already spoken for.
+ */
+export const getProductFreeStock = (
+  product?: Pick<Product, "quantityAvailable" | "quantityReserved"> | null,
+): number | undefined => {
+  if (typeof product?.quantityAvailable !== "number") return undefined;
+  return Math.max(
+    0,
+    product.quantityAvailable - Number(product.quantityReserved ?? 0),
+  );
+};
+
 export const getProductAvailabilityLabel = (
-  product?: Pick<Product, "quantityAvailable" | "availability_status"> | null,
+  product?: Pick<
+    Product,
+    "quantityAvailable" | "quantityReserved" | "availability_status"
+  > | null,
 ): string => {
-  const quantity = product?.quantityAvailable;
+  const quantity = getProductFreeStock(product);
   if (typeof quantity === "number") {
     if (quantity > 0) {
       return `${quantity} In stock`;
@@ -244,10 +264,14 @@ export const getProductAvailabilityLabel = (
 };
 
 export const isProductAvailable = (
-  product?: Pick<Product, "quantityAvailable" | "availability_status"> | null,
+  product?: Pick<
+    Product,
+    "quantityAvailable" | "quantityReserved" | "availability_status"
+  > | null,
 ): boolean => {
-  if (typeof product?.quantityAvailable === "number") {
-    return product.quantityAvailable > 0;
+  const quantity = getProductFreeStock(product);
+  if (typeof quantity === "number") {
+    return quantity > 0;
   }
 
   return product?.availability_status === "in_stock";
