@@ -1,8 +1,7 @@
 "use client";
 
-import SubmitterKycView from "@/components/kyc/submitter-kyc-view";
-import { UserRole } from "@/types/user";
+import EngineerKycView from "@/components/kyc/engineer-kyc-view";
 
 export default function EngineerKycVerificationPage() {
-  return <SubmitterKycView role={UserRole.ENGINEER} />;
+  return <EngineerKycView />;
 }

@@ -1,8 +1,7 @@
 "use client";
 
-import SubmitterKycView from "@/components/kyc/submitter-kyc-view";
-import { UserRole } from "@/types/user";
+import BuyerKycView from "@/components/kyc/buyer-kyc-view";
 
 export default function BuyerKycVerificationPage() {
-  return <SubmitterKycView role={UserRole.BUYER} />;
+  return <BuyerKycView />;
 }

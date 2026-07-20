@@ -10,17 +10,15 @@
  * token still lives in Redux and is read here and passed to the service.
  */
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { queryKeys } from "@/lib/query-keys";
 import kycService, {
   type AdminKycFilters,
+  type AdminKycTierFilters,
   type CreateKycSubmissionPayload,
+  type MyKycFilters,
 } from "@/services/kycService";
 
 const useAuthToken = () =>
@@ -31,25 +29,30 @@ const useCurrentUserId = () => useAppSelector((s) => s.auth.data?._id);
 /** Poll cadence (ms) while a submission is awaiting review. */
 const PENDING_POLL_INTERVAL = 15000;
 
+/** Statuses that mean "an admin still has to act on this". */
+const AWAITING_REVIEW_STATUSES = ["submitted", "under_review"] as const;
+
 /**
  * The current user's KYC state: tier definitions + their submissions, fetched
  * together (mirrors the old `Promise.all([getTiers, getSubmissions])`).
  *
- * While any submission is still `submitted` (awaiting review), the query polls
- * every 15s and refetches on window focus so an approval/rejection surfaces
- * without a manual reload — replacing the old hand-rolled interval + focus
- * listeners.
+ * While any submission is still awaiting review, the query polls every 15s and
+ * refetches on window focus so an approval/rejection surfaces without a manual
+ * reload — replacing the old hand-rolled interval + focus listeners.
  */
-export const useMyKycQuery = (options?: { enabled?: boolean }) => {
+export const useMyKycQuery = (
+  filters: MyKycFilters = {},
+  options?: { enabled?: boolean },
+) => {
   const token = useAuthToken();
   const userId = useCurrentUserId();
 
   return useQuery({
-    queryKey: queryKeys.kyc.mine(userId ?? "anonymous"),
+    queryKey: [...queryKeys.kyc.mine(userId ?? "anonymous"), filters],
     queryFn: async () => {
       const [tiersResponse, submissionsResponse] = await Promise.all([
         kycService.getTiers(token as string),
-        kycService.getSubmissions(token as string),
+        kycService.getSubmissions(token as string, filters),
       ]);
 
       return {
@@ -59,8 +62,10 @@ export const useMyKycQuery = (options?: { enabled?: boolean }) => {
     },
     enabled: Boolean(token) && (options?.enabled ?? true),
     refetchInterval: (query) =>
-      (query.state.data?.submissions ?? []).some(
-        (submission) => submission.status === "submitted",
+      (query.state.data?.submissions ?? []).some((submission) =>
+        AWAITING_REVIEW_STATUSES.includes(
+          submission.status as (typeof AWAITING_REVIEW_STATUSES)[number],
+        ),
       )
         ? PENDING_POLL_INTERVAL
         : false,
@@ -79,7 +84,8 @@ export const useAdminKycListQuery = (
     queryKey: queryKeys.kyc.adminList(filters as Record<string, unknown>),
     queryFn: () => kycService.getAdminSubmissions(token as string, filters),
     enabled: Boolean(token) && (options?.enabled ?? true),
-    select: (res) => ("docs" in res.data ? res.data.docs : res.data),
+    select: (res) =>
+      res.data && "docs" in res.data ? res.data.docs : res.data,
   });
 };
 
@@ -110,19 +116,29 @@ export const useAdminKycDetailQuery = (
   });
 };
 
+/** Full tier catalogue across roles — admin tooling / filter dropdowns. */
+export const useAdminKycTiersQuery = (
+  filters: AdminKycTierFilters = {},
+  options?: { enabled?: boolean },
+) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: [...queryKeys.kyc.all, "admin-tiers", filters],
+    queryFn: () => kycService.getAdminTiers(token as string, filters),
+    enabled: Boolean(token) && (options?.enabled ?? true),
+    select: (res) => res.data,
+  });
+};
+
 /* ------------------------------------------------------------------ */
 /* Mutations                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Upload a single KYC document. Does not touch the cache on its own. */
-export const useUploadKycDocumentMutation = () => {
-  const token = useAuthToken();
-
-  return useMutation({
-    mutationFn: (file: File) => kycService.uploadDocument(token as string, file),
-  });
-};
-
+/**
+ * Creates a submission and uploads its files in one multipart request.
+ * There is no separate upload step — pass `File` objects in `documents`.
+ */
 export const useCreateKycSubmissionMutation = () => {
   const token = useAuthToken();
   const qc = useQueryClient();
@@ -134,24 +150,62 @@ export const useCreateKycSubmissionMutation = () => {
   });
 };
 
-export const useApproveKycMutation = () => {
+/** Admin: move a submission into `under_review`. */
+export const useMarkKycUnderReviewMutation = () => {
   const token = useAuthToken();
   const qc = useQueryClient();
 
   return useMutation({
     mutationFn: (id: string) =>
-      kycService.approveAdminSubmission(token as string, id),
+      kycService.markSubmissionUnderReview(token as string, id),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.kyc.all }),
   });
 };
 
+/**
+ * Admin: approve a tier.
+ *
+ * Pass `submissionId` for a review-required tier, or `userId` to grant an
+ * `admin_only` tier (Premium *) where the user never submits anything.
+ */
+export const useApproveKycMutation = () => {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      tierKey,
+      submissionId,
+      userId,
+    }: {
+      tierKey: string;
+      submissionId?: string;
+      userId?: string;
+    }) =>
+      kycService.approveTier(token as string, tierKey, { submissionId, userId }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.kyc.all }),
+  });
+};
+
+/** Admin: reject a tier submission with a reason. */
 export const useRejectKycMutation = () => {
   const token = useAuthToken();
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ id, rejectionReason }: { id: string; rejectionReason: string }) =>
-      kycService.rejectAdminSubmission(token as string, id, rejectionReason),
+    mutationFn: ({
+      tierKey,
+      submissionId,
+      rejectionReason,
+    }: {
+      tierKey: string;
+      submissionId: string;
+      rejectionReason: string;
+    }) =>
+      kycService.rejectTier(token as string, tierKey, {
+        submissionId,
+        rejectionReason,
+      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.kyc.all }),
   });
 };
