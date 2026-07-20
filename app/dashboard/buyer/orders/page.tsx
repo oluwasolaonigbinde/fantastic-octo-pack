@@ -16,9 +16,6 @@ import {
 import Header from "../../component/header";
 import { EmptyState, Skeleton } from "@/components/base";
 import {
-  buyerDemoOrderDisputes,
-} from "@/constants/demoBuyerOrderDisputes";
-import {
   getBuyerOrderStatusTone,
   toBuyerOrderRow,
   type BuyerOrderRow,
@@ -393,23 +390,7 @@ export default function BuyerOrders() {
   }, [dateQuery, displayOrders, orderIdQuery, statusQuery]);
 
   const displayDisputes = useMemo<BuyerDisputeRow[]>(() => {
-    if (Array.isArray(disputes) && disputes.length > 0) {
-      return disputes.map(toBuyerDisputeRow);
-    }
-    // Visual fallback while no live disputes exist for the account.
-    return buyerDemoOrderDisputes.map((dispute) => ({
-      id: dispute.id,
-      sourceId: dispute.id,
-      orderId: dispute.orderId,
-      amount: dispute.amount,
-      itemName: dispute.itemName,
-      reason: dispute.reason,
-      against: dispute.against,
-      status: dispute.status,
-      resolutionOutcome:
-        dispute.status === "resolved" ? "refund_buyer" : undefined,
-      createdAt: dispute.createdAt,
-    }));
+    return Array.isArray(disputes) ? disputes.map(toBuyerDisputeRow) : [];
   }, [disputes]);
 
   const filteredDisputes = useMemo(() => {

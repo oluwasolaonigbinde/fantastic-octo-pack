@@ -20,8 +20,6 @@ import Header from "../../../component/header";
 import { Skeleton } from "@/components/base";
 import DeliveryStepper from "@/components/orders/DeliveryStepper";
 import {
-  buyerDemoOrderMeta,
-  buyerDemoOrders,
   getBuyerOrderStatusTone,
   getOrderDisplayId,
   getOrderProductImage,
@@ -76,19 +74,6 @@ const paymentMethods: PaymentOption[] = [
   { label: "Bank wallet", method: null },
 ];
 
-const stageFromQuery = (value: string | null, status?: string): BuyerOrderStage => {
-  if (
-    value === "payment" ||
-    value === "delivery" ||
-    value === "installation" ||
-    value === "completed"
-  ) {
-    return value;
-  }
-  if (status === "completed") return "completed";
-  return "ongoing";
-};
-
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
@@ -100,16 +85,6 @@ const formatDate = (value: string) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value || "--";
   return new Intl.DateTimeFormat("en-GB").format(parsed);
-};
-
-// Demo-walkthrough stage → completed-milestone count, on the canonical
-// (installation) scale: Create, Payment, Received, Delivered, Installed, Completed.
-const milestoneCountByStage: Record<BuyerOrderStage, number> = {
-  ongoing: 1,
-  payment: 2,
-  delivery: 4, // Received + Delivered done, delivery tracking in progress.
-  installation: 5, // Installed done, awaiting buyer confirmation.
-  completed: 6,
 };
 
 /**
@@ -193,18 +168,8 @@ function OrderSummaryCard({ order }: { order: BuyerOrderRow }) {
           <span className="font-medium text-[#111827]">{order.id}</span>
         </div>
         <div className="flex justify-between gap-4">
-          <span className="text-[#6B7280]">Invoice ID</span>
-          <span className="font-medium text-[#111827]">{buyerDemoOrderMeta.invoiceId}</span>
-        </div>
-        <div className="flex justify-between gap-4">
           <span className="text-[#6B7280]">Items total</span>
           <span className="font-medium text-[#111827]">{formatCurrency(order.totalPrice)}</span>
-        </div>
-        <div className="flex justify-between gap-4">
-          <span className="text-[#6B7280]">Delivery fee</span>
-          <span className="font-medium text-[#111827]">
-            {formatCurrency(buyerDemoOrderMeta.deliveryFee)}
-          </span>
         </div>
         <div className="flex justify-between gap-4 border-t border-[#EEF2F7] pt-3">
           <span className="font-medium text-[#111827]">Total</span>
@@ -338,17 +303,13 @@ export default function BuyerOrderDetailPage() {
   const createDispute = useCreateOrderDisputeMutation();
 
   const orderId = params.orderId as string;
-  const demoOrder = useMemo(
-    () => buyerDemoOrders.find((item) => item.sourceId === orderId || item.id === orderId),
-    [orderId],
-  );
 
   const {
     data: currentOrder,
     isLoading,
     isError,
     error,
-  } = useOrderQuery(orderId, { enabled: !demoOrder });
+  } = useOrderQuery(orderId);
   const message = error instanceof Error ? error.message : "";
 
   const confirmMutation = useConfirmOrderReceiptMutation();
@@ -380,11 +341,10 @@ export default function BuyerOrderDetailPage() {
     callbackPath: `/dashboard/buyer/orders/${orderId}?view=payment`,
   });
 
-  const liveOrder: Order | null = demoOrder ? null : currentOrder ?? null;
+  const liveOrder: Order | null = currentOrder ?? null;
   const order = useMemo<BuyerOrderRow | null>(() => {
-    if (demoOrder) return demoOrder;
     return liveOrder ? toBuyerOrderRow(liveOrder) : null;
-  }, [demoOrder, liveOrder]);
+  }, [liveOrder]);
 
   const liveStatus = order?.status ?? "";
   const paid = isOrderPaid(liveOrder?.paymentStatus, liveStatus);
@@ -405,28 +365,24 @@ export default function BuyerOrderDetailPage() {
   // The payment form only opens when explicitly requested AND still unpaid.
   const showPaymentForm = requestedView === "payment" && !paid;
   // Installation-dependent progress milestones (shared with the distributor view).
-  const requiresInstallation = demoOrder
-    ? true
-    : Boolean(liveOrder?.requiresInstallation);
+  const requiresInstallation = Boolean(liveOrder?.requiresInstallation);
   // The distributor has finished every required fulfillment stage but the buyer
   // hasn't confirmed receipt yet. Because it's the buyer who confirms delivery,
   // the final logistics step is shown as in-progress ("Delivery in progress") and
   // stays pending until they confirm — it doesn't read as a completed "Delivered".
   const awaitingBuyerConfirmation =
-    !demoOrder && paid && !!liveOrder && isAwaitingBuyerConfirmation(liveOrder);
-  // Live orders: an unpaid order stays on the pre-payment ("ongoing") view; a
-  // paid order is ALWAYS in the tracking flow and lives entirely in the "delivery"
-  // part — including the confirm-receipt step, which only differs by whether the
+    paid && !!liveOrder && isAwaitingBuyerConfirmation(liveOrder);
+  // An unpaid order stays on the pre-payment ("ongoing") view; a paid order is
+  // ALWAYS in the tracking flow and lives entirely in the "delivery" part —
+  // including the confirm-receipt step, which only differs by whether the
   // distributor has finished delivering (`awaitingBuyerConfirmation`).
   const stage: BuyerOrderStage = showPaymentForm
     ? "payment"
-    : demoOrder
-      ? stageFromQuery(requestedView, liveStatus)
-      : !paid
-        ? "ongoing"
-        : liveStatus === "completed"
-          ? "completed"
-          : "delivery";
+    : !paid
+      ? "ongoing"
+      : liveStatus === "completed"
+        ? "completed"
+        : "delivery";
   const baseMilestones = getOrderMilestones(requiresInstallation);
   const inProgressIndex = requiresInstallation
     ? baseMilestones.indexOf("Installed")
@@ -440,13 +396,11 @@ export default function BuyerOrderDetailPage() {
           : label,
       )
     : baseMilestones;
-  const activeMilestoneCount = demoOrder
-    ? milestoneCountByStage[stage]
-    : awaitingBuyerConfirmation
-      ? inProgressIndex // steps before the in-progress one are complete; it stays pending.
-      : paid && liveOrder
-        ? Math.max(2, getActiveMilestoneCount(liveOrder, requiresInstallation))
-        : 1;
+  const activeMilestoneCount = awaitingBuyerConfirmation
+    ? inProgressIndex // steps before the in-progress one are complete; it stays pending.
+    : paid && liveOrder
+      ? Math.max(2, getActiveMilestoneCount(liveOrder, requiresInstallation))
+      : 1;
   // The distributor has delivered, but it's the buyer who confirms it — so it
   // stays "in progress" until they do.
   const productStatusText =
@@ -456,11 +410,8 @@ export default function BuyerOrderDetailPage() {
         ? "Delivery in progress — confirm receipt"
         : "Awaiting Suppliers Delivery";
   // The confirm-receipt UI (and supplier evidence) shows on the delivery part
-  // once the distributor has finished delivering. Demo orders keep their
-  // walkthrough's dedicated "installation" stage.
-  const deliveryUnderway = demoOrder
-    ? stage === "installation"
-    : awaitingBuyerConfirmation;
+  // once the distributor has finished delivering.
+  const deliveryUnderway = awaitingBuyerConfirmation;
   const hasActiveDispute = Boolean(liveOrder?.activeDisputeId);
   // Only the live order can carry a real deadline; the API doesn't return one
   // today, so this is usually undefined and CountdownTimer falls back to a
@@ -474,11 +425,10 @@ export default function BuyerOrderDetailPage() {
       : undefined;
   const expectedByText = liveOrder?.proposedDeliveryDate
     ? formatDate(liveOrder.proposedDeliveryDate)
-    : buyerDemoOrderMeta.escrow.expectedBy;
+    : "—";
   const statusTone = getBuyerOrderStatusTone(stage === "completed" ? "completed" : liveStatus);
   const productImage = order?.productImage || getOrderProductImage(liveOrder);
-  const supplierName =
-    order?.supplierName || getPersonName(liveOrder?.seller, buyerDemoOrderMeta.supplier.name);
+  const supplierName = order?.supplierName || getPersonName(liveOrder?.seller, "Supplier");
   const sellerRef =
     liveOrder?.seller && typeof liveOrder.seller === "object"
       ? liveOrder.seller
@@ -486,21 +436,18 @@ export default function BuyerOrderDetailPage() {
   const supplierId =
     sellerRef?._id ??
     (typeof liveOrder?.seller === "string" ? liveOrder.seller : "");
-  const supplierEmail = sellerRef?.email || buyerDemoOrderMeta.supplier.email;
-  const supplierPhone =
-    sellerRef?.phoneNumber || buyerDemoOrderMeta.supplier.phone;
+  const supplierEmail = sellerRef?.email || "—";
+  const supplierPhone = sellerRef?.phoneNumber || "—";
   const supplierRole =
     sellerRef?.businessName ||
     sellerRef?.distributorStoreProfile?.businessName ||
-    buyerDemoOrderMeta.supplier.role;
-  const buyerName = getPersonName(liveOrder?.buyer, buyerDemoOrderMeta.deliveryAddress.name);
+    "Supplier";
+  const buyerName = getPersonName(liveOrder?.buyer, "You");
   const buyerEmail =
     liveOrder?.buyer && typeof liveOrder.buyer === "object"
-      ? liveOrder.buyer.email
-      : buyerDemoOrderMeta.deliveryAddress.email;
-  const deliveryAddressText =
-    formatDeliveryAddress(liveOrder?.deliveryAddress) ||
-    buyerDemoOrderMeta.deliveryAddress.address;
+      ? liveOrder.buyer.email || "—"
+      : "—";
+  const deliveryAddressText = formatDeliveryAddress(liveOrder?.deliveryAddress) || "—";
 
   const navigateStage = (nextStage: BuyerOrderStage) => {
     router.push(`/dashboard/buyer/orders/${orderId}?view=${nextStage}`);
@@ -526,26 +473,26 @@ export default function BuyerOrderDetailPage() {
   // (back button, stale link, refresh) for an already-paid live order, send
   // them to the order details view. `paid` comes straight from backend data.
   useEffect(() => {
-    if (!demoOrder && paid && requestedView === "payment" && !isPaid) {
+    if (paid && requestedView === "payment" && !isPaid) {
       router.replace(`/dashboard/buyer/orders/${orderId}`);
     }
-  }, [demoOrder, paid, requestedView, isPaid, orderId, router]);
+  }, [paid, requestedView, isPaid, orderId, router]);
 
   // Open the draft editor when the buyer arrives from the chat "Confirm order"
   // action (?view=edit) on a live draft order.
   useEffect(() => {
-    if (!demoOrder && isDraft && requestedView === "edit") {
+    if (isDraft && requestedView === "edit") {
       draftMutation.reset();
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setModal("editDraft");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoOrder, isDraft, requestedView]);
+  }, [isDraft, requestedView]);
 
   // Load the buyer's saved addresses once for a live, non-quote draft so the
   // confirm modal can offer them as delivery-address choices (by id).
   useEffect(() => {
-    if (demoOrder || !isDraft || isQuoteBased || !token) return;
+    if (!isDraft || isQuoteBased || !token) return;
     let active = true;
     addressService
       .fetchAddresses(token)
@@ -558,7 +505,7 @@ export default function BuyerOrderDetailPage() {
     return () => {
       active = false;
     };
-  }, [demoOrder, isDraft, isQuoteBased, token]);
+  }, [isDraft, isQuoteBased, token]);
 
   const handleSubmitPayment = () => {
     if (!selectedOption?.method || insufficientWallet) return;
@@ -593,12 +540,8 @@ export default function BuyerOrderDetailPage() {
   // Buyer confirms receipt of a fulfilled order: POST /orders/:id/received,
   // which releases escrow and advances the order to "completed". On success we
   // show the confirmation modal; the refreshed order then renders the
-  // completed view. Demo orders keep the local, client-only walkthrough.
+  // completed view.
   const handleConfirmReceipt = async () => {
-    if (demoOrder) {
-      setModal("installation");
-      return;
-    }
     if (isConfirming) return;
     try {
       await confirmMutation.mutateAsync({ orderId });
@@ -610,17 +553,13 @@ export default function BuyerOrderDetailPage() {
 
   // Raise a dispute against the order: POST /order-disputes/order/:id with the
   // selected reason, description, and optional evidence file. On success we show
-  // the confirmation modal. Demo orders short-circuit to the success state.
+  // the confirmation modal.
   const handleSubmitDispute = async (
     reason: string,
     description: string,
     file?: File,
   ) => {
     setDisputeError("");
-    if (demoOrder) {
-      setModal("disputeSuccess");
-      return;
-    }
     const token = authData?.tokens?.accessToken;
     if (!token) {
       setDisputeError("You need to be signed in to raise a dispute.");
@@ -661,9 +600,9 @@ export default function BuyerOrderDetailPage() {
   const payReference =
     (typeof payResult?.reference === "string" && payResult.reference) ||
     liveOrder?.paymentReference ||
-    buyerDemoOrderMeta.paymentReference;
+    "—";
 
-  if (isLoading || (!order && !demoOrder)) {
+  if (isLoading || !order) {
     return (
       <div>
         <Header title="Orders" description="Manage and track all orders." />
@@ -823,7 +762,7 @@ export default function BuyerOrderDetailPage() {
                       value={paymentStatus.label}
                       valueClassName={paymentStatus.className}
                     />
-                    <DetailStat label="Payment method" value={buyerDemoOrderMeta.paymentMethod} />
+                    <DetailStat label="Payment method" value="BAIY trade assurance" />
                   </div>
 
                   {stage === "completed" ? (
@@ -917,7 +856,7 @@ export default function BuyerOrderDetailPage() {
               <div className="grid gap-4 xl:grid-cols-3">
                 <InfoCard title="Payment Information">
                   <div className="grid gap-6 sm:grid-cols-2">
-                    <DetailStat label="Payment Method" value={buyerDemoOrderMeta.paymentType} />
+                    <DetailStat label="Payment Method" value="BAIY trade assurance" />
                     <DetailStat
                       label="Payment Status"
                       value={paymentStatus.label}
@@ -948,15 +887,9 @@ export default function BuyerOrderDetailPage() {
               </div>
             ) : null}
 
-            {stage === "delivery" || stage === "installation" ? (
+            {stage === "delivery" ? (
               <section className="rounded-[10px] border border-[#F3F4F6] bg-[#F9FAFB] p-4 md:p-6">
-                <div
-                  className={`grid items-start gap-6 ${
-                    deliveryUnderway
-                      ? "xl:grid-cols-[337px_1fr_280px]"
-                      : "xl:grid-cols-[337px_431px]"
-                  }`}
-                >
+                <div className="grid items-start gap-6 xl:grid-cols-[337px_431px]">
                   {/* Saved Delivery Address + actions (left column) */}
                   <div className="flex flex-col gap-4">
                     <div className="rounded-[10px] border border-[#F3F4F6] bg-[#F9FAFB] p-5">
@@ -990,11 +923,7 @@ export default function BuyerOrderDetailPage() {
                         disabled={isConfirming}
                         className="h-12 w-full rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60"
                       >
-                        {isConfirming
-                          ? "Confirming…"
-                          : demoOrder
-                            ? "Confirm installation"
-                            : "Confirm receipt"}
+                        {isConfirming ? "Confirming…" : "Confirm receipt"}
                       </button>
                     ) : null}
                     <button
@@ -1053,32 +982,11 @@ export default function BuyerOrderDetailPage() {
 
                     <p className="flex items-start gap-2 text-sm leading-5 text-[#0669D9]">
                       <Info size={18} className="mt-0.5 shrink-0" />
-                      {demoOrder && stage === "installation"
-                        ? "Please confirm installation is carried out within specified time to avoid buyer's dispute."
-                        : deliveryUnderway
-                          ? "Confirm you've received this order to release escrow to the supplier."
-                          : "Order auto cancels if supplier doesn't confirm before timer ends"}
+                      {deliveryUnderway
+                        ? "Confirm you've received this order to release escrow to the supplier."
+                        : "Order auto cancels if supplier doesn't confirm before timer ends"}
                     </p>
                   </div>
-
-                  {deliveryUnderway ? (
-                    <div className="rounded-[10px] border border-[#F3F4F6] bg-[#F9FAFB] p-5">
-                      <h3 className="text-xl font-medium text-[#111827]">
-                        Evidence upload
-                      </h3>
-                      <div className="mt-4 grid grid-cols-2 gap-2">
-                        {buyerDemoOrderMeta.evidenceImages.map((image) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            key={image}
-                            src={image}
-                            alt="Delivery evidence"
-                            className="h-20 w-full rounded-lg object-cover"
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
               </section>
             ) : null}
@@ -1094,7 +1002,7 @@ export default function BuyerOrderDetailPage() {
                   </p>
                   <p className="mt-5 inline-flex items-center gap-2 text-sm text-[#16A34A]">
                     <ShieldCheck size={16} />
-                    ESCROW status: {buyerDemoOrderMeta.escrow.releasedStatus}
+                    ESCROW status: Released
                   </p>
                 </InfoCard>
                 <OrderSummaryCard order={order} />
@@ -1156,7 +1064,7 @@ export default function BuyerOrderDetailPage() {
                 recipientName={supplierName}
                 senderName={buyerName}
                 reference={payReference}
-                methodLabel={selectedOption?.label ?? buyerDemoOrderMeta.paymentType}
+                methodLabel={selectedOption?.label ?? "BAIY trade assurance"}
                 onTrack={() => {
                   resetPayment();
                   setModal(null);
@@ -1175,21 +1083,8 @@ export default function BuyerOrderDetailPage() {
             ) : (
               <SuccessState
                 title="Congratulations"
-                body={
-                  demoOrder
-                    ? modal === "delivery"
-                      ? "Order delivery has been confirmed."
-                      : "Order installation has been confirmed."
-                    : "Receipt confirmed. Escrow has been released to the supplier."
-                }
-                onDone={() => {
-                  setModal(null);
-                  // Demo orders walk through the local stages; live orders are
-                  // already refreshed to "completed" via the confirm thunk.
-                  if (demoOrder) {
-                    navigateStage(modal === "delivery" ? "installation" : "completed");
-                  }
-                }}
+                body="Receipt confirmed. Escrow has been released to the supplier."
+                onDone={() => setModal(null)}
               />
             )}
           </div>

@@ -14,11 +14,7 @@ import {
 import Header from "../../../../component/header";
 import { Skeleton } from "@/components/base";
 import DeliveryStepper from "@/components/orders/DeliveryStepper";
-import {
-  distributorDemoOrders,
-  distributorDemoOrderMeta,
-  getOrderStatusTone,
-} from "@/constants/demoDistributorOrders";
+import { getOrderStatusTone } from "@/constants/demoDistributorOrders";
 import {
   useFulfillOrderMutation,
   useOrderQuery,
@@ -171,24 +167,20 @@ function CountdownTimer({ target }: { target?: Date }) {
 export default function DistributorDeliveryStatusPage() {
   const params = useParams();
   const router = useRouter();
-  const [notice, setNotice] = useState("");
   const [modal, setModal] = useState<ModalKind>(null);
   const [evidence, setEvidence] = useState<File[]>([]);
   const [actionError, setActionError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
   const orderId = params.orderId as string;
-  const demoOrder = distributorDemoOrders.find((item) => item.id === orderId);
 
-  const { data: currentOrder, isLoading } = useOrderQuery(orderId, {
-    enabled: !demoOrder,
-  });
+  const { data: currentOrder, isLoading } = useOrderQuery(orderId);
   const fulfillMutation = useFulfillOrderMutation();
   const isFulfilling = fulfillMutation.isPending;
 
   const order = currentOrder ?? null;
 
-  if (isLoading || (!order && !demoOrder)) {
+  if (isLoading || !order) {
     return (
       <div>
         <Header
@@ -204,64 +196,47 @@ export default function DistributorDeliveryStatusPage() {
     );
   }
 
-  const status = demoOrder?.status || order?.status;
+  const status = order?.status;
   const statusTone = getOrderStatusTone(status);
-  const displayId = demoOrder?.id || (order ? getOrderDisplayId(order) : orderId);
-  const quantity =
-    demoOrder?.quantity || order?.quantity || order?.items?.[0]?.quantity || 1;
+  const displayId = order ? getOrderDisplayId(order) : orderId;
+  const quantity = order?.quantity || order?.items?.[0]?.quantity || 1;
   const productName =
-    demoOrder?.productName ||
-    order?.productName ||
-    order?.items?.[0]?.productName ||
-    "Product name";
-  const totalPrice = demoOrder?.totalPrice || order?.totalPrice || 0;
-  const unitPrice = demoOrder?.unitPrice || totalPrice / quantity;
-  const createdAt = demoOrder?.createdAt || order?.createdAt || new Date().toISOString();
+    order?.productName || order?.items?.[0]?.productName || "Product name";
+  const totalPrice = order?.totalPrice || 0;
+  const unitPrice = totalPrice / quantity;
+  const createdAt = order?.createdAt || new Date().toISOString();
 
-  // Live orders drive the flow off the real backend status; demo orders fall
-  // back to the "awaiting delivery" view so the walkthrough still works.
-  const liveStatus = demoOrder ? "processing" : status;
+  const liveStatus = status;
   const hasActiveDispute = Boolean(order?.activeDisputeId);
 
-  const buyerName =
-    demoOrder?.buyerName ||
-    getPersonName(order?.buyer, distributorDemoOrderMeta.buyer.name);
+  const buyerName = getPersonName(order?.buyer, "Buyer");
   const buyerEmail =
-    order?.buyer && typeof order.buyer === "object"
-      ? order.buyer.email || distributorDemoOrderMeta.buyer.email
-      : distributorDemoOrderMeta.buyer.email;
+    order?.buyer && typeof order.buyer === "object" ? order.buyer.email || "—" : "—";
   const buyerPhone =
     order?.buyer && typeof order.buyer === "object"
-      ? order.buyer.phoneNumber || distributorDemoOrderMeta.buyer.phone
-      : distributorDemoOrderMeta.buyer.phone;
-  const deliveryAddressText =
-    formatDeliveryAddress(order?.deliveryAddress) ||
-    distributorDemoOrderMeta.deliveryAddress;
+      ? order.buyer.phoneNumber || "—"
+      : "—";
+  const deliveryAddressText = formatDeliveryAddress(order?.deliveryAddress) || "—";
 
   // Whether this product needs an installation step after delivery (snapshot
-  // from the product at order time). Demo orders include it for the walkthrough.
-  const requiresInstallation = demoOrder
-    ? true
-    : Boolean(order?.requiresInstallation);
+  // from the product at order time).
+  const requiresInstallation = Boolean(order?.requiresInstallation);
 
-  // The next logistics stage the distributor should advance to. Demo orders
-  // always start at "received" so the walkthrough still works.
+  // The next logistics stage the distributor should advance to.
   const nextStage: FulfillmentStage | null = order
     ? getNextFulfillmentStage(order)
-    : demoOrder
-      ? "received"
-      : null;
+    : null;
   const stageCopy = nextStage
     ? buildStageCopy(nextStage, requiresInstallation)
     : null;
 
   // Product status reflects how far the distributor has advanced the order. Once
   // every stage is done (`nextStage === null`) the order waits on the buyer.
-  const isFulfilled = liveStatus === "completed" || (!demoOrder && !nextStage);
+  const isFulfilled = liveStatus === "completed" || !nextStage;
   const productStatusText =
     liveStatus === "completed"
       ? "Order completed"
-      : !demoOrder && !nextStage
+      : !nextStage
         ? "Awaiting buyer confirmation"
         : nextStage === "delivered"
           ? "Received — ready to deliver"
@@ -273,8 +248,7 @@ export default function DistributorDeliveryStatusPage() {
   // both steppers read identically). While the buyer hasn't confirmed receipt,
   // the final logistics step shows as "Delivery in progress" and stays pending —
   // it's the buyer who confirms delivery.
-  const awaitingBuyerConfirmation =
-    !demoOrder && !!order && isAwaitingBuyerConfirmation(order);
+  const awaitingBuyerConfirmation = !!order && isAwaitingBuyerConfirmation(order);
   const baseMilestones = getOrderMilestones(requiresInstallation);
   const inProgressIndex = requiresInstallation
     ? baseMilestones.indexOf("Installed")
@@ -288,25 +262,16 @@ export default function DistributorDeliveryStatusPage() {
           : label,
       )
     : baseMilestones;
-  const activeMilestoneCount = demoOrder
-    ? 2 // Create + Payment — awaiting delivery in the walkthrough.
-    : awaitingBuyerConfirmation
-      ? inProgressIndex // steps before the in-progress one are complete; it stays pending.
-      : order
-        ? getActiveMilestoneCount(order, requiresInstallation)
-        : 1;
+  const activeMilestoneCount = awaitingBuyerConfirmation
+    ? inProgressIndex // steps before the in-progress one are complete; it stays pending.
+    : order
+      ? getActiveMilestoneCount(order, requiresInstallation)
+      : 1;
 
   // POST /orders/:id/fulfillment — advance the order one logistics stage. The
   // evidence images are display-only; the backend doesn't accept them yet.
   const handleAdvanceStage = async () => {
     setActionError("");
-    if (demoOrder) {
-      setSuccessMessage(
-        stageCopy?.successBody ?? "Delivery updated (demo).",
-      );
-      setModal("success");
-      return;
-    }
     if (isFulfilling) return;
     if (!nextStage || !stageCopy) {
       setActionError("This order has already reached its final delivery stage.");
@@ -364,10 +329,7 @@ export default function DistributorDeliveryStatusPage() {
                 value="Paid"
                 valueClassName="text-[#16A34A]"
               />
-              <OrderStat
-                label="Payment method"
-                value={distributorDemoOrderMeta.paymentMethod}
-              />
+              <OrderStat label="Payment method" value="ESCROW" />
             </div>
             <span
               className={`inline-flex h-12 items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium ${statusTone.className}`}
@@ -403,12 +365,6 @@ export default function DistributorDeliveryStatusPage() {
             </div>
           ) : null}
         </section>
-
-        {notice ? (
-          <p className="rounded-xl border border-[#DDEBFF] bg-[#F4F9FF] px-4 py-3 text-sm text-primary">
-            {notice}
-          </p>
-        ) : null}
 
         <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
           <section className="min-h-[420px] rounded-2xl border border-[#DDE0E5] bg-white p-6 md:p-8">
@@ -488,7 +444,7 @@ export default function DistributorDeliveryStatusPage() {
 
               <p className="mt-6 flex items-start gap-2 text-sm leading-5 text-[#0669D9]">
                 <Info size={18} className="mt-0.5 shrink-0" />
-                {distributorDemoOrderMeta.escrow.note}
+                Escrow auto-releases after the buyer confirms receipt.
               </p>
             </section>
 
@@ -595,11 +551,6 @@ export default function DistributorDeliveryStatusPage() {
                   onClick={() => {
                     setModal(null);
                     setEvidence([]);
-                    if (demoOrder) {
-                      setNotice(
-                        "Delivery updated (demo). No backend status was changed for this sample order.",
-                      );
-                    }
                   }}
                   className="mt-6 h-11 w-full rounded-xl bg-primary text-sm font-medium text-white"
                 >

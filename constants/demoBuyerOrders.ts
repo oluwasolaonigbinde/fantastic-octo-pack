@@ -41,145 +41,12 @@ export interface BuyerOrderRow {
   productSummary: string;
 }
 
-export const buyerOrderMilestones = [
-  "Create order",
-  "Payment",
-  "Delivery",
-  "Installation",
-  "Completed",
-];
-
-export const buyerMobileMilestones = [
-  "Create order",
-  "Payment",
-  "Delivery",
-  "Packaging",
-  "Dispatched",
-  "Delivery completed",
-  "Installation",
-  "Completed",
-];
-
-export const buyerDemoOrderMeta = {
-  paymentMethod: "ESCROW",
-  paymentType: "BAIY trade assurance",
-  paymentStatus: "Paid",
-  paymentReference: "BAIY-TRX-000792",
-  transactionId: "TXN-BAIY-902394",
-  invoiceId: "INV-902394",
-  deliveryFee: 0,
-  deliveryAddress: {
-    name: "Samuel Smart",
-    address: "38 Asheik Jarma Street, Jabi Abuja",
-    email: "example55@gmail.com",
-    phone: "090384736378",
-  },
-  supplier: {
-    name: "Fika Store",
-    role: "Supplier",
-    phone: "090384736378",
-    email: "fikastore@example.com",
-  },
-  escrow: {
-    remaining: "2 days 11 hrs",
-    expectedBy: "Thursday 26 - April at 11:59PM",
-    currentStatus: "Awaiting buyer confirmation",
-    productStatus: "Delivery Completed",
-    releasedStatus: "Released",
-    note:
-      "Escrow auto releases in 2 days after confirmation, ensure you confirm before timer elapses.",
-  },
-  evidenceImages: [
-    "https://images.unsplash.com/photo-1581093458791-9d15482442f6?auto=format&fit=crop&w=240&q=80",
-    "https://images.unsplash.com/photo-1583912267550-d44c6b1d70d1?auto=format&fit=crop&w=240&q=80",
-    "https://images.unsplash.com/photo-1581092160562-40aa08e78837?auto=format&fit=crop&w=240&q=80",
-    "https://images.unsplash.com/photo-1581092580497-e0d23cbdf1dc?auto=format&fit=crop&w=240&q=80",
-  ],
-};
-
-const demoOrderSeeds = [
-  {
-    id: "ORD-123456",
-    sourceId: "ORD-123456",
-    status: "created_pending_payment",
-    productName: "MRI machine",
-    quantity: 12,
-    unitPrice: 60028,
-    totalPrice: 780070,
-    createdAt: "2025-09-24T09:30:00.000Z",
-    supplierName: "Fika Store",
-  },
-  {
-    id: "ORD-123457",
-    sourceId: "ORD-123457",
-    status: "cancelled_pre_payment",
-    productName: "Ultrasound scanner",
-    quantity: 12,
-    unitPrice: 60028,
-    totalPrice: 780070,
-    createdAt: "2025-09-24T09:30:00.000Z",
-    supplierName: "Fika Store",
-  },
-  {
-    id: "ORD-123458",
-    sourceId: "ORD-123458",
-    status: "not_paid",
-    productName: "Patient monitor",
-    quantity: 12,
-    unitPrice: 60028,
-    totalPrice: 780070,
-    createdAt: "2025-09-24T09:30:00.000Z",
-    supplierName: "Fika Store",
-  },
-  {
-    id: "ORD-123459",
-    sourceId: "ORD-123459",
-    status: "completed",
-    productName: "Infusion pump",
-    quantity: 12,
-    unitPrice: 60028,
-    totalPrice: 780070,
-    createdAt: "2025-09-24T09:30:00.000Z",
-    supplierName: "Fika Store",
-  },
-  {
-    id: "ORD-123460",
-    sourceId: "ORD-123460",
-    status: "completed",
-    productName: "Anesthesia machine",
-    quantity: 12,
-    unitPrice: 60028,
-    totalPrice: 780070,
-    createdAt: "2025-09-24T09:30:00.000Z",
-    supplierName: "Fika Store",
-  },
-];
-
 /** One-line label for an order's products: the name, or "First +N more". */
 export const buildOrderItemSummary = (items: BuyerOrderItem[]): string => {
   if (items.length === 0) return "Name of the product";
   if (items.length === 1) return items[0].productName;
   return `${items[0].productName} +${items.length - 1} more`;
 };
-
-// The demo orders are single-product; derive the multi-item shape from their
-// core fields so they satisfy BuyerOrderRow like live orders do.
-export const buyerDemoOrders: BuyerOrderRow[] = demoOrderSeeds.map((seed) => {
-  const items: BuyerOrderItem[] = [
-    {
-      productName: seed.productName,
-      quantity: seed.quantity,
-      unitPrice: seed.unitPrice,
-    },
-  ];
-  return {
-    ...seed,
-    items,
-    itemCount: items.length,
-    totalQuantity: seed.quantity,
-    productSummary: buildOrderItemSummary(items),
-  };
-});
 
 const toTitleCase = (value: string) =>
   value
@@ -312,7 +179,7 @@ export const toBuyerOrderRow = (order: Order): BuyerOrderRow => {
     totalPrice: order.totalPrice,
     createdAt: order.createdAt,
     status: order.status,
-    supplierName: getPersonName(order.seller, buyerDemoOrderMeta.supplier.name),
+    supplierName: getPersonName(order.seller, "Supplier"),
     productImage: first.productImage,
     items,
     itemCount: items.length,
