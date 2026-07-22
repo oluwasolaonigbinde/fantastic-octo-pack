@@ -1,378 +1,432 @@
 "use client";
 
+/**
+ * Admin KYC review queue.
+ *
+ * Rows come from `GET /kyc/admin/submissions`, which is **submission-scoped**:
+ * a user who has never submitted has no row here. This queue is therefore a
+ * list of things to review, not a roster of users — by design. Don't add a
+ * "Not started" row; it would require listing users instead of submissions.
+ *
+ * Server-supported filters: `status`, `kycLevel`, `userCategory`, `date`.
+ * Name search is *not* server-supported and is applied client-side — see
+ * `nameQuery` below.
+ */
+
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock, Eye, Filter, ShieldCheck } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Filter,
+  RotateCcw,
+  ShieldCheck,
+  Star,
+  Users,
+  XCircle,
+} from "lucide-react";
 
 import Header from "@/app/dashboard/component/header";
-import { Button, Input, RightSlider, SingleSelect, SummaryCard, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@/components/base";
 import {
-  useAdminKycDetailQuery,
+  Button,
+  Input,
+  SingleSelect,
+  SummaryCard,
+} from "@/components/base";
+import { ALL_KYC_TIERS } from "@/constants/kycTiers";
+import { useAdminPlatformUsersSummaryQuery } from "@/hooks/queries/admin";
+import {
   useAdminKycListQuery,
   useAdminKycStatsQuery,
-  useApproveKycMutation,
-  useRejectKycMutation,
 } from "@/hooks/queries/kyc";
+import { cn } from "@/lib/utils";
 import { type AdminKycFilters } from "@/services/kycService";
-import { getKycFileTypeLabel } from "@/utils/kycFileTypeLabel";
 
+import AdminKycPremiumGrant from "./admin-kyc-premium-grant";
+import AdminKycReviewDrawer from "./admin-kyc-review-drawer";
 
-const statusColor: Record<string, string> = {
-  Pending: "text-warning",
-  Approved: "text-success",
-  Rejected: "text-danger",
+/** Server `formatStatusLabel` output → row colour. */
+const STATUS_COLORS: Record<string, string> = {
+  Pending: "text-[#E26B0A]",
+  "Under review": "text-[#0669D9]",
+  Approved: "text-[#13A83B]",
+  Rejected: "text-[#D92D20]",
+  Draft: "text-[#6B7280]",
 };
 
-const humanizeFieldName = (value: string) =>
-  value
-    .replace(/([A-Z])/g, " $1")
-    .trim()
-    .toLowerCase()
-    .replace(/^./, (character) => character.toUpperCase());
+const CATEGORY_OPTIONS = [
+  { label: "All Category", value: "all" },
+  { label: "Buyer", value: "buyer" },
+  { label: "Distributor", value: "distributor" },
+  { label: "OEM", value: "oem" },
+  { label: "Service Engineer", value: "engineer" },
+];
+
+const STATUS_OPTIONS = [
+  { label: "All Status", value: "all" },
+  { label: "Pending", value: "pending" },
+  { label: "Approved", value: "approved" },
+  { label: "Rejected", value: "rejected" },
+];
+
+/** Every distinct tier label, for the `kycLevel` filter. */
+const TIER_OPTIONS = [
+  { label: "All Tiers", value: "all" },
+  ...Array.from(new Set(ALL_KYC_TIERS.map((tier) => tier.tierLabel))).map(
+    (label) => ({ label, value: label }),
+  ),
+];
+
+/**
+ * The list returns `kycLevel` as a tier *label*; the design shows a tier
+ * *number*. Resolve via the catalogue rather than parsing the string.
+ */
+const tierOrdinalOf = (kycLevel: string): string =>
+  ALL_KYC_TIERS.find((tier) => tier.tierLabel === kycLevel)?.tierOrdinal
+    ?.toString() ?? "-";
+
+const formatDate = (value: string | null) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "-"
+    : date.toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+};
 
 export default function AdminKycManagement() {
+  const router = useRouter();
+
+  /** Applied filters — only updated when "Filter" is pressed. */
   const [filters, setFilters] = useState<AdminKycFilters>({
     status: "all",
     userCategory: "all",
+    kycLevel: "",
     date: "",
   });
+  /** Pending form state, so typing doesn't refetch on every keystroke. */
+  const [draft, setDraft] = useState<AdminKycFilters & { name: string }>({
+    status: "all",
+    userCategory: "all",
+    kycLevel: "",
+    date: "",
+    name: "",
+  });
+  const [nameQuery, setNameQuery] = useState("");
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [rejectionReason, setRejectionReason] = useState("");
-  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [grantOpen, setGrantOpen] = useState(false);
 
   const statsQuery = useAdminKycStatsQuery();
+  const usersSummaryQuery = useAdminPlatformUsersSummaryQuery();
   const listQuery = useAdminKycListQuery(filters);
-  const detailQuery = useAdminKycDetailQuery(selectedId, {
-    enabled: drawerOpen && Boolean(selectedId),
-  });
-  const approveMutation = useApproveKycMutation();
-  const rejectMutation = useRejectKycMutation();
 
   const stats = statsQuery.data ?? null;
-  const rows = listQuery.data ?? [];
-  const loading = listQuery.isLoading || statsQuery.isLoading;
+  const rows = useMemo(() => listQuery.data ?? [], [listQuery.data]);
+
+  /**
+   * Name search is client-side because the server exposes no name/email
+   * filter — so it only narrows rows already fetched. If the list ever gets
+   * server pagination this becomes misleading and needs a backend `search`.
+   */
+  const visibleRows = useMemo(() => {
+    const needle = nameQuery.trim().toLowerCase();
+    if (!needle) return rows;
+
+    return rows.filter(
+      (row) =>
+        row.fullName.toLowerCase().includes(needle) ||
+        row.email.toLowerCase().includes(needle),
+    );
+  }, [nameQuery, rows]);
+
+  const applyFilters = () => {
+    const { name, ...rest } = draft;
+    setFilters(rest);
+    setNameQuery(name);
+  };
+
   const listError = listQuery.isError
     ? listQuery.error instanceof Error
       ? listQuery.error.message
-      : "Unable to load KYC management"
+      : "Unable to load the KYC queue"
     : null;
 
-  const selected = detailQuery.data ?? null;
-  const drawerLoading = detailQuery.isLoading || approveMutation.isPending;
-  const rejecting = rejectMutation.isPending;
-  const drawerError =
-    detailQuery.isError
-      ? detailQuery.error instanceof Error
-        ? detailQuery.error.message
-        : "Unable to fetch KYC submission"
-      : approveMutation.isError
-        ? approveMutation.error instanceof Error
-          ? approveMutation.error.message
-          : "Unable to approve submission"
-        : rejectMutation.isError
-          ? rejectMutation.error instanceof Error
-            ? rejectMutation.error.message
-            : "Unable to reject submission"
-          : null;
-
-  const summaryValues = useMemo(
-    () => ({
-      totalVerifiedUsers: String(stats?.totalVerifiedUsers ?? 0).padStart(2, "0"),
-      pendingKycReviews: String(stats?.pendingKycReviews ?? 0).padStart(2, "0"),
-      rejectedSubmissions: String(stats?.rejectedSubmissions ?? 0).padStart(2, "0"),
-      verificationFlagged: String(stats?.verificationFlagged ?? 0).padStart(2, "0"),
-    }),
-    [stats],
-  );
-
-  const openSubmission = (id: string) => {
-    setSelectedId(id);
-    setDrawerOpen(true);
-    setShowRejectForm(false);
-    setRejectionReason("");
-  };
-
-  const approve = () => {
-    if (!selected) return;
-    approveMutation.mutate(selected._id);
-  };
-
-  const reject = () => {
-    if (!selected || !rejectionReason.trim()) return;
-
-    rejectMutation.mutate(
-      { id: selected._id, rejectionReason: rejectionReason.trim() },
-      {
-        onSuccess: () => {
-          setShowRejectForm(false);
-          setRejectionReason("");
-        },
-      },
-    );
-  };
+  const summary = [
+    {
+      title: "Total Users",
+      // Not a KYC stat — /kyc/admin/stats has no total-users figure.
+      value: usersSummaryQuery.data?.approvedUsers.total,
+      icon: <Users size={18} className="text-[#0669D9]" />,
+      iconBg: "#EAF2FE",
+    },
+    {
+      title: "Under Review",
+      // Server counts `submitted` + `under_review` together.
+      value: stats?.pendingKycReviews,
+      icon: <Filter size={18} className="text-[#7C3AED]" />,
+      iconBg: "#F3EEFF",
+    },
+    {
+      title: "Verified",
+      value: stats?.totalVerifiedUsers,
+      icon: <ShieldCheck size={18} className="text-[#E29A0A]" />,
+      iconBg: "#FFF6E5",
+    },
+    {
+      title: "Rejected",
+      value: stats?.rejectedSubmissions,
+      icon: <XCircle size={18} className="text-[#D92D20]" />,
+      iconBg: "#FDECEC",
+    },
+  ];
 
   return (
-    <div>
-      <Header title="KYC Management" description="Verify all KYC levels and view logs" />
+    <>
+      <Header
+        title="User Management"
+        description="View and create users, roles, and privileges."
+      />
 
-      <div className="space-y-5 p-4 md:p-6">
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <SummaryCard
-            title="Total verified users"
-            value={summaryValues.totalVerifiedUsers}
-            icon={<ShieldCheck size={18} className="text-primary" />}
-            iconBg="bg-[#E7F1FF]"
-            subtitle="For this month"
-          />
-          <SummaryCard
-            title="Pending KYC reviews"
-            value={summaryValues.pendingKycReviews}
-            icon={<Clock size={18} className="text-[#C04FE0]" />}
-            iconBg="bg-[#F8E8FF]"
-            subtitle="For this month"
-          />
-          <SummaryCard
-            title="Rejected submissions"
-            value={summaryValues.rejectedSubmissions}
-            icon={<AlertTriangle size={18} className="text-[#F6B90A]" />}
-            iconBg="bg-[#FFF5DB]"
-            subtitle="For this month"
-          />
-          <SummaryCard
-            title="Verification flagged"
-            value={summaryValues.verificationFlagged}
-            icon={<CheckCircle2 size={18} className="text-danger" />}
-            iconBg="bg-[#FFE8E8]"
-            subtitle="For this month"
-          />
-        </div>
+      <div className="space-y-4 bg-[#F9FAFB] p-4 md:pb-6 md:pl-6 md:pr-4 md:pt-4">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          className="inline-flex items-center gap-2 text-[15px] leading-6 text-black"
+        >
+          <ArrowLeft size={20} />
+          Go Back
+        </button>
 
-        <section className="card space-y-4">
-          <div>
-            <h3 className="medium3 text-gray1">All KYC Verification Requests</h3>
-            <p className="text-sm text-gray3">
-              View all requests from buyers/distributors/OEMs/engineers
-            </p>
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {summary.map((card) => (
+            <SummaryCard
+              key={card.title}
+              title={card.title}
+              value={
+                card.value === undefined ? "—" : card.value.toLocaleString("en-GB")
+              }
+              icon={card.icon}
+              iconBg={card.iconBg}
+            />
+          ))}
+        </section>
+
+        <section className="rounded-[10px] bg-white p-4 md:p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-[18px] font-medium leading-7 text-black">KYC</h2>
+            {/* Premium tiers have no application flow — granting is admin-only. */}
+            <Button
+              onClick={() => setGrantOpen(true)}
+              className="inline-flex h-[38px] items-center gap-2 rounded-xl border border-[#DDE0E5] bg-white px-4 text-[13px] text-[#4B5563]"
+            >
+              <Star size={14} className="text-[#F59E0B]" />
+              Grant premium
+            </Button>
           </div>
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-gray3">
+
+          <p className="mt-4 text-[13px] leading-5 text-[#6B7280]">
             Filter table list by:
           </p>
-          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto]">
-            <SingleSelect
-              label="Status"
-              value={filters.status}
-              onValueChange={(value) =>
-                setFilters((current) => ({ ...current, status: value as AdminKycFilters["status"] }))
-              }
-              options={[
-                { value: "all", label: "All statuses" },
-                { value: "pending", label: "Pending" },
-                { value: "approved", label: "Approved" },
-                { value: "rejected", label: "Rejected" },
-              ]}
-            />
-            <SingleSelect
-              label="User category"
-              value={filters.userCategory}
-              onValueChange={(value) =>
-                setFilters((current) => ({
-                  ...current,
-                  userCategory: value as AdminKycFilters["userCategory"],
-                }))
-              }
-              options={[
-                { value: "all", label: "All categories" },
-                { value: "buyer", label: "Buyer" },
-                { value: "distributor", label: "Distributor" },
-                { value: "oem", label: "OEM" },
-                { value: "engineer", label: "Service Engineer" },
-              ]}
-            />
-            <Input
-              label="Date"
-              type="date"
-              value={filters.date}
-              onChange={(event) =>
-                setFilters((current) => ({ ...current, date: event.target.value }))
-              }
-            />
+
+          <div className="mt-2 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end">
+            <div className="w-full lg:w-[200px]">
+              <Input
+                id="kyc-name-filter"
+                label="User name"
+                value={draft.name}
+                placeholder="Enter user name"
+                onChange={(event) =>
+                  setDraft((previous) => ({ ...previous, name: event.target.value }))
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") applyFilters();
+                }}
+              />
+            </div>
+
+            <div className="w-full lg:w-[180px]">
+              <SingleSelect
+                label="Category"
+                value={draft.userCategory ?? "all"}
+                options={CATEGORY_OPTIONS}
+                onValueChange={(value) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    userCategory: value as AdminKycFilters["userCategory"],
+                  }))
+                }
+              />
+            </div>
+
+            <div className="w-full lg:w-[180px]">
+              <SingleSelect
+                label="Status"
+                value={draft.status ?? "all"}
+                options={STATUS_OPTIONS}
+                onValueChange={(value) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    status: value as AdminKycFilters["status"],
+                  }))
+                }
+              />
+            </div>
+
+            <div className="w-full lg:w-[200px]">
+              <SingleSelect
+                label="Tier"
+                value={draft.kycLevel || "all"}
+                options={TIER_OPTIONS}
+                onValueChange={(value) =>
+                  setDraft((previous) => ({
+                    ...previous,
+                    kycLevel: value === "all" ? "" : value,
+                  }))
+                }
+              />
+            </div>
+
+            <div className="w-full lg:w-[160px]">
+              <Input
+                id="kyc-date-filter"
+                label="Submitted on"
+                type="date"
+                value={draft.date ?? ""}
+                onChange={(event) =>
+                  setDraft((previous) => ({ ...previous, date: event.target.value }))
+                }
+              />
+            </div>
+
             <Button
-              title="Filter"
-              iconLeft={<Filter size={16} />}
-              className="self-end"
-              type="button"
-              onClick={() => void listQuery.refetch()}
-            />
+              onClick={applyFilters}
+              className="inline-flex h-[42px] items-center justify-center gap-2 rounded-xl bg-[#0669D9] px-6 text-[14px] text-white lg:w-[140px]"
+            >
+              <Filter size={15} />
+              Filter
+            </Button>
           </div>
 
-          {listError ? <p className="text-sm text-danger">{listError}</p> : null}
-
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Full name</TableHead>
-                  <TableHead>KYC level</TableHead>
-                  <TableHead>Document submitted</TableHead>
-                  <TableHead className="hidden md:table-cell">Role</TableHead>
-                  <TableHead className="hidden md:table-cell">Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Registration date</TableHead>
-                  <TableHead className="hidden md:table-cell">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  <TableRow>
-                    <TableCell colSpan={7}>Loading KYC submissions…</TableCell>
-                  </TableRow>
-                ) : rows.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7}>No KYC submissions yet</TableCell>
-                  </TableRow>
-                ) : (
-                  rows.map((row) => (
-                    <TableRow
-                      key={row._id}
-                      onClick={() => void openSubmission(row._id)}
-                      className="cursor-pointer"
-                    >
-                      <TableCell className="min-w-[130px] md:min-w-[180px]">
-                        <div className="flex items-center gap-3">
-                          <span className="hidden size-8 shrink-0 rounded-full bg-gray5 md:block" />
-                          <span className="font-medium text-gray1">{row.fullName || row.email}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>{row.kycLevel}</TableCell>
-                      <TableCell>{row.documentSubmitted}</TableCell>
-                      <TableCell className="hidden md:table-cell">{row.role}</TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <span className={`text-xs font-medium ${statusColor[row.status] ?? "text-gray3"}`}>
-                          {row.status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">{row.registrationDate ? new Date(row.registrationDate).toLocaleDateString("en-GB") : "-"}</TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <Button
-                          title="View"
-                          variant="primaryLight"
-                          size="sm"
-                          iconLeft={<Eye size={14} />}
-                          className="w-auto"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void openSubmission(row._id);
-                          }}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+          {/* Results */}
+          <div className="mt-5">
+            {listQuery.isLoading ? (
+              <div className="space-y-2">
+                {[0, 1, 2, 3].map((row) => (
+                  <div
+                    key={row}
+                    className="h-[46px] animate-pulse rounded-[6px] bg-[#F3F4F6]"
+                  />
+                ))}
+              </div>
+            ) : listError ? (
+              <div className="flex flex-col items-start gap-3 rounded-[8px] border border-[#FDA29B] bg-[#FFFBFA] p-5">
+                <div className="flex items-center gap-2 text-[#D92D20]">
+                  <AlertCircle size={17} />
+                  <p className="text-[14px] font-medium">Unable to load the queue</p>
+                </div>
+                <p className="text-[13px] leading-5 text-[#4B5563]">{listError}</p>
+                <Button
+                  onClick={() => void listQuery.refetch()}
+                  className="inline-flex h-[36px] items-center gap-2 rounded-xl bg-[#0669D9] px-4 text-[13px] text-white"
+                >
+                  <RotateCcw size={14} />
+                  Try again
+                </Button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] border-collapse text-left">
+                  <thead>
+                    <tr className="h-[38px] text-[12px] font-normal leading-4 text-[#4B5563]">
+                      <th className="px-3 font-normal">User&apos;s name</th>
+                      <th className="px-3 font-normal">Category</th>
+                      <th className="px-3 font-normal">Tier</th>
+                      <th className="px-3 font-normal">Submitted on</th>
+                      <th className="px-3 font-normal">Documents</th>
+                      <th className="px-3 font-normal">Status</th>
+                      <th className="px-3 text-center font-normal">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRows.length ? (
+                      visibleRows.map((row) => (
+                        <tr
+                          key={row._id}
+                          className="h-[52px] border-t border-[#F1F3F5] text-[13px] leading-5 text-black"
+                        >
+                          <td className="px-3">
+                            <p className="truncate font-normal">
+                              {row.fullName || "Unnamed user"}
+                            </p>
+                            <p className="truncate text-[11px] leading-4 text-[#6B7280]">
+                              {row.email}
+                            </p>
+                          </td>
+                          <td className="px-3">{row.role}</td>
+                          <td className="px-3">{tierOrdinalOf(row.kycLevel)}</td>
+                          <td className="px-3">{formatDate(row.registrationDate)}</td>
+                          <td className="px-3">{row.documentSubmitted}</td>
+                          <td
+                            className={cn(
+                              "px-3 font-medium",
+                              STATUS_COLORS[row.status] ?? "text-[#6B7280]",
+                            )}
+                          >
+                            {row.status}
+                          </td>
+                          <td className="px-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedId(row._id);
+                                setDrawerOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1.5 text-[13px] text-[#13A83B]"
+                            >
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="py-10 text-center">
+                          <p className="text-[14px] leading-5 text-black">
+                            No submissions match these filters.
+                          </p>
+                          {nameQuery ? (
+                            <p className="mt-1 text-[12px] leading-4 text-[#6B7280]">
+                              Name search only narrows the rows already loaded.
+                            </p>
+                          ) : null}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </section>
       </div>
 
-      <RightSlider open={drawerOpen} onClose={() => setDrawerOpen(false)} title="KYC request details">
-        {drawerLoading ? <p>Loading…</p> : null}
-        {drawerError ? <p className="text-sm text-danger">{drawerError}</p> : null}
-        {selected ? (
-          <div className="space-y-5 pb-6">
-            <div className="rounded-2xl bg-[#F8FAFC] p-4">
-              <p className="text-sm text-gray3">Request Status</p>
-              <p className={`mt-2 text-base font-semibold ${statusColor[selected.requestStatusLabel] ?? "text-gray1"}`}>
-                {selected.requestStatusLabel}
-              </p>
-            </div>
+      {/* Remount per record so draft rejection text never leaks between rows. */}
+      <AdminKycReviewDrawer
+        key={selectedId ?? "none"}
+        submissionId={selectedId}
+        open={drawerOpen}
+        onClose={() => {
+          setDrawerOpen(false);
+          setSelectedId(null);
+        }}
+      />
 
-            <div className="space-y-3">
-              <p><span className="font-medium">Full name:</span> {selected.user ? `${selected.user.firstName} ${selected.user.lastName}`.trim() : "-"}</p>
-              <p><span className="font-medium">KYC level:</span> {selected.tierLabel}</p>
-              <p><span className="font-medium">Role:</span> {selected.user?.role || selected.userRole}</p>
-              <p><span className="font-medium">Registration date:</span> {selected.createdAt ? new Date(selected.createdAt).toLocaleDateString("en-GB") : "-"}</p>
-            </div>
-
-            {Object.entries(selected.textFields || {}).length ? (
-              <div className="space-y-2">
-                <p className="font-medium text-gray1">Submitted information</p>
-                {Object.entries(selected.textFields).map(([key, value]) => (
-                  <p key={key} className="text-sm text-gray2">
-                    <span className="font-medium">{humanizeFieldName(key)}:</span> {value}
-                  </p>
-                ))}
-              </div>
-            ) : null}
-
-            <div className="space-y-2">
-              <p className="font-medium text-gray1">Document submitted</p>
-              {selected.documents.length === 0 ? (
-                <p className="text-sm text-gray3">No documents uploaded for this request.</p>
-              ) : (
-                selected.documents.map((document) => (
-                  <div key={document.fieldName} className="rounded-xl border border-gray5 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-gray1">{document.fileName}</p>
-                        <p className="text-sm text-gray3">
-                          {getKycFileTypeLabel(document.fileType, document.fileName)}
-                        </p>
-                      </div>
-                      <a href={document.fileUrl} target="_blank" rel="noreferrer" className="text-primary">
-                        Download
-                      </a>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {selected.rejectionReason ? (
-              <div className="rounded-2xl bg-[#FFF0F0] p-4 text-sm text-danger">
-                <p className="font-semibold">Reason for rejection</p>
-                <p className="mt-2">{selected.rejectionReason}</p>
-              </div>
-            ) : null}
-
-            {selected.status === "submitted" ? (
-              <div className="space-y-3">
-                {showRejectForm ? (
-                  <div className="space-y-3">
-                    <label className="block space-y-2">
-                      <span className="text-sm font-medium text-gray1">Reason for rejection</span>
-                      <Textarea
-                        label="Reason for rejection"
-                        value={rejectionReason}
-                        onChange={(event) => setRejectionReason(event.target.value)}
-                      />
-                    </label>
-                    {!rejectionReason.trim() ? (
-                      <p className="text-sm text-gray3">
-                        Enter a reason before confirming rejection.
-                      </p>
-                    ) : null}
-                    <Button
-                      title="Confirm rejection"
-                      variant="secondary"
-                      isBusy={rejecting}
-                      disabled={!rejectionReason.trim()}
-                      onClick={() => void reject()}
-                    />
-                  </div>
-                ) : (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Button title="Approve" onClick={() => void approve()} />
-                    <Button
-                      title="Reject"
-                      variant="primaryLight"
-                      onClick={() => setShowRejectForm(true)}
-                    />
-                  </div>
-                )}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-      </RightSlider>
-    </div>
+      <AdminKycPremiumGrant open={grantOpen} onClose={() => setGrantOpen(false)} />
+    </>
   );
 }

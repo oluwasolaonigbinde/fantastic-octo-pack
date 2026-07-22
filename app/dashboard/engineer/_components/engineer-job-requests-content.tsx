@@ -2,10 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   AlertCircle,
   ArrowRight,
+  CalendarDays,
   CheckCircle2,
   Clock3,
   FileClock,
@@ -192,14 +193,14 @@ export function EngineerSummaryMetricCards({
       icon: <FileText className="size-[18px] text-[#2F80ED]" strokeWidth={1.75} />,
     },
     {
-      title: "All pending requests",
+      title: "All pending job requests",
       value: formatCount(pending),
       meta: "Awaiting engineer action",
       accent: "#FFF4D8",
       icon: <FileClock className="size-[18px] text-[#D4A017]" strokeWidth={1.75} />,
     },
     {
-      title: "Completed job requests",
+      title: "Completed job request",
       value: formatCount(completed),
       meta: "Delivered service jobs",
       accent: "#F9E4FF",
@@ -208,7 +209,7 @@ export function EngineerSummaryMetricCards({
       ),
     },
     {
-      title: "Rejected requests",
+      title: "Rejected job requests",
       value: formatCount(rejected),
       meta: "Requests you rejected",
       accent: "#E7F9EC",
@@ -221,11 +222,11 @@ export function EngineerSummaryMetricCards({
       {cards.map((card) => (
         <article
           key={card.title}
-          className="h-[128px] rounded-[16px] border border-[#DDE0E5] bg-white px-[14px] py-[20px] md:border-[#F3F4F6] md:px-[20px] md:py-[24px]"
+          className="min-h-[104px] rounded-[16px] border border-[#DDE0E5] bg-white px-[14px] py-[16px] md:min-h-[128px] md:border-[#F3F4F6] md:px-[20px] md:py-[24px]"
         >
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="max-w-[100px] text-[10px] leading-[20px] text-[#111827] md:max-w-none md:text-[14px]">
+            <div className="min-w-0">
+              <p className="text-[11px] leading-[16px] text-[#111827] md:text-[14px] md:leading-[20px]">
                 {card.title}
               </p>
               <p className="mt-[5px] text-[16px] font-normal leading-[24px] text-[#111827] md:text-[18px] md:font-medium">
@@ -267,17 +268,17 @@ export function EngineerJobRequestsPageFilterPanel({
   return (
     <section
       id="engineer-job-requests"
-      className="mx-auto hidden h-[245px] w-full max-w-[1160px] rounded-[10px] border border-[#F3F4F6] bg-white px-[20px] py-[19px] md:block"
+      className="mx-auto w-full max-w-[1160px] rounded-[10px] border border-[#F3F4F6] bg-white px-[16px] py-[16px] md:px-[20px] md:py-[19px]"
     >
-      <h2 className="text-[18px] font-medium leading-[24px] text-[#111827]">
+      <h2 className="text-[16px] font-medium leading-[24px] text-[#111827] md:text-[18px]">
         Job Requests
       </h2>
-      <div className="mt-[30px]">
+      <div className="mt-[20px] md:mt-[30px]">
         <p className="text-[14px] font-medium leading-[24px] text-[#111827]">
           Filter table list by:
         </p>
       </div>
-      <div className="mt-[20px] flex flex-col gap-[20px] lg:flex-row lg:flex-wrap lg:items-end">
+      <div className="mt-[16px] flex flex-col gap-[16px] md:mt-[20px] md:gap-[20px] lg:flex-row lg:flex-wrap lg:items-end">
         <label className="flex flex-col gap-[4px]">
           <span className="px-[16px] text-[16px] leading-[24px] text-[#111827]">
             Job type
@@ -341,22 +342,14 @@ type EngineerJobCardsProps = {
   dateFilter?: string;
 };
 
-const TAB_STATUSES = [
-  ServiceRequestStatus.ACCEPTED,
-  ServiceRequestStatus.PENDING,
-  ServiceRequestStatus.REJECTED,
-] as const;
-
-function tabLabel(status: (typeof TAB_STATUSES)[number]): string {
-  switch (status) {
-    case ServiceRequestStatus.ACCEPTED:
-      return "Accepted Request";
-    case ServiceRequestStatus.PENDING:
-      return "Pending Request";
-    case ServiceRequestStatus.REJECTED:
-      return "Rejected Request";
-  }
-}
+/** Tabs mirror the Figma order; "" is the all-requests tab. */
+const TABS: ReadonlyArray<{ value: ServiceRequestStatus | ""; label: string }> = [
+  { value: "", label: "All Request" },
+  { value: ServiceRequestStatus.PENDING, label: "Pending Request" },
+  { value: ServiceRequestStatus.ACCEPTED, label: "Accepted Request" },
+  { value: ServiceRequestStatus.REJECTED, label: "Rejected Request" },
+  { value: ServiceRequestStatus.COMPLETED, label: "Completed Request" },
+];
 
 const FIGMA_STATUS_ORDER: Partial<Record<ServiceRequestStatus, number>> = {
   [ServiceRequestStatus.ACCEPTED]: 0,
@@ -379,6 +372,29 @@ function sortByFigmaStatusOrder(
       new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
     );
   });
+}
+
+/** Explains why a card has no engineer-side action left, or null when it has one. */
+function getStatusNote(
+  status: ServiceRequestStatus,
+  disputeActive: boolean,
+): string | null {
+  if (disputeActive && status !== ServiceRequestStatus.CLOSED_AFTER_DISPUTE) {
+    return "A dispute is open on this job. Actions are paused until it is resolved.";
+  }
+
+  switch (status) {
+    case ServiceRequestStatus.IN_PROGRESS:
+      return "Buyer completion is required from the in-progress state.";
+    case ServiceRequestStatus.REJECTED:
+      return "You rejected this request. No further action is available.";
+    case ServiceRequestStatus.CLOSED_AFTER_DISPUTE:
+      return "This job was closed after dispute resolution.";
+    case ServiceRequestStatus.COMPLETED:
+      return "This job is completed.";
+    default:
+      return null;
+  }
 }
 
 function requestImageSrc(request: ServiceRequestData): string {
@@ -407,15 +423,7 @@ function ServiceRequestImage({
   );
 }
 
-function RequestDetailRows({
-  request,
-  nowrapOnDesktop = true,
-}: {
-  request: ServiceRequestData;
-  nowrapOnDesktop?: boolean;
-}) {
-  const textWrapClass = nowrapOnDesktop ? "md:whitespace-nowrap" : "";
-
+function RequestDetailRows({ request }: { request: ServiceRequestData }) {
   return (
     <div className="flex flex-col gap-[10px] text-black">
       {request.serviceLocation ? (
@@ -424,7 +432,7 @@ function RequestDetailRows({
             className="mt-[2px] size-5 shrink-0 text-[#4B5563]"
             strokeWidth={1.5}
           />
-          <span className={`min-w-0 flex-1 break-words ${textWrapClass}`}>
+          <span className="min-w-0 flex-1 break-words">
             {request.serviceLocation}
           </span>
         </p>
@@ -443,10 +451,34 @@ function RequestDetailRows({
           className="mt-[2px] size-5 shrink-0 text-[#4B5563]"
           strokeWidth={1.5}
         />
-        <span className={`min-w-0 flex-1 break-words ${textWrapClass}`}>
+        <span className="min-w-0 flex-1 break-words">
           {request.serviceDescription}
         </span>
       </p>
+    </div>
+  );
+}
+
+function DialogDetailRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="flex items-start gap-[12px] py-[14px]">
+      <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-[#EEF3FE] text-primary">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <dt className="text-[13px] leading-[18px] text-[#6B7280]">{label}</dt>
+        <dd className="mt-[2px] break-words text-[15px] leading-[22px] text-[#111827]">
+          {value}
+        </dd>
+      </div>
     </div>
   );
 }
@@ -478,86 +510,102 @@ function StatusUpdateDialog({
           <DialogTitle>Update Job Status</DialogTitle>
           <DialogDescription>Mark this service request as in progress.</DialogDescription>
         </DialogHeader>
-        <div className="mx-auto w-[320px] max-w-full px-[12px] pb-[20px] pt-[24px] md:w-auto md:px-[20px]">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[14px] font-medium leading-[20px] text-[#111827]">
+        <div className="flex h-full flex-col">
+          <div className="flex items-center justify-between border-b border-[#EEF0F3] px-[20px] py-[18px] md:px-[24px]">
+            <h2 className="text-[18px] font-medium leading-[26px] text-[#111827]">
               Update Job Status
             </h2>
             <button
               type="button"
               aria-label="Close update job status"
               onClick={onClose}
-              className="inline-flex size-6 items-center justify-center text-[#111827]"
+              className="inline-flex size-8 items-center justify-center rounded-full text-[#111827] hover:bg-[#F3F4F6]"
             >
-              <X className="size-4" aria-hidden />
+              <X className="size-5" aria-hidden />
             </button>
           </div>
 
-          <div className="mt-[32px] flex h-[66px] items-center justify-between rounded-[8px] border border-[#13A83B] bg-[#DEFFE7] px-[12px]">
-            <p className="text-[14px] font-normal leading-[20px] text-[#111827]">
-              Request Status
-            </p>
-            <span className="inline-flex items-center gap-[8px] rounded-[4px] bg-[#13A83B] px-[14px] py-[8px] text-[12px] font-medium leading-[18px] text-white">
-              <CheckCircle2 className="size-3" aria-hidden />
-              Accepted
-            </span>
-          </div>
-
-          <div className="mt-[28px] md:hidden">
-            <div className="h-[296px] w-full overflow-hidden rounded-[14.345px] border border-[#DDE0E5]">
-              <ServiceRequestImage
-                request={request}
-                className="h-full w-full object-contain"
-              />
-            </div>
-          </div>
-
-          <div className="mt-[28px] hidden gap-[16px] md:flex">
-            <div className="h-[80px] w-[100px] shrink-0 overflow-hidden rounded-[8px] border border-[#DDE0E5]">
-              <ServiceRequestImage
-                request={request}
-                className="h-full w-full object-contain"
-              />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-[16px] font-medium leading-[28px] text-black">
-                {request.equipmentName}
-              </h3>
-              {request.model ? (
-                <p className="mt-[3px] text-[14px] font-medium leading-[24px] text-[#6B7280]">
-                  Model: {request.model}
-                </p>
-              ) : null}
-              <div className="mt-[8px] flex flex-wrap gap-[8px]">
-                <JobTypeBadge jobType={request.jobType} />
-                <StatusBadge status={request.status} />
+          <div className="flex-1 overflow-y-auto px-[16px] py-[20px] md:px-[20px]">
+            <div className="rounded-[12px] border border-[#E5E7EB] p-[16px] md:p-[20px]">
+              <div className="flex gap-[16px]">
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-[18px] font-medium leading-[26px] text-black">
+                    {request.equipmentName}
+                  </h3>
+                  {request.model ? (
+                    <p className="mt-[2px] text-[14px] leading-[20px] text-[#6B7280]">
+                      Model: {request.model}
+                    </p>
+                  ) : null}
+                  <div className="mt-[12px] flex flex-wrap gap-[8px]">
+                    <JobTypeBadge jobType={request.jobType} />
+                    <StatusBadge status={request.status} />
+                  </div>
+                </div>
+                <div className="hidden size-[80px] shrink-0 overflow-hidden rounded-[8px] border border-[#DDE0E5] sm:block">
+                  <ServiceRequestImage
+                    request={request}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div className="mt-[16px] md:mt-[20px]">
-            <h3 className="text-[14px] font-medium leading-[24px] text-black md:hidden">
-              {request.equipmentName}
-            </h3>
-            {request.model ? (
-              <p className="mt-[2px] text-[12px] font-medium leading-[20px] text-[#6B7280] md:hidden">
-                Model {request.model}
+              <dl className="mt-[20px] divide-y divide-[#EEF0F3]">
+                {request.serviceLocation ? (
+                  <DialogDetailRow
+                    icon={<MapPin className="size-5" strokeWidth={1.8} aria-hidden />}
+                    label="Service location"
+                    value={request.serviceLocation}
+                  />
+                ) : null}
+                <DialogDetailRow
+                  icon={<CalendarDays className="size-5" strokeWidth={1.8} aria-hidden />}
+                  label="Scheduled for"
+                  value={formatSchedule(request.preferredDate, request.preferredTime)}
+                />
+                <DialogDetailRow
+                  icon={<Info className="size-5" strokeWidth={1.8} aria-hidden />}
+                  label="Service description"
+                  value={request.serviceDescription}
+                />
+              </dl>
+
+              <div className="mt-[20px] flex items-start gap-[12px] rounded-[10px] bg-[#EEF3FE] p-[16px]">
+                <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-white text-primary">
+                  <FileText className="size-5" strokeWidth={1.8} aria-hidden />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] leading-[18px] text-[#6B7280]">
+                    Current Status
+                  </p>
+                  <p className="text-[16px] font-medium leading-[24px] text-[#111827]">
+                    {statusLabel(request.status)}
+                  </p>
+                  <p className="mt-[2px] text-[13px] leading-[18px] text-[#6B7280]">
+                    You accepted this request on{" "}
+                    {formatSchedule(request.updatedAt)}
+                  </p>
+                </div>
+                <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-[#DEFFE7] text-[#13A83B]">
+                  <CheckCircle2 className="size-5" strokeWidth={2} aria-hidden />
+                </span>
+              </div>
+
+              <Button
+                type="button"
+                disabled={busy}
+                isBusy={busy}
+                onClick={onConfirm}
+                iconLeft={<CheckCircle2 className="size-5" aria-hidden />}
+                className="mt-[20px] h-12 w-full rounded-[8px] border-0 px-5 text-[16px] font-normal leading-[24px] md:h-[56px]"
+              >
+                Mark as In Progress
+              </Button>
+              <p className="mt-[10px] text-center text-[13px] leading-[18px] text-[#6B7280]">
+                Move this request to in-progress once you have started the work.
               </p>
-            ) : null}
-            <div className="mt-[12px]">
-              <RequestDetailRows request={request} nowrapOnDesktop={false} />
             </div>
           </div>
-
-          <Button
-            type="button"
-            disabled={busy}
-            isBusy={busy}
-            onClick={onConfirm}
-            className="mt-[20px] h-12 md:h-[60px] w-full rounded-[8px] border-0 bg-[#FE6E00] px-5 text-[16px] font-normal leading-[24px] hover:bg-[#E86200]"
-          >
-            Mark as In progress
-          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -687,7 +735,11 @@ export function EngineerJobCards({
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [tabStatus, setTabStatus] = useState<ServiceRequestStatus | "">("");
+  // null == untouched, so the filter panel's status drives the tabs until the
+  // user picks a tab explicitly; after that the tab wins.
+  const [tabStatus, setTabStatus] = useState<ServiceRequestStatus | "" | null>(
+    null,
+  );
   const [statusDialogRequest, setStatusDialogRequest] =
     useState<ServiceRequestData | null>(null);
   const [failedStatusRequest, setFailedStatusRequest] =
@@ -696,7 +748,7 @@ export function EngineerJobCards({
     null,
   );
   const showTabs = typeof maxItems !== "number";
-  const effectiveStatusFilter = statusFilter || tabStatus;
+  const effectiveStatusFilter = tabStatus ?? statusFilter;
 
   const filtered = useMemo(
     () =>
@@ -790,24 +842,27 @@ export function EngineerJobCards({
       ) : null}
 
       {showTabs ? (
-        <div className="hidden w-[958px] gap-[16px] md:flex">
-          {TAB_STATUSES.map((status) => {
-            const active =
-              (effectiveStatusFilter || ServiceRequestStatus.ACCEPTED) === status;
+        <div
+          role="tablist"
+          aria-label="Filter job requests by status"
+          className="-mx-4 flex gap-[10px] overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:gap-[16px] md:overflow-visible md:px-0"
+        >
+          {TABS.map((tab) => {
+            const active = effectiveStatusFilter === tab.value;
             return (
               <button
-                key={status}
+                key={tab.value || "all"}
                 type="button"
-                onClick={() =>
-                  setTabStatus((current) => (current === status ? "" : status))
-                }
-                className={`flex h-[60px] flex-1 items-center justify-center rounded-[14px] py-[16px] text-[18px] font-normal leading-[32px] ${
+                role="tab"
+                aria-selected={active}
+                onClick={() => setTabStatus(tab.value)}
+                className={`flex h-[44px] shrink-0 items-center justify-center whitespace-nowrap rounded-[10px] px-[18px] text-[14px] font-normal leading-[20px] transition-colors md:h-[60px] md:flex-1 md:rounded-[14px] md:px-[12px] md:text-[16px] md:leading-[24px] lg:text-[18px] ${
                   active
                     ? "bg-[#C4C8CE] text-[#111827]"
-                    : "border border-[#C4C8CE] bg-[#F3F4F6] text-[#6B7280]"
+                    : "border border-[#C4C8CE] bg-[#F3F4F6] text-[#6B7280] hover:bg-[#EAECEF]"
                 }`}
               >
-                {tabLabel(status)}
+                {tab.label}
               </button>
             );
           })}
@@ -830,75 +885,80 @@ export function EngineerJobCards({
           getRequesterId(request.requester),
         );
 
+        // An open dispute freezes engineer-side transitions; chat stays available
+        // so the parties can still resolve it.
+        const canAcceptOrReject =
+          request.status === ServiceRequestStatus.PENDING && !hasActiveDispute;
+        const canUpdateStatus =
+          request.status === ServiceRequestStatus.ACCEPTED && !hasActiveDispute;
+        const showChatCta =
+          request.status === ServiceRequestStatus.ACCEPTED ||
+          request.status === ServiceRequestStatus.IN_PROGRESS ||
+          request.status === ServiceRequestStatus.COMPLETED;
+        const statusNote = getStatusNote(request.status, hasActiveDispute);
+
         return (
           <article
             key={request._id}
-            className={`relative overflow-hidden rounded-[10px] border border-[#F3F4F6] bg-white md:h-[445px] ${
-              request.status === ServiceRequestStatus.PENDING
-                ? "min-h-[850px] md:min-h-0"
-                : "min-h-[822px] md:min-h-0"
-            }`}
+            className="overflow-hidden rounded-[10px] border border-[#F3F4F6] bg-white p-[16px] md:p-[20px]"
           >
-            <div>
-              {/* Image: top on mobile, right on desktop. */}
-              <div className="absolute left-[11px] top-[15px] h-[296px] w-[296px] overflow-hidden rounded-[14.345px] border border-[#DDE0E5] md:left-auto md:right-[20px] md:top-[19px] md:size-[182px]">
+            {/* Badges + heading + details on the left, equipment photo on the right. */}
+            <div className="flex flex-col gap-[16px] md:flex-row md:items-start md:gap-[20px]">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-[8px]">
+                  <JobTypeBadge jobType={request.jobType} />
+                  <StatusBadge status={request.status} />
+                </div>
+
+                <h3 className="mt-[12px] text-[16px] font-medium leading-[28px] text-black md:mt-[16px] md:text-[20px] md:leading-[32px]">
+                  {request.equipmentName}
+                  <span className="text-[#6B7280]">
+                    {/* Full JR- id has room on desktop; mobile shows the short form. */}
+                    <span className="md:hidden">
+                      {" "}
+                      | {formatMobileId(request._id)}
+                    </span>
+                    <span className="hidden md:inline">
+                      {" "}
+                      | {formatRequestId(request._id)}
+                    </span>
+                  </span>
+                </h3>
+
+                {request.model ? (
+                  <p className="mt-[3px] text-[14px] font-medium leading-[24px] text-[#6B7280]">
+                    Model:&nbsp;{request.model}
+                  </p>
+                ) : null}
+
+                <div className="mt-[16px] md:mt-[18px]">
+                  <RequestDetailRows request={request} />
+                </div>
+              </div>
+
+              <div className="order-first h-[200px] w-full shrink-0 overflow-hidden rounded-[14px] border border-[#DDE0E5] sm:h-[240px] md:order-none md:size-[182px]">
                 <ServiceRequestImage
                   request={request}
                   className="h-full w-full object-contain md:object-cover"
                 />
               </div>
-
-              {/* Text content: below image on mobile, left on desktop. */}
-              <div className="absolute left-[11px] top-[229px] hidden flex-wrap items-center gap-[8px] md:left-[19px] md:top-[19px] md:flex">
-                <JobTypeBadge jobType={request.jobType} />
-                <StatusBadge status={request.status} />
-              </div>
-
-              <div className="absolute left-[11px] top-[335px] w-[296px] md:left-[19px] md:top-[65px] md:w-[760px]">
-                {/* Mobile heading: separate lines matching Figma */}
-                <div className="md:hidden">
-                  <h3 className="text-[16px] font-medium leading-[28px] text-black">
-                    {request.equipmentName}
-                  </h3>
-                  <p className="mt-[4px] text-[16px] font-medium leading-[28px] text-[#6B7280]">
-                    {formatMobileId(request._id)}
-                  </p>
-                  {request.model ? (
-                    <p className="mt-[3px] text-[14px] font-medium leading-[24px] text-[#6B7280]">Model:&nbsp;{request.model}</p>
-                  ) : null}
-                </div>
-
-                {/* Desktop heading: inline format */}
-                <h3 className="mt-[3px] hidden text-[20px] font-medium leading-[32px] text-black md:block">
-                  {request.equipmentName}{" "}
-                  <span className="text-[#6B7280]">
-                    | {formatRequestId(request._id)}
-                  </span>
-                </h3>
-
-                <div className="mt-[20px] md:mt-[18px]">
-                  <RequestDetailRows request={request} />
-                </div>
-
-              </div>
             </div>
 
-            <div className="absolute left-[11px] top-[613px] w-[296px] md:left-[19px] md:top-[293px] md:w-[1116px]">
-              <div className="h-px w-full bg-[#DDE0E5]" />
-              <p className="mt-[8px] text-[14px] font-normal leading-[20px] text-[#6B7280] md:mt-[7px]">
+            <div className="mt-[20px] border-t border-[#DDE0E5] pt-[8px]">
+              <p className="text-[14px] font-normal leading-[20px] text-[#6B7280]">
                 {getRequesterLabel(request.requester)}
               </p>
             </div>
 
-            <div className="absolute left-[11px] top-[693px] flex w-[296px] flex-col items-center gap-[20px] md:left-[19px] md:top-[364px] md:w-auto md:flex-row md:gap-[16px]">
-              {request.status === ServiceRequestStatus.PENDING && !hasActiveDispute ? (
+            <div className="mt-[20px] flex flex-col items-stretch gap-[12px] md:flex-row md:items-center md:gap-[16px]">
+              {canAcceptOrReject ? (
                 <>
                   <Button
                     type="button"
                     disabled={busy}
                     isBusy={busy}
                     onClick={() => void updateStatus(request, ServiceRequestStatus.ACCEPTED)}
-                    className="h-12 md:h-[60px] w-full rounded-[14px] border-0 px-5 text-[18px] font-normal leading-[32px] md:w-[320px]"
+                    className="h-12 w-full rounded-[14px] border-0 px-5 text-[16px] font-normal leading-[24px] md:h-[60px] md:w-[320px] md:text-[18px] md:leading-[32px]"
                   >
                     Accept
                   </Button>
@@ -906,90 +966,40 @@ export function EngineerJobCards({
                     type="button"
                     disabled={busy}
                     onClick={() => void updateStatus(request, ServiceRequestStatus.REJECTED)}
-                    className="inline-flex h-12 md:h-[60px] w-full items-center justify-center rounded-[14px] border border-[#FE6E00] bg-[#FFF7F0] px-5 text-[18px] font-normal leading-[32px] text-[#FE6E00] disabled:opacity-60 md:w-[320px]"
+                    className="inline-flex h-12 w-full items-center justify-center rounded-[14px] border border-[#FE6E00] bg-[#FFF7F0] px-5 text-[16px] font-normal leading-[24px] text-[#FE6E00] disabled:opacity-60 md:h-[60px] md:w-[320px] md:text-[18px] md:leading-[32px]"
                   >
                     Reject
                   </button>
                 </>
               ) : null}
 
-              {request.status === ServiceRequestStatus.ACCEPTED && !hasActiveDispute ? (
-                <>
-                  {/* Figma: Open chat is the primary CTA for accepted jobs */}
-                  {requesterChatHref ? (
-                    <Link
-                      href={requesterChatHref}
-                      className="inline-flex h-12 md:h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
-                    >
-                      Open chat
-                    </Link>
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => setStatusDialogRequest(request)}
-                    className="inline-flex h-[32px] items-center justify-center gap-[8px] text-[18px] font-normal leading-[32px] text-primary disabled:opacity-50"
-                  >
-                    Update Job Status
-                    <ArrowRight className="size-6" aria-hidden />
-                  </button>
-                </>
-              ) : null}
-
-              {request.status === ServiceRequestStatus.IN_PROGRESS && !hasActiveDispute ? (
-                <>
-                  {requesterChatHref ? (
-                    <Link
-                      href={requesterChatHref}
-                      className="inline-flex h-12 md:h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
-                    >
-                      Open chat
-                    </Link>
-                  ) : null}
-                  <p className="text-sm text-[#6B7280]">
-                    Buyer completion is required from the in-progress state.
-                  </p>
-                </>
-              ) : null}
-
-              {request.status === ServiceRequestStatus.ACCEPTED &&
-              hasActiveDispute &&
-              requesterChatHref ? (
+              {/* Figma: Open chat is the primary CTA once a job leaves the pending state. */}
+              {showChatCta && requesterChatHref ? (
                 <Link
                   href={requesterChatHref}
-                  className="inline-flex h-12 md:h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
+                  className="inline-flex h-12 w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[16px] font-normal leading-[24px] text-white md:h-[60px] md:w-[486px] md:text-[18px] md:leading-[32px]"
                 >
                   Open chat
                 </Link>
               ) : null}
 
-              {request.status === ServiceRequestStatus.IN_PROGRESS && hasActiveDispute ? (
-                <>
-                  {requesterChatHref ? (
-                    <Link
-                      href={requesterChatHref}
-                      className="inline-flex h-12 md:h-[60px] w-full items-center justify-center rounded-[14px] bg-primary px-5 text-[18px] font-normal leading-[32px] text-white md:w-[486px]"
-                    >
-                      Open chat
-                    </Link>
-                  ) : null}
-                  <p className="text-sm text-[#6B7280]">
-                    Buyer completion is required from the in-progress state.
-                  </p>
-                </>
+              {canUpdateStatus ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setStatusDialogRequest(request)}
+                  className="inline-flex h-12 w-full items-center justify-center gap-[8px] rounded-[14px] border border-primary bg-[#F3F9FF] px-5 text-[16px] font-normal leading-[24px] text-primary disabled:opacity-50 md:h-[60px] md:w-auto md:min-w-[220px] md:text-[18px] md:leading-[32px]"
+                >
+                  Update Job Status
+                  <ArrowRight className="size-5 md:size-6" aria-hidden />
+                </button>
               ) : null}
 
-              {(request.status === ServiceRequestStatus.REJECTED ||
-                request.status === ServiceRequestStatus.COMPLETED ||
-                request.status === ServiceRequestStatus.CLOSED_AFTER_DISPUTE) && (
-                <p className="text-sm text-[#6B7280]">
-                  {request.status === ServiceRequestStatus.REJECTED
-                    ? "You rejected this request. No further action is available."
-                    : request.status === ServiceRequestStatus.CLOSED_AFTER_DISPUTE
-                      ? "This job was closed after dispute resolution."
-                      : "This job is awaiting buyer-side review or follow-up only."}
+              {statusNote ? (
+                <p className="text-[13px] leading-[20px] text-[#6B7280] md:text-sm">
+                  {statusNote}
                 </p>
-              )}
+              ) : null}
             </div>
           </article>
         );

@@ -221,6 +221,12 @@ const PersonalDetails = () => {
             <p>{roleDisplayLabel(data.role)}</p>
           </div>
         </div>
+        {data.role !== UserRole.BUYER ? (
+          <div>
+            <p className="text-sm text-gray3">Address</p>
+            <p>{data.address || "Not set yet"}</p>
+          </div>
+        ) : null}
       </div>
 
       <RightSlider

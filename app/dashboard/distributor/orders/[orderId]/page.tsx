@@ -6,11 +6,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 
 import Header from "../../../component/header";
 import { Skeleton } from "@/components/base";
-import {
-  distributorDemoOrders,
-  distributorDemoOrderMeta,
-  getOrderStatusTone,
-} from "@/constants/demoDistributorOrders";
+import { getOrderStatusTone } from "@/constants/demoDistributorOrders";
 import { useOrderQuery } from "@/hooks/queries/orders";
 import type { Order } from "@/types/order";
 import { getPaymentStatusDisplay, isPaidOrderStatus } from "@/types/order";
@@ -91,23 +87,19 @@ export default function DistributorOrderDetailPage() {
   const router = useRouter();
 
   const orderId = params.orderId as string;
-  const demoOrder = useMemo(
-    () => distributorDemoOrders.find((item) => item.id === orderId),
-    [orderId],
-  );
 
   const {
     data: currentOrder,
     isLoading,
     isError,
     error,
-  } = useOrderQuery(orderId, { enabled: !demoOrder });
+  } = useOrderQuery(orderId);
   const message = error instanceof Error ? error.message : "";
 
   const order = currentOrder ?? null;
   const productImage = useMemo(() => getProductImage(order), [order]);
 
-  if (isLoading || (!order && !demoOrder)) {
+  if (isLoading || !order) {
     return (
       <div>
         <Header
@@ -132,30 +124,22 @@ export default function DistributorOrderDetailPage() {
     );
   }
 
-  const status = order?.status || demoOrder?.status;
+  const status = order?.status;
   const statusTone = getOrderStatusTone(status);
   const paid = isPaidOrderStatus(status);
   // Delivery flow is only meaningful once escrow is funded; stays visible
   // through completion but hides for refunded (`closed`) and pre-payment states.
   const showDeliveryButton = paid;
   const paymentStatus = getPaymentStatusDisplay(status, paid);
-  const payReference = order?.paymentReference || distributorDemoOrderMeta.paymentReference;
-  const displayId =
-    demoOrder?.id || (order ? getOrderDisplayId(order) : orderId);
-  const quantity =
-    demoOrder?.quantity || order?.quantity || order?.items?.[0]?.quantity || 1;
+  const payReference = order?.paymentReference || "—";
+  const displayId = order ? getOrderDisplayId(order) : orderId;
+  const quantity = order?.quantity || order?.items?.[0]?.quantity || 1;
   const productName =
-    demoOrder?.productName ||
-    order?.productName ||
-    order?.items?.[0]?.productName ||
-    "Product name";
-  const totalPrice = demoOrder?.totalPrice || order?.totalPrice || 0;
-  const unitPrice = demoOrder?.unitPrice || totalPrice / quantity;
-  const createdAt =
-    demoOrder?.createdAt || order?.createdAt || new Date().toISOString();
-  const buyerName =
-    demoOrder?.buyerName ||
-    getPersonName(order?.buyer, distributorDemoOrderMeta.buyer.name);
+    order?.productName || order?.items?.[0]?.productName || "Product name";
+  const totalPrice = order?.totalPrice || 0;
+  const unitPrice = totalPrice / quantity;
+  const createdAt = order?.createdAt || new Date().toISOString();
+  const buyerName = getPersonName(order?.buyer, "Buyer");
 
   return (
     <div>
@@ -243,10 +227,7 @@ export default function DistributorOrderDetailPage() {
         <div className="grid gap-4 xl:grid-cols-3">
           <InfoCard title="Payment Information">
             <div className="grid gap-6 sm:grid-cols-2">
-              <DetailStat
-                label="Payment Method"
-                value={distributorDemoOrderMeta.paymentType}
-              />
+              <DetailStat label="Payment Method" value="ESCROW" />
               <DetailStat
                 label="Payment Status"
                 value={paymentStatus.label}
@@ -258,32 +239,28 @@ export default function DistributorOrderDetailPage() {
 
           <InfoCard title="Delivery Address">
             <p className="text-sm leading-7 text-[#111827]">
-              {order?.deliveryAddress?.address}
+              {order?.deliveryAddress?.address || "—"}
             </p>
           </InfoCard>
 
           <InfoCard title="Buyer Information">
             <div className="grid gap-6 sm:grid-cols-2">
               <DetailStat label="Full name" value={buyerName} />
-              <DetailStat
-                label="Role"
-                value={distributorDemoOrderMeta.buyer.role}
-              />
+              <DetailStat label="Role" value="Buyer" />
               <DetailStat
                 label="Phone number"
                 value={
-                  order && typeof order.buyer === "object"
-                    ? order.buyer.phoneNumber ||
-                      distributorDemoOrderMeta.buyer.phone
-                    : distributorDemoOrderMeta.buyer.phone
+                  (order && typeof order.buyer === "object"
+                    ? order.buyer.phoneNumber
+                    : "") || "—"
                 }
               />
               <DetailStat
                 label="Email address"
                 value={
-                  order && typeof order.buyer === "object"
-                    ? order.buyer.email || distributorDemoOrderMeta.buyer.email
-                    : distributorDemoOrderMeta.buyer.email
+                  (order && typeof order.buyer === "object"
+                    ? order.buyer.email
+                    : "") || "—"
                 }
               />
             </div>

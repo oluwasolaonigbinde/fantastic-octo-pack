@@ -44,7 +44,7 @@ export const knownDashboardRoleSegments = new Set<string>([
 
 export const buyerDashboardLinks: DashboardLink[] = [
   { name: "Dashboard", path: "", icon: <LayoutGrid /> },
-  { name: "RFQs", path: "rfqs", icon: <ClipboardList /> },
+  { name: "Quotes", path: "rfqs", icon: <ClipboardList /> },
   {
     name: "Service Request",
     path: "service-request",
@@ -90,7 +90,7 @@ export const distributorDashboardLinks: DashboardLink[] = [
     icon: <CreditCard />,
   },
   {
-    name: "Sourcing & Quoting",
+    name: "Quotes",
     path: "quotes",
     icon: <ClipboardList />,
   },

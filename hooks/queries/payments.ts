@@ -19,6 +19,7 @@ import { queryKeys } from "@/lib/query-keys";
 import paymentService from "@/services/paymentService";
 import type {
   AllPaymentsQuery,
+  BanksQuery,
   MyPaymentsQuery,
   PaymentListPagination,
   PaymentListResponse,
@@ -60,6 +61,24 @@ export const useMyPaymentsQuery = (
       payments: normalizePayments(res),
       message: res.message,
     }),
+  });
+};
+
+/**
+ * Banks supported by the payment gateway. The list is effectively static, so it
+ * is cached for the session and shared by every role's payout dialog.
+ */
+export const useBanksQuery = (
+  query: BanksQuery = { currency: "NGN", country: "nigeria" },
+  options?: { enabled?: boolean },
+) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: queryKeys.payments.banks({ ...query }),
+    queryFn: () => paymentService.fetchBanks(token as string, query),
+    enabled: Boolean(token) && (options?.enabled ?? true),
+    staleTime: Infinity,
   });
 };
 

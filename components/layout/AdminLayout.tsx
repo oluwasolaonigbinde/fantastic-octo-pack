@@ -34,7 +34,7 @@ export const adminDashLinks: DashboardLink[] = [
     icon: <ClipboardList />,
   },
   {
-    name: "Sourcing & Quoting",
+    name: "Quotes",
     path: "rfqs-orders",
     icon: <FileText />,
   },

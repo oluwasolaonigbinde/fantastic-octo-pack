@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -19,8 +20,6 @@ import Header from "../../../component/header";
 import { Skeleton } from "@/components/base";
 import DeliveryStepper from "@/components/orders/DeliveryStepper";
 import {
-  buyerDemoOrderMeta,
-  buyerDemoOrders,
   getBuyerOrderStatusTone,
   getOrderDisplayId,
   getOrderProductImage,
@@ -39,6 +38,8 @@ import { useCreateOrderDisputeMutation } from "@/hooks/queries/order-disputes";
 import { useWallet } from "@/hooks/useWallet";
 import { useOrderPayment } from "@/hooks/useOrderPayment";
 import { koboToNaira } from "@/lib/wallet-format";
+import addressService from "@/services/addressService";
+import type { UserAddress } from "@/types/address";
 import type { Order, OrderPaymentMethod } from "@/types/order";
 import {
   formatDeliveryAddress,
@@ -73,19 +74,6 @@ const paymentMethods: PaymentOption[] = [
   { label: "Bank wallet", method: null },
 ];
 
-const stageFromQuery = (value: string | null, status?: string): BuyerOrderStage => {
-  if (
-    value === "payment" ||
-    value === "delivery" ||
-    value === "installation" ||
-    value === "completed"
-  ) {
-    return value;
-  }
-  if (status === "completed") return "completed";
-  return "ongoing";
-};
-
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
@@ -97,16 +85,6 @@ const formatDate = (value: string) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value || "--";
   return new Intl.DateTimeFormat("en-GB").format(parsed);
-};
-
-// Demo-walkthrough stage → completed-milestone count, on the canonical
-// (installation) scale: Create, Payment, Received, Delivered, Installed, Completed.
-const milestoneCountByStage: Record<BuyerOrderStage, number> = {
-  ongoing: 1,
-  payment: 2,
-  delivery: 4, // Received + Delivered done, delivery tracking in progress.
-  installation: 5, // Installed done, awaiting buyer confirmation.
-  completed: 6,
 };
 
 /**
@@ -190,23 +168,60 @@ function OrderSummaryCard({ order }: { order: BuyerOrderRow }) {
           <span className="font-medium text-[#111827]">{order.id}</span>
         </div>
         <div className="flex justify-between gap-4">
-          <span className="text-[#6B7280]">Invoice ID</span>
-          <span className="font-medium text-[#111827]">{buyerDemoOrderMeta.invoiceId}</span>
-        </div>
-        <div className="flex justify-between gap-4">
           <span className="text-[#6B7280]">Items total</span>
           <span className="font-medium text-[#111827]">{formatCurrency(order.totalPrice)}</span>
-        </div>
-        <div className="flex justify-between gap-4">
-          <span className="text-[#6B7280]">Delivery fee</span>
-          <span className="font-medium text-[#111827]">
-            {formatCurrency(buyerDemoOrderMeta.deliveryFee)}
-          </span>
         </div>
         <div className="flex justify-between gap-4 border-t border-[#EEF2F7] pt-3">
           <span className="font-medium text-[#111827]">Total</span>
           <span className="font-semibold text-primary">{formatCurrency(order.totalPrice)}</span>
         </div>
+      </div>
+    </InfoCard>
+  );
+}
+
+/** Per-product breakdown for a multi-product order. */
+function OrderItemsCard({ order }: { order: BuyerOrderRow }) {
+  return (
+    <InfoCard title={`Products (${order.itemCount})`}>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[480px] text-left text-sm">
+          <thead>
+            <tr className="border-b border-[#F3F4F6] text-[#6B7280]">
+              <th className="py-2.5 pr-4 font-medium">Product</th>
+              <th className="py-2.5 pr-4 font-medium">Quantity</th>
+              <th className="py-2.5 pr-4 font-medium">Unit price</th>
+              <th className="py-2.5 font-medium">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>
+            {order.items.map((item, index) => (
+              <tr
+                key={`${item.productName}-${index}`}
+                className="border-b border-[#F3F4F6] last:border-b-0"
+              >
+                <td className="py-3 pr-4 text-[#111827]">{item.productName}</td>
+                <td className="py-3 pr-4 text-[#111827]">{item.quantity}</td>
+                <td className="py-3 pr-4 text-[#111827]">
+                  {formatCurrency(item.unitPrice)}
+                </td>
+                <td className="py-3 font-medium text-[#111827]">
+                  {formatCurrency(item.unitPrice * item.quantity)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td className="py-3 pr-4 font-medium text-[#111827]" colSpan={3}>
+                Order total
+              </td>
+              <td className="py-3 font-semibold text-primary">
+                {formatCurrency(order.totalPrice)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </InfoCard>
   );
@@ -288,17 +303,13 @@ export default function BuyerOrderDetailPage() {
   const createDispute = useCreateOrderDisputeMutation();
 
   const orderId = params.orderId as string;
-  const demoOrder = useMemo(
-    () => buyerDemoOrders.find((item) => item.sourceId === orderId || item.id === orderId),
-    [orderId],
-  );
 
   const {
     data: currentOrder,
     isLoading,
     isError,
     error,
-  } = useOrderQuery(orderId, { enabled: !demoOrder });
+  } = useOrderQuery(orderId);
   const message = error instanceof Error ? error.message : "";
 
   const confirmMutation = useConfirmOrderReceiptMutation();
@@ -310,6 +321,12 @@ export default function BuyerOrderDetailPage() {
   const isSavingDraft = draftMutation.isPending;
   const draftError =
     draftMutation.error instanceof Error ? draftMutation.error.message : "";
+
+  // The buyer's saved address book — used to let them pick a delivery address
+  // (by id) when confirming a distributor-created draft. Quote-based drafts
+  // don't need this; their address is fixed at approval.
+  const [addresses, setAddresses] = useState<UserAddress[]>([]);
+  const token = authData?.tokens?.accessToken;
 
   const { wallet } = useWallet();
   const {
@@ -324,11 +341,10 @@ export default function BuyerOrderDetailPage() {
     callbackPath: `/dashboard/buyer/orders/${orderId}?view=payment`,
   });
 
-  const liveOrder: Order | null = demoOrder ? null : currentOrder ?? null;
+  const liveOrder: Order | null = currentOrder ?? null;
   const order = useMemo<BuyerOrderRow | null>(() => {
-    if (demoOrder) return demoOrder;
     return liveOrder ? toBuyerOrderRow(liveOrder) : null;
-  }, [demoOrder, liveOrder]);
+  }, [liveOrder]);
 
   const liveStatus = order?.status ?? "";
   const paid = isOrderPaid(liveOrder?.paymentStatus, liveStatus);
@@ -339,33 +355,34 @@ export default function BuyerOrderDetailPage() {
   // behalf. The buyer reviews it (notably adding a delivery address) before
   // paying. Delivery address is required before payment can proceed.
   const isDraft = liveStatus === "draft_pending_buyer";
+  // An order created from an approved quote/RFQ is the agreed contract: its
+  // quantity and delivery address are fixed at approval and copied onto the
+  // draft server-side. Only notes may be edited (see UpdateDraftOrderDto on the
+  // API — it rejects quantity/addressId for quote-based orders).
+  const isQuoteBased = Boolean(liveOrder?.quote || liveOrder?.rfq);
   const needsDeliveryAddress =
     isDraft && !formatDeliveryAddress(liveOrder?.deliveryAddress);
   // The payment form only opens when explicitly requested AND still unpaid.
   const showPaymentForm = requestedView === "payment" && !paid;
   // Installation-dependent progress milestones (shared with the distributor view).
-  const requiresInstallation = demoOrder
-    ? true
-    : Boolean(liveOrder?.requiresInstallation);
+  const requiresInstallation = Boolean(liveOrder?.requiresInstallation);
   // The distributor has finished every required fulfillment stage but the buyer
   // hasn't confirmed receipt yet. Because it's the buyer who confirms delivery,
   // the final logistics step is shown as in-progress ("Delivery in progress") and
   // stays pending until they confirm — it doesn't read as a completed "Delivered".
   const awaitingBuyerConfirmation =
-    !demoOrder && paid && !!liveOrder && isAwaitingBuyerConfirmation(liveOrder);
-  // Live orders: an unpaid order stays on the pre-payment ("ongoing") view; a
-  // paid order is ALWAYS in the tracking flow and lives entirely in the "delivery"
-  // part — including the confirm-receipt step, which only differs by whether the
+    paid && !!liveOrder && isAwaitingBuyerConfirmation(liveOrder);
+  // An unpaid order stays on the pre-payment ("ongoing") view; a paid order is
+  // ALWAYS in the tracking flow and lives entirely in the "delivery" part —
+  // including the confirm-receipt step, which only differs by whether the
   // distributor has finished delivering (`awaitingBuyerConfirmation`).
   const stage: BuyerOrderStage = showPaymentForm
     ? "payment"
-    : demoOrder
-      ? stageFromQuery(requestedView, liveStatus)
-      : !paid
-        ? "ongoing"
-        : liveStatus === "completed"
-          ? "completed"
-          : "delivery";
+    : !paid
+      ? "ongoing"
+      : liveStatus === "completed"
+        ? "completed"
+        : "delivery";
   const baseMilestones = getOrderMilestones(requiresInstallation);
   const inProgressIndex = requiresInstallation
     ? baseMilestones.indexOf("Installed")
@@ -379,13 +396,11 @@ export default function BuyerOrderDetailPage() {
           : label,
       )
     : baseMilestones;
-  const activeMilestoneCount = demoOrder
-    ? milestoneCountByStage[stage]
-    : awaitingBuyerConfirmation
-      ? inProgressIndex // steps before the in-progress one are complete; it stays pending.
-      : paid && liveOrder
-        ? Math.max(2, getActiveMilestoneCount(liveOrder, requiresInstallation))
-        : 1;
+  const activeMilestoneCount = awaitingBuyerConfirmation
+    ? inProgressIndex // steps before the in-progress one are complete; it stays pending.
+    : paid && liveOrder
+      ? Math.max(2, getActiveMilestoneCount(liveOrder, requiresInstallation))
+      : 1;
   // The distributor has delivered, but it's the buyer who confirms it — so it
   // stays "in progress" until they do.
   const productStatusText =
@@ -395,11 +410,8 @@ export default function BuyerOrderDetailPage() {
         ? "Delivery in progress — confirm receipt"
         : "Awaiting Suppliers Delivery";
   // The confirm-receipt UI (and supplier evidence) shows on the delivery part
-  // once the distributor has finished delivering. Demo orders keep their
-  // walkthrough's dedicated "installation" stage.
-  const deliveryUnderway = demoOrder
-    ? stage === "installation"
-    : awaitingBuyerConfirmation;
+  // once the distributor has finished delivering.
+  const deliveryUnderway = awaitingBuyerConfirmation;
   const hasActiveDispute = Boolean(liveOrder?.activeDisputeId);
   // Only the live order can carry a real deadline; the API doesn't return one
   // today, so this is usually undefined and CountdownTimer falls back to a
@@ -413,11 +425,10 @@ export default function BuyerOrderDetailPage() {
       : undefined;
   const expectedByText = liveOrder?.proposedDeliveryDate
     ? formatDate(liveOrder.proposedDeliveryDate)
-    : buyerDemoOrderMeta.escrow.expectedBy;
+    : "—";
   const statusTone = getBuyerOrderStatusTone(stage === "completed" ? "completed" : liveStatus);
   const productImage = order?.productImage || getOrderProductImage(liveOrder);
-  const supplierName =
-    order?.supplierName || getPersonName(liveOrder?.seller, buyerDemoOrderMeta.supplier.name);
+  const supplierName = order?.supplierName || getPersonName(liveOrder?.seller, "Supplier");
   const sellerRef =
     liveOrder?.seller && typeof liveOrder.seller === "object"
       ? liveOrder.seller
@@ -425,21 +436,18 @@ export default function BuyerOrderDetailPage() {
   const supplierId =
     sellerRef?._id ??
     (typeof liveOrder?.seller === "string" ? liveOrder.seller : "");
-  const supplierEmail = sellerRef?.email || buyerDemoOrderMeta.supplier.email;
-  const supplierPhone =
-    sellerRef?.phoneNumber || buyerDemoOrderMeta.supplier.phone;
+  const supplierEmail = sellerRef?.email || "—";
+  const supplierPhone = sellerRef?.phoneNumber || "—";
   const supplierRole =
     sellerRef?.businessName ||
     sellerRef?.distributorStoreProfile?.businessName ||
-    buyerDemoOrderMeta.supplier.role;
-  const buyerName = getPersonName(liveOrder?.buyer, buyerDemoOrderMeta.deliveryAddress.name);
+    "Supplier";
+  const buyerName = getPersonName(liveOrder?.buyer, "You");
   const buyerEmail =
     liveOrder?.buyer && typeof liveOrder.buyer === "object"
-      ? liveOrder.buyer.email
-      : buyerDemoOrderMeta.deliveryAddress.email;
-  const deliveryAddressText =
-    formatDeliveryAddress(liveOrder?.deliveryAddress) ||
-    buyerDemoOrderMeta.deliveryAddress.address;
+      ? liveOrder.buyer.email || "—"
+      : "—";
+  const deliveryAddressText = formatDeliveryAddress(liveOrder?.deliveryAddress) || "—";
 
   const navigateStage = (nextStage: BuyerOrderStage) => {
     router.push(`/dashboard/buyer/orders/${orderId}?view=${nextStage}`);
@@ -465,21 +473,39 @@ export default function BuyerOrderDetailPage() {
   // (back button, stale link, refresh) for an already-paid live order, send
   // them to the order details view. `paid` comes straight from backend data.
   useEffect(() => {
-    if (!demoOrder && paid && requestedView === "payment" && !isPaid) {
+    if (paid && requestedView === "payment" && !isPaid) {
       router.replace(`/dashboard/buyer/orders/${orderId}`);
     }
-  }, [demoOrder, paid, requestedView, isPaid, orderId, router]);
+  }, [paid, requestedView, isPaid, orderId, router]);
 
   // Open the draft editor when the buyer arrives from the chat "Confirm order"
   // action (?view=edit) on a live draft order.
   useEffect(() => {
-    if (!demoOrder && isDraft && requestedView === "edit") {
+    if (isDraft && requestedView === "edit") {
       draftMutation.reset();
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setModal("editDraft");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoOrder, isDraft, requestedView]);
+  }, [isDraft, requestedView]);
+
+  // Load the buyer's saved addresses once for a live, non-quote draft so the
+  // confirm modal can offer them as delivery-address choices (by id).
+  useEffect(() => {
+    if (!isDraft || isQuoteBased || !token) return;
+    let active = true;
+    addressService
+      .fetchAddresses(token)
+      .then((result) => {
+        if (active && result.success) setAddresses(result.data ?? []);
+      })
+      .catch(() => {
+        // Non-fatal: the modal shows a "no saved addresses" hint instead.
+      });
+    return () => {
+      active = false;
+    };
+  }, [isDraft, isQuoteBased, token]);
 
   const handleSubmitPayment = () => {
     if (!selectedOption?.method || insufficientWallet) return;
@@ -493,20 +519,19 @@ export default function BuyerOrderDetailPage() {
   };
 
   // Persist edits to a draft order (PATCH /orders/:id/draft). On success the
-  // refreshed order flows back through the query cache; we close the editor.
+  // refreshed order flows back through the query cache. Confirming the details
+  // is the buyer's cue to pay, so we take them straight to the payment screen
+  // (the backend accepts paying a draft directly, reserving stock at payment).
   const handleSaveDraft = async (payload: {
     quantity?: number;
     notes?: string;
-    deliveryAddress?: string;
+    addressId?: string;
   }) => {
     if (isSavingDraft) return;
     try {
       await draftMutation.mutateAsync({ orderId, payload });
       setModal(null);
-      // Drop ?view=edit so the editor doesn't immediately reopen.
-      if (requestedView === "edit") {
-        router.replace(`/dashboard/buyer/orders/${orderId}`);
-      }
+      router.replace(`/dashboard/buyer/orders/${orderId}?view=payment`);
     } catch {
       // Error surfaced via draftError in the editor.
     }
@@ -515,12 +540,8 @@ export default function BuyerOrderDetailPage() {
   // Buyer confirms receipt of a fulfilled order: POST /orders/:id/received,
   // which releases escrow and advances the order to "completed". On success we
   // show the confirmation modal; the refreshed order then renders the
-  // completed view. Demo orders keep the local, client-only walkthrough.
+  // completed view.
   const handleConfirmReceipt = async () => {
-    if (demoOrder) {
-      setModal("installation");
-      return;
-    }
     if (isConfirming) return;
     try {
       await confirmMutation.mutateAsync({ orderId });
@@ -532,17 +553,13 @@ export default function BuyerOrderDetailPage() {
 
   // Raise a dispute against the order: POST /order-disputes/order/:id with the
   // selected reason, description, and optional evidence file. On success we show
-  // the confirmation modal. Demo orders short-circuit to the success state.
+  // the confirmation modal.
   const handleSubmitDispute = async (
     reason: string,
     description: string,
     file?: File,
   ) => {
     setDisputeError("");
-    if (demoOrder) {
-      setModal("disputeSuccess");
-      return;
-    }
     const token = authData?.tokens?.accessToken;
     if (!token) {
       setDisputeError("You need to be signed in to raise a dispute.");
@@ -583,9 +600,9 @@ export default function BuyerOrderDetailPage() {
   const payReference =
     (typeof payResult?.reference === "string" && payResult.reference) ||
     liveOrder?.paymentReference ||
-    buyerDemoOrderMeta.paymentReference;
+    "—";
 
-  if (isLoading || (!order && !demoOrder)) {
+  if (isLoading || !order) {
     return (
       <div>
         <Header title="Orders" description="Manage and track all orders." />
@@ -723,14 +740,21 @@ export default function BuyerOrderDetailPage() {
           <>
             <section className="rounded-2xl border border-[#DDE0E5] bg-white p-4 md:p-5">
               <div className="grid gap-5 lg:grid-cols-[180px_1fr]">
-                <ProductVisual image={productImage} name={order.productName} />
+                <ProductVisual image={productImage} name={order.productSummary} />
 
                 <div className="grid content-start gap-5 xl:grid-cols-[1fr_auto]">
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
                     <DetailStat label="Order ID" value={order.id || getOrderDisplayId(orderId)} />
-                    <DetailStat label="Name of product" value={order.productName} />
-                    <DetailStat label="Quantity" value={String(order.quantity)} />
-                    <DetailStat label="Unit price" value={formatCurrency(order.unitPrice)} />
+                    <DetailStat
+                      label={order.itemCount > 1 ? "Products" : "Name of product"}
+                      value={order.productSummary}
+                    />
+                    <DetailStat label="Total quantity" value={String(order.totalQuantity)} />
+                    {order.itemCount > 1 ? (
+                      <DetailStat label="Items" value={`${order.itemCount} products`} />
+                    ) : (
+                      <DetailStat label="Unit price" value={formatCurrency(order.unitPrice)} />
+                    )}
                     <DetailStat label="Total price" value={formatCurrency(order.totalPrice)} />
                     <DetailStat label="Date created" value={formatDate(order.createdAt)} />
                     <DetailStat
@@ -738,7 +762,7 @@ export default function BuyerOrderDetailPage() {
                       value={paymentStatus.label}
                       valueClassName={paymentStatus.className}
                     />
-                    <DetailStat label="Payment method" value={buyerDemoOrderMeta.paymentMethod} />
+                    <DetailStat label="Payment method" value="BAIY trade assurance" />
                   </div>
 
                   {stage === "completed" ? (
@@ -804,6 +828,8 @@ export default function BuyerOrderDetailPage() {
               ) : null}
             </section>
 
+            {order.itemCount > 1 ? <OrderItemsCard order={order} /> : null}
+
             {stage !== "ongoing" ? (
               <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5 md:p-6">
                 <h2 className="text-lg font-medium text-[#111827]">Delivery status</h2>
@@ -830,7 +856,7 @@ export default function BuyerOrderDetailPage() {
               <div className="grid gap-4 xl:grid-cols-3">
                 <InfoCard title="Payment Information">
                   <div className="grid gap-6 sm:grid-cols-2">
-                    <DetailStat label="Payment Method" value={buyerDemoOrderMeta.paymentType} />
+                    <DetailStat label="Payment Method" value="BAIY trade assurance" />
                     <DetailStat
                       label="Payment Status"
                       value={paymentStatus.label}
@@ -861,15 +887,9 @@ export default function BuyerOrderDetailPage() {
               </div>
             ) : null}
 
-            {stage === "delivery" || stage === "installation" ? (
+            {stage === "delivery" ? (
               <section className="rounded-[10px] border border-[#F3F4F6] bg-[#F9FAFB] p-4 md:p-6">
-                <div
-                  className={`grid items-start gap-6 ${
-                    deliveryUnderway
-                      ? "xl:grid-cols-[337px_1fr_280px]"
-                      : "xl:grid-cols-[337px_431px]"
-                  }`}
-                >
+                <div className="grid items-start gap-6 xl:grid-cols-[337px_431px]">
                   {/* Saved Delivery Address + actions (left column) */}
                   <div className="flex flex-col gap-4">
                     <div className="rounded-[10px] border border-[#F3F4F6] bg-[#F9FAFB] p-5">
@@ -903,11 +923,7 @@ export default function BuyerOrderDetailPage() {
                         disabled={isConfirming}
                         className="h-12 w-full rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60"
                       >
-                        {isConfirming
-                          ? "Confirming…"
-                          : demoOrder
-                            ? "Confirm installation"
-                            : "Confirm receipt"}
+                        {isConfirming ? "Confirming…" : "Confirm receipt"}
                       </button>
                     ) : null}
                     <button
@@ -966,32 +982,11 @@ export default function BuyerOrderDetailPage() {
 
                     <p className="flex items-start gap-2 text-sm leading-5 text-[#0669D9]">
                       <Info size={18} className="mt-0.5 shrink-0" />
-                      {demoOrder && stage === "installation"
-                        ? "Please confirm installation is carried out within specified time to avoid buyer's dispute."
-                        : deliveryUnderway
-                          ? "Confirm you've received this order to release escrow to the supplier."
-                          : "Order auto cancels if supplier doesn't confirm before timer ends"}
+                      {deliveryUnderway
+                        ? "Confirm you've received this order to release escrow to the supplier."
+                        : "Order auto cancels if supplier doesn't confirm before timer ends"}
                     </p>
                   </div>
-
-                  {deliveryUnderway ? (
-                    <div className="rounded-[10px] border border-[#F3F4F6] bg-[#F9FAFB] p-5">
-                      <h3 className="text-xl font-medium text-[#111827]">
-                        Evidence upload
-                      </h3>
-                      <div className="mt-4 grid grid-cols-2 gap-2">
-                        {buyerDemoOrderMeta.evidenceImages.map((image) => (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            key={image}
-                            src={image}
-                            alt="Delivery evidence"
-                            className="h-20 w-full rounded-lg object-cover"
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
                 </div>
               </section>
             ) : null}
@@ -1007,7 +1002,7 @@ export default function BuyerOrderDetailPage() {
                   </p>
                   <p className="mt-5 inline-flex items-center gap-2 text-sm text-[#16A34A]">
                     <ShieldCheck size={16} />
-                    ESCROW status: {buyerDemoOrderMeta.escrow.releasedStatus}
+                    ESCROW status: Released
                   </p>
                 </InfoCard>
                 <OrderSummaryCard order={order} />
@@ -1031,8 +1026,11 @@ export default function BuyerOrderDetailPage() {
 
             {modal === "editDraft" ? (
               <DraftEditForm
+                isQuoteBased={isQuoteBased}
+                addresses={addresses}
                 initialQuantity={order.quantity}
                 initialNotes={liveOrder?.notes ?? ""}
+                initialAddressId={liveOrder?.deliveryAddressId ?? ""}
                 initialDeliveryAddress={formatDeliveryAddress(
                   liveOrder?.deliveryAddress,
                 )}
@@ -1066,7 +1064,7 @@ export default function BuyerOrderDetailPage() {
                 recipientName={supplierName}
                 senderName={buyerName}
                 reference={payReference}
-                methodLabel={selectedOption?.label ?? buyerDemoOrderMeta.paymentType}
+                methodLabel={selectedOption?.label ?? "BAIY trade assurance"}
                 onTrack={() => {
                   resetPayment();
                   setModal(null);
@@ -1085,21 +1083,8 @@ export default function BuyerOrderDetailPage() {
             ) : (
               <SuccessState
                 title="Congratulations"
-                body={
-                  demoOrder
-                    ? modal === "delivery"
-                      ? "Order delivery has been confirmed."
-                      : "Order installation has been confirmed."
-                    : "Receipt confirmed. Escrow has been released to the supplier."
-                }
-                onDone={() => {
-                  setModal(null);
-                  // Demo orders walk through the local stages; live orders are
-                  // already refreshed to "completed" via the confirm thunk.
-                  if (demoOrder) {
-                    navigateStage(modal === "delivery" ? "installation" : "completed");
-                  }
-                }}
+                body="Receipt confirmed. Escrow has been released to the supplier."
+                onDone={() => setModal(null)}
               />
             )}
           </div>
@@ -1109,31 +1094,56 @@ export default function BuyerOrderDetailPage() {
   );
 }
 
+/** One-line label for a saved address, shown in the picker. */
+function formatUserAddress(addr: UserAddress): string {
+  return [addr.address, addr.city, addr.state, addr.country]
+    .filter(Boolean)
+    .join(", ");
+}
+
 function DraftEditForm({
+  isQuoteBased,
+  addresses,
   initialQuantity,
   initialNotes,
+  initialAddressId,
   initialDeliveryAddress,
   saving,
   error,
   onSubmit,
 }: {
+  isQuoteBased: boolean;
+  addresses: UserAddress[];
   initialQuantity: number;
   initialNotes: string;
+  initialAddressId: string;
   initialDeliveryAddress: string;
   saving: boolean;
   error: string;
   onSubmit: (payload: {
     quantity?: number;
     notes?: string;
-    deliveryAddress?: string;
+    addressId?: string;
   }) => void;
 }) {
   const [quantity, setQuantity] = useState(initialQuantity || 1);
   const [notes, setNotes] = useState(initialNotes);
-  const [deliveryAddress, setDeliveryAddress] = useState(initialDeliveryAddress);
+  // Preselect the address already on the draft, else the buyer's default, else
+  // the first saved one. Empty when the address book is empty.
+  const [addressId, setAddressId] = useState(
+    () =>
+      initialAddressId ||
+      addresses.find((item) => item.isDefault)?._id ||
+      addresses[0]?._id ||
+      "",
+  );
 
-  const trimmedAddress = deliveryAddress.trim();
-  const canSubmit = trimmedAddress.length > 0 && quantity > 0 && !saving;
+  const hasAddresses = addresses.length > 0;
+  // A quote-based draft has its quantity and delivery address locked at approval
+  // (the API rejects changing them), so we only ever submit the note here.
+  const canSubmit = isQuoteBased
+    ? !saving
+    : addressId.length > 0 && quantity > 0 && !saving;
 
   return (
     <form
@@ -1141,46 +1151,93 @@ function DraftEditForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (!canSubmit) return;
-        onSubmit({
-          quantity,
-          notes: notes.trim(),
-          deliveryAddress: trimmedAddress,
-        });
+        onSubmit(
+          isQuoteBased
+            ? { notes: notes.trim() }
+            : {
+                quantity,
+                notes: notes.trim(),
+                addressId,
+              },
+        );
       }}
     >
       <h2 className="text-center text-lg font-medium text-[#111827]">
-        Review your order
+        {isQuoteBased ? "Confirm order details" : "Review your order"}
       </h2>
       <p className="mt-1 text-center text-sm text-[#6B7280]">
-        Confirm the details and add a delivery address before paying.
+        {isQuoteBased
+          ? "These terms were agreed in the quote and can't be changed. Add a note if needed, then confirm."
+          : "Confirm the details and choose a delivery address before paying."}
       </p>
 
-      <label className="mt-5 block">
-        <span className="mb-1.5 block text-sm font-medium text-[#374151]">
-          Delivery address
-        </span>
-        <textarea
-          value={deliveryAddress}
-          onChange={(event) => setDeliveryAddress(event.target.value)}
-          placeholder="Street, city, state"
-          className="h-20 w-full resize-none rounded-lg border border-[#DDE0E5] px-3 py-2 text-sm text-[#111827] outline-none placeholder:text-[#98A2B3] focus:border-primary"
-        />
-      </label>
+      {isQuoteBased ? (
+        <div className="mt-5">
+          <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+            Delivery address
+          </span>
+          <p className="rounded-lg border border-[#EEF2F7] bg-[#F9FAFB] px-3 py-2.5 text-sm text-[#111827]">
+            {initialDeliveryAddress.trim() || "—"}
+          </p>
+        </div>
+      ) : (
+        <label className="mt-5 block">
+          <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+            Delivery address
+          </span>
+          {hasAddresses ? (
+            <select
+              value={addressId}
+              onChange={(event) => setAddressId(event.target.value)}
+              className="h-11 w-full rounded-lg border border-[#DDE0E5] bg-white px-3 text-sm text-[#111827] outline-none focus:border-primary"
+            >
+              {addresses.map((item) => (
+                <option key={item._id} value={item._id}>
+                  {formatUserAddress(item)}
+                  {item.isDefault ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="rounded-lg border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2.5 text-sm text-[#B45309]">
+              You have no saved addresses. Add one in your{" "}
+              <Link
+                href="/dashboard/buyer/profile"
+                className="font-medium underline"
+              >
+                profile
+              </Link>{" "}
+              to continue.
+            </p>
+          )}
+        </label>
+      )}
 
-      <label className="mt-4 block">
-        <span className="mb-1.5 block text-sm font-medium text-[#374151]">
-          Quantity
-        </span>
-        <input
-          type="number"
-          min={1}
-          value={quantity}
-          onChange={(event) =>
-            setQuantity(Math.max(1, Number(event.target.value) || 1))
-          }
-          className="h-11 w-full rounded-lg border border-[#DDE0E5] px-3 text-sm text-[#111827] outline-none focus:border-primary"
-        />
-      </label>
+      {isQuoteBased ? (
+        <div className="mt-4">
+          <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+            Quantity
+          </span>
+          <p className="rounded-lg border border-[#EEF2F7] bg-[#F9FAFB] px-3 py-2.5 text-sm text-[#111827]">
+            {quantity}
+          </p>
+        </div>
+      ) : (
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-sm font-medium text-[#374151]">
+            Quantity
+          </span>
+          <input
+            type="number"
+            min={1}
+            value={quantity}
+            onChange={(event) =>
+              setQuantity(Math.max(1, Number(event.target.value) || 1))
+            }
+            className="h-11 w-full rounded-lg border border-[#DDE0E5] px-3 text-sm text-[#111827] outline-none focus:border-primary"
+          />
+        </label>
+      )}
 
       <label className="mt-4 block">
         <span className="mb-1.5 block text-sm font-medium text-[#374151]">
@@ -1206,7 +1263,11 @@ function DraftEditForm({
         disabled={!canSubmit}
         className="mt-6 h-11 w-full rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60"
       >
-        {saving ? "Saving…" : "Save order details"}
+        {saving
+          ? "Saving…"
+          : isQuoteBased
+            ? "Confirm order details"
+            : "Save order details"}
       </button>
     </form>
   );
@@ -1307,7 +1368,7 @@ function ReceiptPreview({
       <div className="mt-5 border-y border-[#DDE0E5] bg-[#F3F4F6] px-5 py-4">
         <p className="text-sm text-[#4B5563]">Description</p>
         <p className="mt-1 text-sm leading-6 text-[#0C0F16]">
-          Payment for {order.productName} (Order {order.id}) held in escrow until
+          Payment for {order.productSummary} (Order {order.id}) held in escrow until
           delivery is confirmed.
         </p>
       </div>
@@ -1378,7 +1439,7 @@ function DisputeForm({
         <label className="block">
           <span className="text-sm text-[#111827]">Name of item</span>
           <input
-            value={order.productName}
+            value={order.productSummary}
             readOnly
             className="mt-1.5 h-11 w-full rounded-xl border border-[#DDE0E5] bg-[#F9FAFB] px-3 text-sm text-[#6B7280]"
           />

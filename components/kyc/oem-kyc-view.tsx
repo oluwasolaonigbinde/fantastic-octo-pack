@@ -1,19 +1,23 @@
 "use client";
 
 /**
- * Distributor KYC / Account Tiers.
+ * OEM KYC / Account Tiers.
  *
  * Four tiers (see `docs/kyc/README.md` §4):
- *   1. `basic_distributor`      — auto-granted at signup, nothing to submit.
- *   2. `registered_distributor` — review_required, text only. Approval
- *                                 activates the marketplace account.
- *   3. `verified_distributor`   — review_required, needs tier 2 approved.
- *   4. `premium_distributor`    — admin_only. Never gets a submit CTA.
+ *   1. `basic_oem`                — auto-granted at signup, nothing to submit.
+ *   2. `registered_manufacturer`  — review_required. Approval activates the
+ *                                   marketplace account. No prerequisite.
+ *   3. `verified_manufacturer`    — review_required. **No prerequisite** — it
+ *                                   does not require tier 2.
+ *   4. `premium_manufacturer`     — admin_only. Never gets a submit CTA.
  *
  * Everything renders off `useMyKycQuery()`; `constants/kycTiers.ts` is only
  * used for slug resolution. Built to the state model in §6 — the CTA appears
- * in exactly two states (`available`, `rejected`) and only once the tier's
- * prerequisite is approved.
+ * in exactly two states (`available`, `rejected`).
+ *
+ * The designs show a **work email verification + OTP** step on tier 2. The
+ * server has no such field or endpoint, so it is not rendered — adding it
+ * needs `baiy-server` work first.
  */
 
 import Link from "next/link";
@@ -31,7 +35,7 @@ import {
   Lock,
   RotateCcw,
   Star,
-  Upload,
+  X,
 } from "lucide-react";
 
 import Header from "@/app/dashboard/component/header";
@@ -47,7 +51,6 @@ import {
 } from "@/components/base";
 import {
   KYC_COUNTRIES,
-  KYC_GOVERNMENT_ID_TYPES,
   NIGERIAN_STATES,
   toSelectOptions,
 } from "@/constants/kycFieldOptions";
@@ -77,34 +80,33 @@ import {
   KYC_UPLOAD_FORMAT_LABEL,
 } from "./config";
 
-const BASE_PATH = KYC_ROLE_PATHS[UserRole.DISTRIBUTOR];
+const BASE_PATH = KYC_ROLE_PATHS[UserRole.OEM];
 
 /**
- * Tiers whose form lives on the detail page itself (the "Complete Your
- * Verification" panel in the designs) rather than in a dialog, split into
- * ordered steps. Tier 2 asks for the country, then the business details.
- *
- * Stepping is presentation only — the panel accumulates every value and sends
- * them as **one** request, because the server validates the full field set on
- * each submission. A tier listed here renders no dialog at all.
+ * Per-requirement file cap, per the designs ("You can upload up to 5 files").
+ * The server's own limit is 10 files across the whole request — enforced too,
+ * so a tier with several multi-file requirements can't overshoot it.
  */
-const INLINE_STEPS_BY_TIER: Record<string, string[][]> = {
-  registered_distributor: [
-    ["countryOfOrigin"],
-    ["businessName", "state", "city"],
-  ],
-};
+const MAX_FILES_PER_DOCUMENT = 5;
+const MAX_FILES_PER_SUBMISSION = 10;
+
+/** Requirements that naturally take several files. */
+const MULTI_FILE_FIELDS = new Set(["factory_images", "supporting_document"]);
+
+const isMultiFile = (fieldName: string) => MULTI_FILE_FIELDS.has(fieldName);
 
 /**
  * Presentation-only copy overrides keyed by `tierKey`. The server's
  * `tierLabel` / `processingTime` stay authoritative for the API and the admin
- * queue — this only matches what the distributor was shown in the designs.
+ * queue — this only matches what the OEM was shown in the designs.
  */
-const DISTRIBUTOR_TIER_COPY: Record<
+const OEM_TIER_COPY: Record<
   string,
   { label?: string; processingTime?: string }
 > = {
-  verified_distributor: { processingTime: "Processing time 24-48 hours" },
+  registered_manufacturer: { processingTime: "Processing time 48 hours" },
+  verified_manufacturer: { processingTime: "Processing time 48 hours" },
+  premium_manufacturer: { processingTime: "Processing time 48 hours" },
 };
 
 /**
@@ -120,15 +122,15 @@ const FIELD_COPY: Record<
     options?: readonly string[];
   }
 > = {
+  companyName: {
+    label: "Company name",
+    placeholder: "Enter your company name",
+  },
   countryOfOrigin: {
     label: "Country of Origin",
     placeholder: "Select Country of Origin",
     inputType: "dropdown",
     options: KYC_COUNTRIES,
-  },
-  businessName: {
-    label: "Business name",
-    placeholder: "Enter your business name",
   },
   state: {
     label: "State (what state is your business located?)",
@@ -140,35 +142,43 @@ const FIELD_COPY: Record<
     label: "City (what city is your business located?)",
     placeholder: "Enter city name",
   },
-  identityDocumentType: {
-    label: "Government Card",
-    placeholder: "Select government ID",
-    inputType: "dropdown",
-    options: KYC_GOVERNMENT_ID_TYPES,
-  },
-  identityDocumentNumber: {
-    label: "ID Number",
-    placeholder: "Identification Number",
+  companyAddress: {
+    label: "Business Address",
+    placeholder: "Enter your business address",
   },
 };
 
 const DOCUMENT_COPY: Record<string, string> = {
-  identity_document: "ID card upload",
-  cac_certificate: "CAC Certificate",
-  cac_status_report: "CAC Status Report",
+  national_id_document: "Government ID card",
+  business_registration_certificate:
+    "Business Registration certificate (you can upload up to 5 files)",
+  factory_images: "Upload images of factory/warehouse/business place",
+  supporting_document:
+    "Upload any certificate, document, or image that helps verify your relationship with the company or confirms the company's business/manufacturing operations.",
+};
+
+/** Short form for tables and requirement lists, where the long copy won't fit. */
+const DOCUMENT_SHORT_COPY: Record<string, string> = {
+  national_id_document: "Government ID card",
+  business_registration_certificate: "Business Registration Certificate",
+  factory_images: "Pictures of factory/warehouse",
+  supporting_document: "Company Profile/Brochure",
 };
 
 const tierLabelOf = (tier: KycTierDefinition) =>
-  DISTRIBUTOR_TIER_COPY[tier.tierKey]?.label ?? tier.tierLabel;
+  OEM_TIER_COPY[tier.tierKey]?.label ?? tier.tierLabel;
 
 const tierProcessingTimeOf = (tier: KycTierDefinition) =>
-  DISTRIBUTOR_TIER_COPY[tier.tierKey]?.processingTime ?? tier.processingTime;
+  OEM_TIER_COPY[tier.tierKey]?.processingTime ?? tier.processingTime;
 
 const fieldLabelOf = (field: KycTextFieldDefinition) =>
   FIELD_COPY[field.fieldName]?.label ?? field.label;
 
 const documentLabelOf = (fieldName: string, fallback: string) =>
   DOCUMENT_COPY[fieldName] ?? fallback;
+
+const documentShortLabelOf = (fieldName: string, fallback: string) =>
+  DOCUMENT_SHORT_COPY[fieldName] ?? fallback;
 
 /* ------------------------------------------------------------------ */
 /* Tier state                                                          */
@@ -177,11 +187,11 @@ const documentLabelOf = (fieldName: string, fallback: string) =>
 /**
  * `pending` covers `submitted`, `under_review` and `draft_submission` — all
  * three block resubmission server-side, so they behave identically and differ
- * only in label. `locked` is distributor-specific: an unmet prerequisite, or
- * an `admin_only` tier that hasn't been awarded.
+ * only in label. `locked` covers an unmet prerequisite and an `admin_only`
+ * tier that hasn't been awarded.
  */
 type TierState =
-  | "held" // auto-granted (Basic Distributor)
+  | "held" // auto-granted (Basic OEM)
   | "approved"
   | "pending"
   | "rejected" // the only state that permits a retry
@@ -200,7 +210,7 @@ interface TierView {
 }
 
 const STATUS_STYLES: Record<TierState, string> = {
-  held: "bg-[#F3F4F6] text-[#4B5563]",
+  held: "bg-[#E7F7EC] text-[#13A83B]",
   approved: "bg-[#E7F7EC] text-[#13A83B]",
   pending: "bg-[#FFF4E5] text-[#E26B0A]",
   rejected: "bg-[#FDECEC] text-[#D92D20]",
@@ -251,7 +261,7 @@ function StatusPill({ state, label }: { state: TierState; label: string }) {
         STATUS_STYLES[state],
       )}
     >
-      {state === "approved" ? <CheckCircle2 size={13} /> : null}
+      {state === "approved" || state === "held" ? <CheckCircle2 size={13} /> : null}
       {state === "pending" ? <Clock3 size={13} /> : null}
       {state === "rejected" ? <AlertCircle size={13} /> : null}
       {state === "locked" ? <Lock size={12} /> : null}
@@ -287,7 +297,7 @@ const buildTierView = (
       tier,
       state: "held",
       submission: null,
-      statusLabel: "",
+      statusLabel: "Approved",
       canSubmit: false,
       blockedBy: null,
     };
@@ -346,15 +356,15 @@ const buildTierView = (
           tier,
           state: "pending",
           submission,
-          statusLabel: "Pending approval",
+          statusLabel: "Pending",
           canSubmit: false,
           blockedBy: null,
         };
     }
   }
 
-  // Premium tiers are awarded by Baiy admins — a submission is rejected
-  // server-side, so there is never a CTA.
+  // Premium is awarded by Baiy admins — a submission is rejected server-side,
+  // so there is never a CTA.
   if (tier.submissionBehavior === "admin_only") {
     return {
       tier,
@@ -431,7 +441,7 @@ const validateFile = (file: File): string | null => {
 
 /* ------------------------------------------------------------------ */
 
-export default function DistributorKycView({
+export default function OemKycView({
   selectedTierSlug,
 }: {
   selectedTierSlug?: string;
@@ -443,10 +453,9 @@ export default function DistributorKycView({
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [textValues, setTextValues] = useState<Record<string, string>>({});
-  const [files, setFiles] = useState<Record<string, File | null>>({});
+  /** Files per requirement. Single-file requirements just hold one entry. */
+  const [files, setFiles] = useState<Record<string, File[]>>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [inlineError, setInlineError] = useState<string | null>(null);
-  const [inlineStep, setInlineStep] = useState(0);
   const [submittedTierLabel, setSubmittedTierLabel] = useState<string | null>(null);
 
   const kycQuery = useMyKycQuery();
@@ -502,14 +511,12 @@ export default function DistributorKycView({
       .filter((view) => view.state === "approved" || view.state === "held")
       .toSorted((a, b) => b.tier.tierOrdinal - a.tier.tierOrdinal)[0];
 
-    return held
-      ? tierLabelOf(held.tier)
-      : (authUser?.kycBadgeLabel ?? "Basic Distributor");
+    return held ? tierLabelOf(held.tier) : (authUser?.kycBadgeLabel ?? "Basic OEM");
   }, [authUser?.kycBadgeLabel, tierViews]);
 
   /**
-   * Where "Upgrade" points. Only tiers the distributor can actually act on —
-   * a locked or admin-only tier would leave the CTA linking nowhere useful.
+   * Where "Upgrade" points. Only tiers the OEM can actually act on — a locked
+   * or admin-only tier would leave the CTA linking nowhere useful.
    */
   const upgradeTarget = useMemo(
     () =>
@@ -547,90 +554,74 @@ export default function DistributorKycView({
     if (hasApproved) void refreshAuthProfile();
   }, [hasApproved, refreshAuthProfile]);
 
-  // Moving between tiers restarts the wizard — otherwise you'd land on tier 2
-  // already at step 2, carrying values typed against a different tier.
-  useEffect(() => {
-    setInlineStep(0);
-    setInlineError(null);
-    setSubmitError(null);
-    setTextValues({});
-    setFiles({});
-  }, [selectedTierSlug]);
-
   /* ---------------------------------------------------------------- */
   /* Form plumbing                                                     */
   /* ---------------------------------------------------------------- */
 
-  const inlineStepsFor = (tier: KycTierDefinition) =>
-    INLINE_STEPS_BY_TIER[tier.tierKey] ?? [];
+  const openDialog = (view: TierView) => {
+    if (!view.canSubmit) return;
 
-  /**
-   * The definitions for one inline step, in the order the step declares them.
-   * Names the server doesn't ask for are dropped, so a catalogue change can
-   * only ever shrink a step — never render a field that won't be submitted.
-   */
-  const stepFieldsFor = (tier: KycTierDefinition, step: number) => {
-    const names = inlineStepsFor(tier)[step] ?? [];
-
-    return names
-      .map((name) =>
-        tier.requiredTextFields.find((field) => field.fieldName === name),
-      )
-      .filter((field): field is KycTextFieldDefinition => Boolean(field));
-  };
-
-  /**
-   * Required fields the inline steps don't mention — appended to the final
-   * step so a server-side addition can still be filled in and submitted.
-   */
-  const unstepped = (tier: KycTierDefinition) => {
-    const claimed = new Set(inlineStepsFor(tier).flat());
-    return tier.requiredTextFields.filter(
-      (field) => !claimed.has(field.fieldName),
-    );
-  };
-
-  const resetForm = (tier: KycTierDefinition) => {
     setTextValues(
       Object.fromEntries(
-        tier.requiredTextFields.map((field) => [field.fieldName, ""]),
+        view.tier.requiredTextFields.map((field) => [field.fieldName, ""]),
       ),
     );
     setFiles(
       Object.fromEntries(
-        tier.requiredDocuments.map((document) => [document.fieldName, null]),
+        view.tier.requiredDocuments.map((document) => [document.fieldName, []]),
       ),
     );
     setSubmitError(null);
-    setInlineError(null);
-  };
-
-  const openDialog = (view: TierView) => {
-    if (!view.canSubmit) return;
-
-    resetForm(view.tier);
     setDialogOpen(true);
   };
 
-  /** Advance the inline panel, validating only the step being left. */
-  const goToNextStep = (view: TierView) => {
-    const missing = stepFieldsFor(view.tier, inlineStep).find(
-      (field) => !textValues[field.fieldName]?.trim(),
-    );
-
-    if (missing) {
-      setInlineError(`${fieldLabelOf(missing)} is required`);
-      return;
+  /** Appends selections, honouring both the per-field and per-request caps. */
+  const addFiles = (fieldName: string, selected: File[]) => {
+    for (const file of selected) {
+      const invalid = validateFile(file);
+      if (invalid) {
+        setSubmitError(invalid);
+        return;
+      }
     }
 
-    setInlineError(null);
-    setInlineStep((step) => step + 1);
+    setFiles((previous) => {
+      const existing = previous[fieldName] ?? [];
+      const cap = isMultiFile(fieldName) ? MAX_FILES_PER_DOCUMENT : 1;
+
+      // A single-file requirement replaces rather than appends — re-picking
+      // should swap the file, not silently keep the old one.
+      const merged = cap === 1 ? selected.slice(0, 1) : [...existing, ...selected];
+
+      if (merged.length > cap) {
+        setSubmitError(
+          `You can upload up to ${cap} file${cap === 1 ? "" : "s"} here`,
+        );
+      }
+
+      const next = { ...previous, [fieldName]: merged.slice(0, cap) };
+
+      const total = Object.values(next).reduce(
+        (sum, list) => sum + list.length,
+        0,
+      );
+      if (total > MAX_FILES_PER_SUBMISSION) {
+        setSubmitError(
+          `A submission can carry at most ${MAX_FILES_PER_SUBMISSION} files`,
+        );
+        return previous;
+      }
+
+      return next;
+    });
   };
 
-  const goToPreviousStep = () => {
-    setInlineError(null);
+  const removeFile = (fieldName: string, index: number) => {
     setSubmitError(null);
-    setInlineStep((step) => Math.max(0, step - 1));
+    setFiles((previous) => ({
+      ...previous,
+      [fieldName]: (previous[fieldName] ?? []).filter((_, i) => i !== index),
+    }));
   };
 
   const handleSubmit = async (view: TierView) => {
@@ -644,13 +635,6 @@ export default function DistributorKycView({
       for (const definition of view.tier.requiredTextFields) {
         const value = textValues[definition.fieldName]?.trim() ?? "";
         if (!value) {
-          // Send the user back to the step that owns the empty field —
-          // otherwise the error names something they can't see.
-          const owningStep = inlineStepsFor(view.tier).findIndex((names) =>
-            names.includes(definition.fieldName),
-          );
-          if (owningStep >= 0) setInlineStep(owningStep);
-
           throw new Error(`${fieldLabelOf(definition)} is required`);
         }
 
@@ -660,17 +644,31 @@ export default function DistributorKycView({
       const documents = [];
 
       for (const definition of view.tier.requiredDocuments) {
-        const file = files[definition.fieldName];
-        if (!file) {
+        const selected = files[definition.fieldName] ?? [];
+        const minimum = definition.minimumCount ?? 1;
+
+        if (selected.length < minimum) {
           throw new Error(
-            `${documentLabelOf(definition.fieldName, definition.label)} is required`,
+            `${documentShortLabelOf(definition.fieldName, definition.label)} needs at least ${minimum} file${
+              minimum === 1 ? "" : "s"
+            }`,
           );
         }
 
-        const invalid = validateFile(file);
-        if (invalid) throw new Error(invalid);
+        // Repeating the field name is how the server receives several files
+        // for one requirement — see docs/kyc/README.md §3.
+        for (const file of selected) {
+          const invalid = validateFile(file);
+          if (invalid) throw new Error(invalid);
 
-        documents.push({ fieldName: definition.fieldName, file });
+          documents.push({ fieldName: definition.fieldName, file });
+        }
+      }
+
+      if (documents.length > MAX_FILES_PER_SUBMISSION) {
+        throw new Error(
+          `A submission can carry at most ${MAX_FILES_PER_SUBMISSION} files`,
+        );
       }
 
       // Text fields and files go up together as one multipart request.
@@ -683,7 +681,6 @@ export default function DistributorKycView({
       setDialogOpen(false);
       setTextValues({});
       setFiles({});
-      setInlineStep(0);
       setSubmittedTierLabel(tierLabelOf(view.tier));
     } catch (error) {
       setSubmitError(
@@ -703,8 +700,8 @@ export default function DistributorKycView({
     return (
       <>
         <Header
-          title="Trust & Verification"
-          description={KYC_ROLE_DESCRIPTIONS[UserRole.DISTRIBUTOR]}
+          title="KYC Verification"
+          description={KYC_ROLE_DESCRIPTIONS[UserRole.OEM]}
         />
         <div className="space-y-4 bg-[#F9FAFB] p-4 md:pb-6 md:pl-6 md:pr-4 md:pt-4">
           <div className="h-[92px] animate-pulse rounded-2xl border border-[#DDE0E5] bg-white" />
@@ -723,8 +720,8 @@ export default function DistributorKycView({
     return (
       <>
         <Header
-          title="Trust & Verification"
-          description={KYC_ROLE_DESCRIPTIONS[UserRole.DISTRIBUTOR]}
+          title="KYC Verification"
+          description={KYC_ROLE_DESCRIPTIONS[UserRole.OEM]}
         />
         <div className="bg-[#F9FAFB] p-4 md:p-6">
           <div className="flex flex-col items-start gap-3 rounded-[10px] border border-[#FDA29B] bg-[#FFFBFA] p-6">
@@ -762,14 +759,14 @@ export default function DistributorKycView({
       return (
         <>
           <Header
-            title="Trust & Verification"
-            description={KYC_ROLE_DESCRIPTIONS[UserRole.DISTRIBUTOR]}
+            title="KYC Verification"
+            description={KYC_ROLE_DESCRIPTIONS[UserRole.OEM]}
           />
           <div className="bg-[#F9FAFB] p-4 md:p-6">
             <div className="rounded-[10px] bg-white p-6">
               <p className="text-[15px] font-medium text-black">Tier not found</p>
               <p className="mt-1 text-[13px] leading-5 text-[#4B5563]">
-                That verification tier doesn&apos;t exist for a distributor account.
+                That verification tier doesn&apos;t exist for an OEM account.
               </p>
               <Link
                 href={BASE_PATH}
@@ -787,8 +784,8 @@ export default function DistributorKycView({
     return (
       <>
         <Header
-          title="Trust & Verification"
-          description={KYC_ROLE_DESCRIPTIONS[UserRole.DISTRIBUTOR]}
+          title="KYC Verification"
+          description={KYC_ROLE_DESCRIPTIONS[UserRole.OEM]}
         />
         <div className="space-y-4 bg-[#F9FAFB] p-4 md:pb-6 md:pl-6 md:pr-4 md:pt-4">
           <button
@@ -816,8 +813,8 @@ export default function DistributorKycView({
   return (
     <>
       <Header
-        title="Trust & Verification"
-        description={KYC_ROLE_DESCRIPTIONS[UserRole.DISTRIBUTOR]}
+        title="KYC Verification"
+        description={KYC_ROLE_DESCRIPTIONS[UserRole.OEM]}
       />
       <div className="space-y-4 bg-[#F9FAFB] p-4 md:pb-6 md:pl-6 md:pr-4 md:pt-4">
         <section className="flex min-h-[92px] flex-col items-start justify-between gap-3 rounded-2xl border border-[#DDE0E5] bg-white px-4 py-3 sm:flex-row sm:items-center sm:gap-6">
@@ -826,7 +823,7 @@ export default function DistributorKycView({
               Account Tiers
             </h2>
             <p className="text-[14px] leading-5 text-[#4B5563]">
-              {KYC_ROLE_INTRO_COPY[UserRole.DISTRIBUTOR]}
+              {KYC_ROLE_INTRO_COPY[UserRole.OEM]}
             </p>
           </div>
 
@@ -905,26 +902,41 @@ export default function DistributorKycView({
     // Auto-granted tier: no submission exists, so show the signup details that
     // earned it instead of an empty document table.
     if (tier.submissionBehavior === "none") {
+      // `UserData` carries no country. The designs show one, so take it from
+      // the tier-2 submission that actually collected `countryOfOrigin` —
+      // before that exists there is nothing truthful to display.
+      const countryOfOrigin = submissions
+        .toSorted(
+          (a, b) =>
+            new Date(b.createdAt ?? 0).getTime() -
+            new Date(a.createdAt ?? 0).getTime(),
+        )
+        .find((entry) => entry.textFields?.countryOfOrigin)?.textFields
+        ?.countryOfOrigin;
+
       const fields = [
         { label: "First name", value: authUser?.firstName || "-" },
         { label: "Last name", value: authUser?.lastName || "-" },
+        ...(countryOfOrigin ? [{ label: "Country", value: countryOfOrigin }] : []),
         { label: "First Email address", value: authUser?.email || "-" },
         { label: "Phone number", value: authUser?.phoneNumber || "-" },
       ];
 
       return (
         <section className="rounded-[10px] bg-white p-4 md:p-5">
-          <div className="flex items-center gap-2">
-            <h3 className="text-[16px] font-medium leading-6 text-black">
-              {tierLabelOf(tier)}: Uploaded requirement
-            </h3>
-            <BadgeCheck size={18} style={{ color: ICON_COLORS.held }} />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h3 className="text-[16px] font-medium leading-6 text-black">
+                {tierLabelOf(tier)} uploaded document
+              </h3>
+              <p className="mt-1 text-[13px] leading-5 text-[#6B7280]">
+                View all uploaded requirement
+              </p>
+            </div>
+            <StatusPill state={state} label={view.statusLabel} />
           </div>
-          <p className="mt-1 text-[13px] leading-5 text-[#6B7280]">
-            View all uploaded requirement
-          </p>
 
-          <dl className="mt-5 grid grid-cols-1 gap-x-10 gap-y-5 border-t border-[#EEF0F3] pt-5 sm:grid-cols-2 lg:max-w-[520px]">
+          <dl className="mt-5 grid grid-cols-1 gap-x-10 gap-y-5 border-t border-[#EEF0F3] pt-5 sm:grid-cols-2 lg:grid-cols-3">
             {fields.map((field) => (
               <div key={field.label}>
                 <dt className="text-[12px] leading-4 text-[#9CA3AF]">
@@ -941,204 +953,126 @@ export default function DistributorKycView({
     }
 
     const documents = submission?.documents ?? [];
-    // The inline "Complete Your Verification" panel only makes sense while the
-    // tier is actually submittable.
-    const showInlinePanel = inlineStepsFor(tier).length > 0 && view.canSubmit;
 
     return (
-      <section className="rounded-[10px] bg-white p-4 md:p-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-[16px] font-medium leading-6 text-black">
-                {tierLabelOf(tier)}: Uploaded requirement
-              </h3>
-              <TierIcon view={view} />
-            </div>
-            <p className="mt-1 text-[13px] leading-5 text-[#6B7280]">
-              View all uploaded requirement
-            </p>
-          </div>
-
-          <div className="flex shrink-0 flex-wrap items-center gap-3">
-            <StatusPill state={state} label={view.statusLabel} />
-            {/* CTA lives in the inline panel for tiers that have one. */}
-            {view.canSubmit && !showInlinePanel ? (
-              <Button
-                onClick={() => openDialog(view)}
-                className="inline-flex h-[38px] w-auto items-center justify-center rounded-xl bg-[#0669D9] px-4 text-[13px] text-white"
-              >
-                {state === "rejected" ? "Resubmit" : "Upgrade"}
-              </Button>
-            ) : null}
-          </div>
-        </div>
-
-        {/* A rejection is the only state the distributor can act on — lead with why. */}
-        {state === "rejected" && submission?.rejectionReason ? (
-          <div className="mt-4 flex items-start gap-2 rounded-[8px] border border-[#FDA29B] bg-[#FFFBFA] p-3">
-            <AlertCircle size={16} className="mt-0.5 shrink-0 text-[#D92D20]" />
-            <div>
-              <p className="text-[13px] font-medium leading-5 text-[#B42318]">
-                Your submission was rejected
-              </p>
-              <p className="mt-0.5 text-[13px] leading-5 text-[#4B5563]">
-                {submission.rejectionReason}
-              </p>
-              <p className="mt-2 text-[12px] leading-4 text-[#6B7280]">
-                Re-upload every required item — a retry replaces the whole
-                submission, not just the item that failed.
-              </p>
-            </div>
-          </div>
-        ) : null}
-
-        {state === "pending" ? (
-          <p className="mt-4 rounded-[8px] bg-[#FFF9F0] p-3 text-[13px] leading-5 text-[#8A5A00]">
-            Your details are with our review team. Nothing is needed from you
-            right now — this page updates on its own once a decision is made.
-          </p>
-        ) : null}
-
-        {/* Prerequisite chain: say exactly which tier is blocking. */}
-        {state === "locked" && tier.submissionBehavior === "review_required" ? (
-          <p className="mt-4 flex items-start gap-2 rounded-[8px] bg-[#F3F4F6] p-3 text-[13px] leading-5 text-[#4B5563]">
-            <Lock size={14} className="mt-0.5 shrink-0" />
-            <span>
-              Get <span className="font-medium">{view.blockedBy}</span> approved
-              first — this tier opens up once that one is cleared.
-            </span>
-          </p>
-        ) : null}
-
-        {tier.submissionBehavior === "admin_only" && state !== "approved" ? (
-          <p className="mt-4 flex items-start gap-2 rounded-[8px] bg-[#FFFBEB] p-3 text-[13px] leading-5 text-[#92400E]">
-            <Star size={14} className="mt-0.5 shrink-0" />
-            <span>
-              {tierLabelOf(tier)} is awarded by Baiy administrators — there is
-              nothing to submit.
-              {view.blockedBy
-                ? ` It is only considered once ${view.blockedBy} is approved.`
-                : ""}
-            </span>
-          </p>
-        ) : null}
-
-        {/* Submitted text values, once there is a submission to show. */}
-        {submission && tier.requiredTextFields.length ? (
-          <dl className="mt-5 grid grid-cols-1 gap-x-10 gap-y-5 border-t border-[#EEF0F3] pt-5 sm:grid-cols-2 lg:max-w-[640px]">
-            {tier.requiredTextFields.map((field) => (
-              <div key={field.fieldName}>
-                <dt className="text-[12px] leading-4 text-[#9CA3AF]">
-                  {field.label}
-                </dt>
-                <dd className="mt-1 break-words text-[14px] leading-5 text-black">
-                  {submission.textFields?.[field.fieldName] || "-"}
-                </dd>
+      <>
+        <section className="rounded-[10px] bg-white p-4 md:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h3 className="text-[16px] font-medium leading-6 text-black">
+                  {tierLabelOf(tier)} uploaded requirement
+                </h3>
+                <TierIcon view={view} />
               </div>
-            ))}
-          </dl>
-        ) : null}
+              <p className="mt-1 text-[13px] leading-5 text-[#6B7280]">
+                View all uploaded requirement
+              </p>
+            </div>
 
-        {showInlinePanel ? renderInlinePanel(view) : null}
+            <div className="flex shrink-0 flex-wrap items-center gap-3">
+              <StatusPill state={state} label={view.statusLabel} />
+              {view.canSubmit ? (
+                <Button
+                  onClick={() => openDialog(view)}
+                  className="inline-flex h-[38px] w-auto items-center justify-center rounded-xl bg-[#0669D9] px-4 text-[13px] text-white"
+                >
+                  {state === "rejected" ? "Resubmit" : "Upgrade"}
+                </Button>
+              ) : null}
+            </div>
+          </div>
 
-        {tier.requiredDocuments.length
-          ? renderDocuments(view, documents)
-          : null}
-      </section>
-    );
-  }
-
-  /**
-   * "Complete Your Verification" — the whole form for inline tiers, walked one
-   * step at a time. The last step submits; there is no dialog for these tiers.
-   */
-  function renderInlinePanel(view: TierView) {
-    const steps = inlineStepsFor(view.tier);
-    const stepCount = steps.length;
-    // Clamp: a catalogue change could leave `inlineStep` past the end.
-    const step = Math.min(inlineStep, stepCount - 1);
-    const isLastStep = step === stepCount - 1;
-    const busy = createSubmission.isPending;
-
-    const definitions = [
-      ...stepFieldsFor(view.tier, step),
-      // Anything the step map doesn't claim rides along on the final step.
-      ...(isLastStep ? unstepped(view.tier) : []),
-    ];
-
-    return (
-      <div className="mt-5 rounded-[12px] border border-[#EEF2F8] bg-[#FCFDFE] p-4 md:p-5 lg:max-w-[420px]">
-        <div
-          className="mb-4 flex gap-2"
-          role="progressbar"
-          aria-valuemin={1}
-          aria-valuemax={stepCount}
-          aria-valuenow={step + 1}
-          aria-label={`Step ${step + 1} of ${stepCount}`}
-        >
-          {steps.map((_, index) => (
-            <span
-              key={index}
-              className={cn(
-                "h-1.5 w-9 rounded-full",
-                index <= step ? "bg-[#FF7A00]" : "bg-[#FFD9B5]",
-              )}
-            />
-          ))}
-        </div>
-
-        <h4 className="text-[17px] font-medium leading-6 text-black">
-          Complete Your Verification
-        </h4>
-        <p className="mt-1 text-[13px] leading-5 text-[#6B7280]">
-          Business key information
-        </p>
-
-        <div className="mt-5 space-y-4">
-          {definitions.map((field) => renderTextControl(field))}
-        </div>
-
-        {inlineError || submitError ? (
-          <p className="mt-3 flex items-start gap-1.5 text-[12px] leading-4 text-[#B42318]">
-            <AlertCircle size={13} className="mt-px shrink-0" />
-            {inlineError ?? submitError}
-          </p>
-        ) : null}
-
-        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row">
-          {step > 0 ? (
-            <Button
-              variant="primaryLight"
-              onClick={goToPreviousStep}
-              disabled={busy}
-              iconLeft={<ArrowLeft size={16} />}
-              className="h-[44px] rounded-[8px] text-[14px] sm:w-auto sm:px-5"
-            >
-              Back
-            </Button>
+          {/* A rejection is the only state the OEM can act on — lead with why. */}
+          {state === "rejected" && submission?.rejectionReason ? (
+            <div className="mt-4 flex items-start gap-2 rounded-[8px] border border-[#FDA29B] bg-[#FFFBFA] p-3">
+              <AlertCircle size={16} className="mt-0.5 shrink-0 text-[#D92D20]" />
+              <div>
+                <p className="text-[13px] font-medium leading-5 text-[#B42318]">
+                  Your submission was rejected
+                </p>
+                <p className="mt-0.5 text-[13px] leading-5 text-[#4B5563]">
+                  {submission.rejectionReason}
+                </p>
+                <p className="mt-2 text-[12px] leading-4 text-[#6B7280]">
+                  Re-upload every required item — a retry replaces the whole
+                  submission, not just the item that failed.
+                </p>
+              </div>
+            </div>
           ) : null}
 
-          {isLastStep ? (
-            <Button
-              onClick={() => void handleSubmit(view)}
-              disabled={busy}
-              className="h-[44px] rounded-[8px] bg-[#0669D9] text-[14px] text-white disabled:opacity-60"
-            >
-              {busy ? <Spinner /> : null}
-              {busy ? "Submitting..." : "Submit"}
-            </Button>
-          ) : (
-            <Button
-              onClick={() => goToNextStep(view)}
-              iconRight={<ChevronRight size={18} />}
-              className="h-[44px] rounded-[8px] bg-[#0669D9] text-[14px] text-white"
-            >
-              Next
-            </Button>
-          )}
-        </div>
-      </div>
+          {state === "pending" ? (
+            <p className="mt-4 rounded-[8px] bg-[#FFF9F0] p-3 text-[13px] leading-5 text-[#8A5A00]">
+              Your details are with our review team. Nothing is needed from you
+              right now — this page updates on its own once a decision is made.
+            </p>
+          ) : null}
+
+          {/* Prerequisite chain: say exactly which tier is blocking. */}
+          {state === "locked" && tier.submissionBehavior === "review_required" ? (
+            <p className="mt-4 flex items-start gap-2 rounded-[8px] bg-[#F3F4F6] p-3 text-[13px] leading-5 text-[#4B5563]">
+              <Lock size={14} className="mt-0.5 shrink-0" />
+              <span>
+                Get <span className="font-medium">{view.blockedBy}</span> approved
+                first — this tier opens up once that one is cleared.
+              </span>
+            </p>
+          ) : null}
+
+          {tier.submissionBehavior === "admin_only" && state !== "approved" ? (
+            <p className="mt-4 flex items-start gap-2 rounded-[8px] bg-[#FFFBEB] p-3 text-[13px] leading-5 text-[#92400E]">
+              <Star size={14} className="mt-0.5 shrink-0" />
+              <span>
+                {tierLabelOf(tier)} is awarded by Baiy administrators — there is
+                nothing to submit.
+                {view.blockedBy
+                  ? ` It is only considered once ${view.blockedBy} is approved.`
+                  : ""}
+              </span>
+            </p>
+          ) : null}
+
+          {/* Submitted text values, once there is a submission to show. The
+              designs stack these full-width with a rule between each. */}
+          {submission && tier.requiredTextFields.length ? (
+            <dl className="mt-5 border-t border-[#EEF0F3]">
+              {tier.requiredTextFields.map((field) => (
+                <div
+                  key={field.fieldName}
+                  className="border-b border-[#EEF0F3] py-4"
+                >
+                  <dt className="text-[12px] leading-4 text-[#9CA3AF]">
+                    {fieldLabelOf(field)}
+                  </dt>
+                  <dd className="mt-1 break-words text-[14px] leading-5 text-black">
+                    {submission.textFields?.[field.fieldName] || "-"}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+
+          {/* Nothing submitted yet: list what the tier will ask for, matching
+              the designs' bare requirement list. */}
+          {!submission && tier.requiredDocuments.length ? (
+            <dl className="mt-5 border-t border-[#EEF0F3]">
+              {tier.requiredDocuments.map((definition) => (
+                <div
+                  key={definition.fieldName}
+                  className="border-b border-[#EEF0F3] py-4"
+                >
+                  <dt className="text-[13px] leading-5 text-[#9CA3AF]">
+                    {documentShortLabelOf(definition.fieldName, definition.label)}
+                  </dt>
+                </div>
+              ))}
+            </dl>
+          ) : null}
+        </section>
+
+        {documents.length ? renderDocuments(view, documents) : null}
+      </>
     );
   }
 
@@ -1146,12 +1080,11 @@ export default function DistributorKycView({
   function renderTextControl(field: KycTextFieldDefinition) {
     const copy = FIELD_COPY[field.fieldName] ?? {};
     const label = fieldLabelOf(field);
-    const placeholder =
-      copy.placeholder ?? `Enter ${field.label.toLowerCase()}`;
+    const placeholder = copy.placeholder ?? `Enter ${field.label.toLowerCase()}`;
     const value = textValues[field.fieldName] ?? "";
 
-    // The state list is Nigeria-only — anywhere else has to be free text or
-    // the distributor simply cannot complete the form.
+    // The state list is Nigeria-only — anywhere else has to be free text or the
+    // OEM simply cannot complete the form.
     const stateNeedsFreeText =
       field.fieldName === "state" &&
       (textValues.countryOfOrigin ?? "") !== "Nigeria";
@@ -1175,7 +1108,6 @@ export default function DistributorKycView({
               // Switching country invalidates a Nigeria-specific state.
               ...(field.fieldName === "countryOfOrigin" ? { state: "" } : {}),
             }));
-            setInlineError(null);
             setSubmitError(null);
           }}
           options={toSelectOptions(copy.options ?? field.options ?? [])}
@@ -1193,7 +1125,6 @@ export default function DistributorKycView({
         onChange={(event) => {
           const next = event.target.value;
           setTextValues((current) => ({ ...current, [field.fieldName]: next }));
-          setInlineError(null);
           setSubmitError(null);
         }}
       />
@@ -1206,32 +1137,13 @@ export default function DistributorKycView({
   ) {
     const { tier, state } = view;
 
-    if (!documents.length) {
-      return (
-        <div className="mt-5 rounded-[8px] border border-dashed border-[#DDE0E5] p-6 text-center">
-          <p className="text-[14px] leading-5 text-black">
-            You haven&apos;t uploaded any documents for this tier yet.
-          </p>
-          <p className="mt-1 text-[13px] leading-5 text-[#6B7280]">
-            Required:{" "}
-            {tier.requiredDocuments
-              .map((document) =>
-                documentLabelOf(document.fieldName, document.label),
-              )
-              .join(", ")}
-            .
-          </p>
-        </div>
-      );
-    }
-
     return (
-      <div className="mt-5 rounded-[10px] border border-[#EEF2F8] p-3 md:p-4">
+      <section className="rounded-[10px] bg-white p-4 md:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h4 className="text-[15px] font-medium leading-6 text-black">
             Uploaded documents
           </h4>
-          {/* Registered Distributor has no badge by design — only show a real one. */}
+          {/* Registered Manufacturer has no badge by design — only show a real one. */}
           {tier.badgeLabel && state === "approved" ? (
             <span className="inline-flex items-center gap-1.5 text-[13px] leading-5 text-[#4B5563]">
               <span className="font-medium text-black">Badge:</span>
@@ -1265,7 +1177,7 @@ export default function DistributorKycView({
 
                 return (
                   <tr
-                    // A field can repeat (multi-file requirements), so the URL
+                    // `factory_images` repeats its field name, so the field
                     // alone isn't a stable key.
                     key={`${document.fieldName}-${document.cloudinaryId || index}`}
                     className="h-[46px] border-b border-[#F1F3F5] text-[13px] leading-5 text-black"
@@ -1277,7 +1189,7 @@ export default function DistributorKycView({
                         </span>
                         <span className="truncate">
                           {definition
-                            ? documentLabelOf(
+                            ? documentShortLabelOf(
                                 definition.fieldName,
                                 definition.label,
                               )
@@ -1306,16 +1218,15 @@ export default function DistributorKycView({
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     );
   }
 
   function renderUploadDialog(view: TierView) {
-    // Inline tiers carry their whole form on the page — no dialog exists.
-    if (inlineStepsFor(view.tier).length > 0) return null;
-
     const busy = createSubmission.isPending;
-    const fields = view.tier.requiredTextFields;
+    const hasMultiFile = view.tier.requiredDocuments.some((definition) =>
+      isMultiFile(definition.fieldName),
+    );
 
     return (
       <Dialog
@@ -1330,93 +1241,22 @@ export default function DistributorKycView({
         <DialogContent className="max-h-[88vh] w-[92vw] max-w-[420px] overflow-y-auto rounded-[12px] bg-white p-5">
           <DialogHeader>
             <DialogTitle className="pr-6 text-left text-[15px] font-medium leading-6 text-black">
-              Enter information below to upgrade Verification status.
+              Enter information below to upgrade KYC status.
             </DialogTitle>
           </DialogHeader>
 
           <div className="mt-4 space-y-4">
-            {view.tier.requiredDocuments.length ? (
-              <p className="text-[13px] leading-5 text-[#4B5563]">
-                Input information details to become a{" "}
-                {tierLabelOf(view.tier).toLowerCase()}
+            {view.tier.requiredTextFields.map((field) => renderTextControl(field))}
+
+            {view.tier.requiredDocuments.map((definition) =>
+              renderUploadField(definition, busy),
+            )}
+
+            {hasMultiFile ? (
+              <p className="text-[11px] leading-4 text-[#FF7A00]">
+                Note: You can upload up to {MAX_FILES_PER_DOCUMENT} files.
               </p>
             ) : null}
-
-            {fields.map((field) => renderTextControl(field))}
-
-            {view.tier.requiredDocuments.map((definition) => {
-              const file = files[definition.fieldName] ?? null;
-              const label = documentLabelOf(
-                definition.fieldName,
-                definition.label,
-              );
-
-              return (
-                <div key={definition.fieldName}>
-                  <p className="mb-1.5 text-[13px] leading-5 text-[#4B5563]">
-                    {label}
-                  </p>
-
-                  <label
-                    className={cn(
-                      "flex h-[86px] cursor-pointer flex-col items-center justify-center rounded-[8px] border border-dashed px-3 text-center",
-                      file
-                        ? "border-[#0669D9] bg-[#F5F9FF]"
-                        : "border-[#DDE0E5] bg-white",
-                    )}
-                  >
-                    <input
-                      type="file"
-                      className="sr-only"
-                      accept={KYC_UPLOAD_ACCEPT}
-                      disabled={busy}
-                      onChange={(event) => {
-                        const selected = event.target.files?.[0] ?? null;
-                        if (!selected) return;
-
-                        // Catch size/format at selection — a far better error
-                        // than a 400 after a long upload.
-                        const invalid = validateFile(selected);
-                        if (invalid) {
-                          setSubmitError(invalid);
-                          event.target.value = "";
-                          return;
-                        }
-
-                        setSubmitError(null);
-                        setFiles((previous) => ({
-                          ...previous,
-                          [definition.fieldName]: selected,
-                        }));
-                      }}
-                    />
-
-                    {file ? (
-                      <>
-                        <span className="max-w-full truncate px-2 text-[12px] leading-4 text-black">
-                          {file.name}
-                        </span>
-                        <span className="mt-1 inline-flex items-center gap-1 text-[11px] leading-4 text-[#0669D9]">
-                          <Upload size={11} />
-                          Click to replace
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <FileText size={20} className="mb-1 text-[#9CA3AF]" />
-                        <span className="text-[12px] leading-4 text-[#FF7A00]">
-                          Click here{" "}
-                          <span className="text-[#6B7280]">to upload file</span>
-                        </span>
-                        <span className="mt-1 text-[10px] leading-4 text-[#9CA3AF]">
-                          Allowed format – {KYC_UPLOAD_FORMAT_LABEL}
-                        </span>
-                      </>
-                    )}
-                  </label>
-                </div>
-              );
-            })}
 
             <p className="text-[11px] leading-4 text-[#FF7A00]">
               Note: Document should be clear and a supported file format, 5MB or
@@ -1441,6 +1281,94 @@ export default function DistributorKycView({
           </div>
         </DialogContent>
       </Dialog>
+    );
+  }
+
+  /** One upload requirement — single or multi-file, with a removable list. */
+  function renderUploadField(
+    definition: KycTierDefinition["requiredDocuments"][number],
+    busy: boolean,
+  ) {
+    const selected = files[definition.fieldName] ?? [];
+    const multiple = isMultiFile(definition.fieldName);
+    const cap = multiple ? MAX_FILES_PER_DOCUMENT : 1;
+    const full = selected.length >= cap;
+
+    return (
+      <div key={definition.fieldName}>
+        <p className="mb-1.5 text-[13px] leading-5 text-[#4B5563]">
+          {documentLabelOf(definition.fieldName, definition.label)}
+        </p>
+
+        {selected.length ? (
+          <ul className="mb-2 space-y-1.5">
+            {selected.map((file, index) => (
+              <li
+                key={`${file.name}-${file.lastModified}-${index}`}
+                className="flex items-center gap-2 rounded-[6px] border border-[#EEF2F8] bg-[#FAFBFC] px-2 py-1.5"
+              >
+                <FileText size={14} className="shrink-0 text-[#16A34A]" />
+                <span className="min-w-0 flex-1 truncate text-[12px] leading-4 text-black">
+                  {file.name}
+                </span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => removeFile(definition.fieldName, index)}
+                  aria-label={`Remove ${file.name}`}
+                  className="shrink-0 text-[#9CA3AF] hover:text-[#D92D20] disabled:opacity-50"
+                >
+                  <X size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {/* A full single-file slot still accepts a click — it swaps the file. */}
+        {!full || !multiple ? (
+          <label
+            className={cn(
+              "flex h-[86px] cursor-pointer flex-col items-center justify-center rounded-[8px] border border-dashed px-3 text-center",
+              selected.length
+                ? "border-[#0669D9] bg-[#F5F9FF]"
+                : "border-[#DDE0E5] bg-white",
+            )}
+          >
+            <input
+              type="file"
+              className="sr-only"
+              accept={KYC_UPLOAD_ACCEPT}
+              multiple={multiple}
+              disabled={busy}
+              onChange={(event) => {
+                const picked = Array.from(event.target.files ?? []);
+                // Reset so re-picking the same file still fires `change`.
+                event.target.value = "";
+                if (!picked.length) return;
+
+                setSubmitError(null);
+                addFiles(definition.fieldName, picked);
+              }}
+            />
+
+            <FileText size={20} className="mb-1 text-[#9CA3AF]" />
+            <span className="text-[12px] leading-4 text-[#FF7A00]">
+              Click here{" "}
+              <span className="text-[#6B7280]">
+                to upload {selected.length && !multiple ? "a replacement" : "file"}
+              </span>
+            </span>
+            <span className="mt-1 text-[10px] leading-4 text-[#9CA3AF]">
+              Allowed format – {KYC_UPLOAD_FORMAT_LABEL}
+            </span>
+          </label>
+        ) : (
+          <p className="text-[11px] leading-4 text-[#6B7280]">
+            {cap} of {cap} files added. Remove one to swap it out.
+          </p>
+        )}
+      </div>
     );
   }
 

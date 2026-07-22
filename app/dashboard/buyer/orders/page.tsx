@@ -16,10 +16,6 @@ import {
 import Header from "../../component/header";
 import { EmptyState, Skeleton } from "@/components/base";
 import {
-  buyerDemoOrderDisputes,
-} from "@/constants/demoBuyerOrderDisputes";
-import {
-  buyerDemoOrders,
   getBuyerOrderStatusTone,
   toBuyerOrderRow,
   type BuyerOrderRow,
@@ -117,13 +113,12 @@ function OrderTable({
 }) {
   return (
     <div className="mt-8 overflow-x-auto">
-      <table className="w-full min-w-[1090px] text-left text-sm">
+      <table className="w-full min-w-[980px] text-left text-sm">
         <thead>
           <tr className="border-b border-[#F3F4F6] text-[#6B7280]">
             <th className="py-3 pr-4 font-medium">Order ID</th>
-            <th className="py-3 pr-4 font-medium">Product&apos;s name</th>
+            <th className="py-3 pr-4 font-medium">Items</th>
             <th className="py-3 pr-4 font-medium">Quantity</th>
-            <th className="py-3 pr-4 font-medium">Unit price</th>
             <th className="py-3 pr-4 font-medium">Total price</th>
             <th className="py-3 pr-4 font-medium">Date</th>
             <th className="py-3 pr-4 font-medium">Order status</th>
@@ -136,11 +131,15 @@ function OrderTable({
             return (
               <tr key={order.sourceId} className="border-b border-[#F3F4F6]">
                 <td className="py-4 pr-4 text-[#111827]">{order.id}</td>
-                <td className="py-4 pr-4 text-[#111827]">{order.productName}</td>
-                <td className="py-4 pr-4 text-[#111827]">{order.quantity}</td>
                 <td className="py-4 pr-4 text-[#111827]">
-                  {formatCurrency(order.unitPrice)}
+                  {order.productSummary}
+                  {order.itemCount > 1 ? (
+                    <span className="mt-0.5 block text-xs text-[#6B7280]">
+                      {order.itemCount} products
+                    </span>
+                  ) : null}
                 </td>
+                <td className="py-4 pr-4 text-[#111827]">{order.totalQuantity}</td>
                 <td className="py-4 pr-4 text-[#111827]">
                   {formatCurrency(order.totalPrice)}
                 </td>
@@ -189,8 +188,13 @@ function MobileOrderList({
               <div>
                 <p className="text-xs text-[#6B7280]">{order.id}</p>
                 <h3 className="mt-1 text-sm font-medium text-[#111827]">
-                  {order.productName}
+                  {order.productSummary}
                 </h3>
+                {order.itemCount > 1 ? (
+                  <p className="mt-0.5 text-xs text-[#6B7280]">
+                    {order.itemCount} products
+                  </p>
+                ) : null}
               </div>
               <span className={`text-xs ${statusTone.textClassName}`}>
                 {statusTone.label}
@@ -199,18 +203,14 @@ function MobileOrderList({
             <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-[#6B7280]">
               <p>
                 Quantity
-                <span className="mt-1 block text-sm text-[#111827]">{order.quantity}</span>
+                <span className="mt-1 block text-sm text-[#111827]">
+                  {order.totalQuantity}
+                </span>
               </p>
               <p>
                 Total price
                 <span className="mt-1 block text-sm text-[#111827]">
                   {formatCurrency(order.totalPrice)}
-                </span>
-              </p>
-              <p>
-                Unit price
-                <span className="mt-1 block text-sm text-[#111827]">
-                  {formatCurrency(order.unitPrice)}
                 </span>
               </p>
               <p>
@@ -375,8 +375,7 @@ export default function BuyerOrders() {
   const [statusQuery, setStatusQuery] = useState("");
   const [dateQuery, setDateQuery] = useState("");
 
-  const realOrders = useMemo(() => (Array.isArray(orders) ? orders.map(toBuyerOrderRow) : []), [orders]);
-  const displayOrders = realOrders.length > 0 ? realOrders : buyerDemoOrders;
+  const displayOrders = useMemo(() => (Array.isArray(orders) ? orders.map(toBuyerOrderRow) : []), [orders]);
 
   const filteredOrders = useMemo(() => {
     return displayOrders.filter((order) => {
@@ -391,23 +390,7 @@ export default function BuyerOrders() {
   }, [dateQuery, displayOrders, orderIdQuery, statusQuery]);
 
   const displayDisputes = useMemo<BuyerDisputeRow[]>(() => {
-    if (Array.isArray(disputes) && disputes.length > 0) {
-      return disputes.map(toBuyerDisputeRow);
-    }
-    // Visual fallback while no live disputes exist for the account.
-    return buyerDemoOrderDisputes.map((dispute) => ({
-      id: dispute.id,
-      sourceId: dispute.id,
-      orderId: dispute.orderId,
-      amount: dispute.amount,
-      itemName: dispute.itemName,
-      reason: dispute.reason,
-      against: dispute.against,
-      status: dispute.status,
-      resolutionOutcome:
-        dispute.status === "resolved" ? "refund_buyer" : undefined,
-      createdAt: dispute.createdAt,
-    }));
+    return Array.isArray(disputes) ? disputes.map(toBuyerDisputeRow) : [];
   }, [disputes]);
 
   const filteredDisputes = useMemo(() => {

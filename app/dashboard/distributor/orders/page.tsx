@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ClipboardList,
   Eye,
   Filter,
   PackageCheck,
@@ -14,11 +15,7 @@ import {
 
 import Header from "../../component/header";
 import { EmptyState, Skeleton } from "@/components/base";
-import {
-  distributorDemoDisputes,
-  distributorDemoOrders,
-  getOrderStatusTone,
-} from "@/constants/demoDistributorOrders";
+import { getOrderStatusTone } from "@/constants/demoDistributorOrders";
 import {
   getDisputeStatusTone,
   toDistributorDisputeRow,
@@ -286,7 +283,7 @@ export default function DistributorOrdersPage() {
   const [dateQuery, setDateQuery] = useState("");
 
   const orderList = useMemo(() => (Array.isArray(orders) ? orders : []), [orders]);
-  const displayOrders = orderList.length > 0 ? orderList.map(toOrderRow) : distributorDemoOrders;
+  const displayOrders = useMemo(() => orderList.map(toOrderRow), [orderList]);
 
   // The distributor's list is only for orders they can act on: paid and onward.
   // Unpaid/draft/pre-payment orders (created_pending_payment, payment_initiated,
@@ -312,36 +309,19 @@ export default function DistributorOrdersPage() {
   }, [visibleOrders, orderIdQuery, statusQuery, dateQuery]);
 
   const displayDisputes = useMemo<BuyerDisputeRow[]>(() => {
-    if (Array.isArray(disputes) && disputes.length > 0) {
-      return disputes.map(toDistributorDisputeRow);
-    }
-    // Visual fallback while no live disputes exist for the account.
-    return distributorDemoDisputes.map((dispute) => ({
-      id: dispute.id,
-      sourceId: dispute.id,
-      orderId: dispute.orderId,
-      orderSourceId: dispute.orderId,
-      amount: dispute.amount,
-      itemName: dispute.itemName,
-      reason: dispute.reason,
-      against: dispute.against,
-      status: dispute.status,
-      resolutionOutcome:
-        dispute.status === "resolved" ? "refund_buyer" : undefined,
-      createdAt: dispute.createdAt,
-    }));
+    return Array.isArray(disputes) ? disputes.map(toDistributorDisputeRow) : [];
   }, [disputes]);
 
   const orderMetrics = {
     total: String(displayOrders.length).padStart(2, "0"),
     delivered: String(
-      displayOrders.filter((order) => String(order.status) === "completed").length || 10,
+      displayOrders.filter((order) => String(order.status) === "completed").length,
     ).padStart(2, "0"),
     pending: String(
       displayOrders.filter((order) => order.status === "created_pending_payment").length,
     ).padStart(2, "0"),
     cancelled: String(
-      displayOrders.filter((order) => order.status === "cancelled_pre_payment").length || 10,
+      displayOrders.filter((order) => order.status === "cancelled_pre_payment").length,
     ).padStart(2, "0"),
   };
 
@@ -618,82 +598,94 @@ export default function DistributorOrdersPage() {
                 </button>
               </div>
 
-              <div className="mt-8 hidden overflow-x-auto md:block">
-                <table className="w-full min-w-[940px] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-[#EEF2F7] text-xs text-[#6B7280]">
-                      <th className="py-3 pr-4 font-medium">Dispute ID</th>
-                      <th className="py-3 pr-4 font-medium">Order ID</th>
-                      <th className="py-3 pr-4 font-medium">Amount</th>
-                      <th className="py-3 pr-4 font-medium">Item name</th>
-                      <th className="py-3 pr-4 font-medium">Reason for dispute</th>
-                      <th className="py-3 pr-4 font-medium">Against</th>
-                      <th className="py-3 pr-4 font-medium">Status</th>
-                      <th className="py-3 font-medium">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {displayDisputes.map((dispute) => {
-                      const statusTone = getDisputeStatusTone(
-                        dispute.status,
-                        dispute.resolutionOutcome,
-                        "seller",
-                      );
-                      return (
-                        <tr
-                          key={dispute.sourceId}
-                          onClick={() =>
-                            router.push(
-                              `/dashboard/distributor/orders/${
-                                dispute.orderSourceId || dispute.sourceId
-                              }/disputes/${dispute.sourceId}`,
-                            )
-                          }
-                          className="cursor-pointer border-b border-[#F3F4F6]"
-                        >
-                          <td className="py-4 pr-4 text-[#111827]">{dispute.id}</td>
-                          <td className="py-4 pr-4 text-[#111827]">
-                            {dispute.orderId}
-                          </td>
-                          <td className="py-4 pr-4 text-[#111827]">
-                            {formatCurrency(dispute.amount)}
-                          </td>
-                          <td className="py-4 pr-4 text-[#111827]">
-                            {dispute.itemName}
-                          </td>
-                          <td className="py-4 pr-4 text-[#111827]">
-                            {dispute.reason}
-                          </td>
-                          <td className="py-4 pr-4 text-[#111827]">
-                            {dispute.against}
-                          </td>
-                          <td className={`py-4 pr-4 ${statusTone.textClassName}`}>
-                            {statusTone.label}
-                          </td>
-                          <td className="py-4">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
+              {displayDisputes.length === 0 ? (
+                <div className="mt-8">
+                  <EmptyState
+                    icon={<ClipboardList />}
+                    title="No disputes found"
+                    description="Disputes raised by buyers against your orders will appear here."
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="mt-8 hidden overflow-x-auto md:block">
+                    <table className="w-full min-w-[940px] text-left text-sm">
+                      <thead>
+                        <tr className="border-b border-[#EEF2F7] text-xs text-[#6B7280]">
+                          <th className="py-3 pr-4 font-medium">Dispute ID</th>
+                          <th className="py-3 pr-4 font-medium">Order ID</th>
+                          <th className="py-3 pr-4 font-medium">Amount</th>
+                          <th className="py-3 pr-4 font-medium">Item name</th>
+                          <th className="py-3 pr-4 font-medium">Reason for dispute</th>
+                          <th className="py-3 pr-4 font-medium">Against</th>
+                          <th className="py-3 pr-4 font-medium">Status</th>
+                          <th className="py-3 font-medium">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {displayDisputes.map((dispute) => {
+                          const statusTone = getDisputeStatusTone(
+                            dispute.status,
+                            dispute.resolutionOutcome,
+                            "seller",
+                          );
+                          return (
+                            <tr
+                              key={dispute.sourceId}
+                              onClick={() =>
                                 router.push(
                                   `/dashboard/distributor/orders/${
                                     dispute.orderSourceId || dispute.sourceId
                                   }/disputes/${dispute.sourceId}`,
-                                );
-                              }}
-                              className="inline-flex items-center gap-2 text-sm font-medium text-primary"
+                                )
+                              }
+                              className="cursor-pointer border-b border-[#F3F4F6]"
                             >
-                              <Eye size={15} />
-                              View
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              <MobileDisputeList disputes={displayDisputes} onView={viewDispute} />
+                              <td className="py-4 pr-4 text-[#111827]">{dispute.id}</td>
+                              <td className="py-4 pr-4 text-[#111827]">
+                                {dispute.orderId}
+                              </td>
+                              <td className="py-4 pr-4 text-[#111827]">
+                                {formatCurrency(dispute.amount)}
+                              </td>
+                              <td className="py-4 pr-4 text-[#111827]">
+                                {dispute.itemName}
+                              </td>
+                              <td className="py-4 pr-4 text-[#111827]">
+                                {dispute.reason}
+                              </td>
+                              <td className="py-4 pr-4 text-[#111827]">
+                                {dispute.against}
+                              </td>
+                              <td className={`py-4 pr-4 ${statusTone.textClassName}`}>
+                                {statusTone.label}
+                              </td>
+                              <td className="py-4">
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    router.push(
+                                      `/dashboard/distributor/orders/${
+                                        dispute.orderSourceId || dispute.sourceId
+                                      }/disputes/${dispute.sourceId}`,
+                                    );
+                                  }}
+                                  className="inline-flex items-center gap-2 text-sm font-medium text-primary"
+                                >
+                                  <Eye size={15} />
+                                  View
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <MobileDisputeList disputes={displayDisputes} onView={viewDispute} />
+                </>
+              )}
             </section>
           </>
         )}

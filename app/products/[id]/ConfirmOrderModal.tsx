@@ -220,27 +220,30 @@ export default function ConfirmOrderModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-order-title"
-        className="relative max-h-[calc(100vh-32px)] w-full max-w-[760px] overflow-hidden rounded-[28px] bg-white shadow-2xl"
+        className="relative flex max-h-[calc(100vh-32px)] w-full max-w-[760px] flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl"
       >
-        {/* ── scrollable main content ── */}
-        <div className="max-h-[calc(100vh-32px)] overflow-y-auto p-5 sm:p-8 lg:p-10">
+        {/* ── fixed header ── */}
+        <div className="relative shrink-0 px-5 pt-5 sm:px-8 sm:pt-8 lg:px-10 lg:pt-10">
           <button
             type="button"
             onClick={onClose}
             aria-label="Close confirm order"
-            className="absolute right-5 top-5 flex size-10 items-center justify-center rounded-full border border-[#DDE0E5] text-[#4B5563]"
+            className="absolute right-5 top-5 flex size-10 items-center justify-center rounded-full border border-[#DDE0E5] text-[#4B5563] sm:right-8 sm:top-8 lg:right-10 lg:top-10"
           >
             <X size={20} />
           </button>
 
-          <div className="space-y-7">
-            <h2
-              id="confirm-order-title"
-              className="pr-10 text-[28px] font-black leading-tight text-[#4B5563] lg:text-[34px]"
-            >
-              Confirm Order
-            </h2>
+          <h2
+            id="confirm-order-title"
+            className="pr-10 text-[28px] font-black leading-tight text-[#4B5563] lg:text-[34px]"
+          >
+            Confirm Order
+          </h2>
+        </div>
 
+        {/* ── scrollable main content ── */}
+        <div className="flex-1 overflow-y-auto p-5 pt-7 sm:p-8 sm:pt-7 lg:p-10 lg:pt-7">
+          <div className="space-y-7">
             {/* Current Order */}
             <div className="space-y-4">
               <div>

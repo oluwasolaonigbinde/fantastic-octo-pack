@@ -2,23 +2,40 @@
 
 import { ChangeEvent, Suspense, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Eye, FileText, Filter, MapPin, MessageCircle, PackageCheck, Send } from "lucide-react";
+import { ArrowLeft, ChevronRight, Eye, FileText, Filter, Info, MapPin, MessageCircle, PackageCheck, User } from "lucide-react";
 import Header from "../../component/header";
-import { Button, EmptyState, Input, RightSlider, Skeleton } from "@/components/base";
+import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, EmptyState, FileUpload, Input, Select, Skeleton } from "@/components/base";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { useDistributorInboxQuery, useRespondToQuoteMutation } from "@/hooks/queries/rfqs";
 import { useMyProductsQuery } from "@/hooks/queries/products";
 import { QUOTE_STATUS_LABELS, type Quote, type QuoteLineItem, type Rfq, type UserRef } from "@/types/rfq";
 import { buildMessagingComposeHref } from "@/utils/messagingRoutes";
 
-type OfferLine = { available: boolean; product: string; price: string; quantity: string; availableModel: string; notes: string };
+/** Per RFQ line the distributor is responding to. Mirrors the Figma respond modal. */
+type OfferLine = { available: boolean; product: string; availableModel: string; price: string; stockCount: string };
 type QuoteFilter = "all" | "responded" | "approved" | "declined";
 
+const WARRANTY_OPTIONS = [
+  { label: "No warranty", value: "No warranty" },
+  { label: "1 month", value: "1 month" },
+  { label: "3 months", value: "3 months" },
+  { label: "6 months", value: "6 months" },
+  { label: "1 year", value: "1 year" },
+  { label: "2 years", value: "2 years" },
+];
+const STOCK_OPTIONS = [
+  { label: "1 - 10 units", value: "10" },
+  { label: "11 - 50 units", value: "50" },
+  { label: "51 - 100 units", value: "100" },
+  { label: "100+ units", value: "150" },
+];
+
+const money = (value?: number | null) => value == null ? "--" : new Intl.NumberFormat("en-NG", { style: "currency", currency: "NGN", minimumFractionDigits: 0 }).format(value);
 const asRfq = (quote: Quote) => typeof quote.rfq === "object" && quote.rfq ? quote.rfq as Rfq : null;
 const userId = (user: string | UserRef | undefined) => typeof user === "string" ? user : user?._id;
 const buyerName = (rfq: Rfq | null) => !rfq || typeof rfq.buyer === "string" ? "Buyer" : `${(rfq.buyer as UserRef).firstName || ""} ${(rfq.buyer as UserRef).lastName || ""}`.trim() || "Buyer";
-const deliveryLocation = (rfq: Rfq | null) => rfq?.deliveryAddress ? [rfq.deliveryAddress.city, rfq.deliveryAddress.state, rfq.deliveryAddress.country].filter(Boolean).join(", ") : "--";
-const initialLines = (quote: Quote): Record<number, OfferLine> => Object.fromEntries((asRfq(quote)?.items ?? []).map((item, index) => [index, { available: true, product: "", price: "", quantity: String(item.quantity), availableModel: item.model || "", notes: "" }]));
+const deliveryLocation = (rfq: Rfq | null) => rfq?.deliveryAddress ? [rfq.deliveryAddress.address, rfq.deliveryAddress.city, rfq.deliveryAddress.state, rfq.deliveryAddress.country].filter(Boolean).join(", ") : "--";
+const initialLines = (quote: Quote): Record<number, OfferLine> => Object.fromEntries((asRfq(quote)?.items ?? []).map((item, index) => [index, { available: true, product: "", availableModel: item.model || "", price: "", stockCount: "" }]));
 const quoteStatusClass = (status: Quote["status"]) => {
   if (status === "quoted" || status === "selected_for_order") return "text-success";
   if (status === "rejected_by_buyer" || status === "not_selected") return "text-danger";
@@ -38,12 +55,29 @@ function DistributorQuotesPageInner() {
   const auth = useAppSelector((state) => state.auth.data);
   const { data: inbox = [], isLoading, refetch } = useDistributorInboxQuery();
   const { data: myProducts } = useMyProductsQuery(auth?._id, { enabled: Boolean(auth?._id) });
+  // Free (unreserved) on-hand stock per product. A distributor can only quote
+  // what they can fulfil, so out-of-stock products are hidden from the picker
+  // and quoted quantities are capped to this — otherwise the order fails later
+  // at payment with "Insufficient stock".
+  const productFreeStock = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const product of myProducts?.products ?? []) {
+      map.set(product._id, Number(product.quantityAvailable ?? 0) - Number(product.quantityReserved ?? 0));
+    }
+    return map;
+  }, [myProducts]);
+  const productOptions = useMemo(() => (myProducts?.products ?? [])
+    .filter((product: { _id: string }) => (productFreeStock.get(product._id) ?? 0) > 0)
+    .map((product: { _id: string; name: string }) => ({ label: product.name, value: product._id })), [myProducts, productFreeStock]);
   const respond = useRespondToQuoteMutation();
   const [selected, setSelected] = useState<Quote | null>(null);
-  const [view, setView] = useState<"detail" | "respond">("detail");
+  const [view, setView] = useState<"detail" | "respond" | "bulk">("detail");
+  const [editingItem, setEditingItem] = useState<number | null>(null);
+  const [itemStatus, setItemStatus] = useState<Record<number, "quoted" | "unavailable">>({});
+  const [bulkStep, setBulkStep] = useState<"items" | "finalize">("items");
   const [lines, setLines] = useState<Record<number, OfferLine>>({});
   const [warranty, setWarranty] = useState("");
-  const [notes, setNotes] = useState("");
+  const [deliveryTime, setDeliveryTime] = useState("");
   const [images, setImages] = useState<File[]>([]);
   const [catalogue, setCatalogue] = useState<File | undefined>();
   const [error, setError] = useState<string | null>(null);
@@ -70,43 +104,227 @@ function DistributorQuotesPageInner() {
   const pageCount = Math.max(1, Math.ceil(filtered.length / 10));
   const pageItems = filtered.slice((Math.min(page, pageCount) - 1) * 10, Math.min(page, pageCount) * 10);
 
-  const openQuote = (quote: Quote, nextView: "detail" | "respond" = "detail") => { setSelected(quote); setLines(initialLines(quote)); setWarranty(quote.warranty || ""); setNotes(quote.notes || ""); setImages([]); setCatalogue(undefined); setError(null); setView(nextView); };
-  const close = () => { setSelected(null); setError(null); setView("detail"); };
+  const openQuote = (quote: Quote) => {
+    const request = asRfq(quote);
+    const bulk = Boolean(request?.isBulk) && quote.status === "pending_response";
+    setSelected(quote); setLines(initialLines(quote)); setWarranty(quote.warranty || ""); setDeliveryTime(""); setImages([]); setCatalogue(undefined); setError(null);
+    setItemStatus({}); setEditingItem(null); setBulkStep("items");
+    setView(bulk ? "bulk" : "detail");
+  };
+  const close = () => { setSelected(null); setError(null); setView("detail"); setEditingItem(null); setItemStatus({}); setBulkStep("items"); };
   const updateLine = (index: number, update: Partial<OfferLine>) => setLines((current) => ({ ...current, [index]: { ...current[index], ...update } }));
+
+  const startQuoteItem = (index: number) => { updateLine(index, { available: true }); setError(null); setEditingItem(index); };
+  const markItemUnavailable = (index: number) => { updateLine(index, { available: false }); setItemStatus((current) => ({ ...current, [index]: "unavailable" })); if (editingItem === index) setEditingItem(null); };
+  // Guard a single available line against over-quoting its product's free stock.
+  // Returns an error message, or null when the quantity is fulfillable.
+  const stockError = (line?: OfferLine): string | null => {
+    if (!line?.available || !line.product || !line.stockCount) return null;
+    const free = productFreeStock.get(line.product) ?? 0;
+    if (Number(line.stockCount) > free) {
+      const name = productOptions.find((option) => option.value === line.product)?.label ?? "this product";
+      return `Only ${free} in stock for "${name}". Reduce the quantity to ${free} or less.`;
+    }
+    return null;
+  };
+
+  const saveQuoteItem = (index: number) => { const line = lines[index]; if (!line?.product || !line.price || !line.stockCount) { setError("Select the product, price, and stock count for this item."); return; } const overStock = stockError(line); if (overStock) { setError(overStock); return; } setItemStatus((current) => ({ ...current, [index]: "quoted" })); setError(null); setEditingItem(null); };
   const applyFilters = () => { setAppliedFilters({ product: draftProduct, dateRange: draftDateRange }); setPage(1); };
 
-  const submitResponse = async () => {
+  const sendResponse = async (payload: QuoteLineItem[], withFiles: boolean) => {
     if (!selected) return;
-    const rfq = asRfq(selected);
-    if (!rfq) { setError("This request is missing the RFQ line items required to respond."); return; }
-    const payload: QuoteLineItem[] = rfq.items.map((item, index) => { const line = lines[index]; return { rfqItemIndex: index, available: line.available, product: line.available ? line.product : undefined, pricePerUnit: line.available ? Number(line.price) : undefined, quantity: line.available ? Number(line.quantity) : undefined, availableModel: line.available ? line.availableModel || undefined : undefined, notes: line.notes || undefined }; });
-    if (payload.some((line) => line.available && (!line.product || !line.pricePerUnit || !line.quantity))) { setError("Choose one of your products, a price, and available quantity for every available line."); return; }
     setError(null);
-    try { const result = await respond.mutateAsync({ quoteId: selected._id, data: { items: payload, warranty: warranty || undefined, notes: notes || undefined }, files: { images: images.length ? images : undefined, catalogue } }); await refetch(); close(); setNotice(result.message || "Quote sent to buyer."); window.setTimeout(() => setNotice(null), 3600); } catch (submissionError) { setError(submissionError instanceof Error ? submissionError.message : "Unable to send the quote."); }
+    try {
+      const notes = deliveryTime.trim() ? `Delivery time: ${deliveryTime.trim()}` : undefined;
+      const result = await respond.mutateAsync({ quoteId: selected._id, data: { items: payload, warranty: warranty || undefined, notes }, files: withFiles ? { images: images.length ? images : undefined, catalogue } : undefined });
+      await refetch();
+      close();
+      setNotice(result.message || "Quote sent to buyer.");
+      window.setTimeout(() => setNotice(null), 3600);
+    } catch (submissionError) {
+      setError(submissionError instanceof Error ? submissionError.message : "Unable to send the quote.");
+    }
+  };
+
+  const submitResponse = async () => {
+    const rfq = selected ? asRfq(selected) : null;
+    if (!rfq) { setError("This request is missing the RFQ line items required to respond."); return; }
+    const payload: QuoteLineItem[] = rfq.items.map((item, index) => { const line = lines[index]; return { rfqItemIndex: index, available: line.available, product: line.available ? line.product || undefined : undefined, pricePerUnit: line.available ? Number(line.price) : undefined, quantity: line.available ? Number(line.stockCount) : undefined, availableModel: line.available ? line.availableModel || undefined : undefined }; });
+    if (payload.some((line) => line.available && (!line.product || !line.pricePerUnit || !line.quantity))) { setError("Select the product from your catalogue, a price, and stock count for every available item."); return; }
+    const overStock = rfq.items.map((_, index) => stockError(lines[index])).find(Boolean);
+    if (overStock) { setError(overStock); return; }
+    await sendResponse(payload, true);
+  };
+
+  const markUnavailable = async () => {
+    const rfq = selected ? asRfq(selected) : null;
+    if (!rfq) return;
+    const payload: QuoteLineItem[] = rfq.items.map((_, index) => ({ rfqItemIndex: index, available: false }));
+    await sendResponse(payload, false);
   };
 
   const rfq = selected ? asRfq(selected) : null;
-  const sliderTitle = view === "respond" ? <div className="flex items-center gap-3"><button type="button" aria-label="Back to quote details" onClick={() => setView("detail")}><ArrowLeft size={22} /></button><span>Send Quote</span></div> : "Quote details";
 
   return <div className="min-h-full bg-gray7"><Header title="Quote Request" description="View all quote request from customers" /><main className="mx-auto max-w-[1160px] space-y-4 p-4 md:space-y-5 md:p-6">
     <div className="grid grid-cols-2 border-b border-gray5 text-sm md:text-base"><button type="button" onClick={() => { setMode("single"); setPage(1); }} className={`h-14 border-b-2 transition-colors ${mode === "single" ? "border-primary bg-primary text-white" : "border-transparent text-gray1"}`}>Single Quote</button><button type="button" onClick={() => { setMode("bulk"); setPage(1); }} className={`h-14 border-b-2 transition-colors ${mode === "bulk" ? "border-primary bg-primary text-white" : "border-transparent text-gray1"}`}>Bulk Quotes</button></div>
     <section className="rounded-2xl border border-gray5 bg-white p-5"><p className="text-3xl font-semibold leading-none text-gray1">{totalItems}</p><p className="mt-3 text-lg text-gray1">Total Item requested</p></section>
     <nav aria-label="Quote status" className="flex overflow-x-auto border-b border-gray5"><Tab label="All Quotes" active={filter === "all"} onClick={() => { setFilter("all"); setPage(1); }} /><Tab label="Responded" active={filter === "responded"} onClick={() => { setFilter("responded"); setPage(1); }} /><Tab label="Quotes Approved" active={filter === "approved"} onClick={() => { setFilter("approved"); setPage(1); }} /><Tab label="Quotes Declined" active={filter === "declined"} onClick={() => { setFilter("declined"); setPage(1); }} /></nav>
     <section className="rounded-xl border border-gray5 bg-white p-5 md:p-5"><h2 className="text-xl font-medium text-gray1">All Request</h2><p className="mt-1 text-sm text-gray2">Total list of all requested quotes for equipment and consumables</p><div className="mt-10"><p className="text-base font-medium text-gray1">Filter table list by:</p><div className="mt-5 grid gap-4 md:grid-cols-[250px_250px_250px]"><Input id="quote-search" label="Product name" placeholder="Enter product name" value={draftProduct} onValueChange={setDraftProduct} /><Input id="quote-date-range" label="Date" placeholder="YYYY-MM-DD - YYYY-MM-DD" value={draftDateRange} onValueChange={setDraftDateRange} /><Button title="Filter" variant="primaryLight" size="md" iconLeft={<Filter size={18} />} onClick={applyFilters} className="self-end" /></div></div>
-    {isLoading ? <div className="mt-8 space-y-3"><Skeleton className="h-12" /><Skeleton className="h-12" /></div> : pageItems.length === 0 ? <EmptyState icon={<PackageCheck />} title="No quote requests" description="New category-matched requests will arrive here." /> : <div className="mt-10 overflow-x-auto"><table className="min-w-[850px] w-full text-left"><thead className="border-b border-gray6 text-sm text-gray3"><tr><th className="pb-5 font-medium">Quote ID</th><th className="pb-5 font-medium">Qty</th><th className="pb-5 font-medium">Buyer region</th><th className="pb-5 font-medium">Date of request</th><th className="pb-5 font-medium">Status</th><th className="pb-5 font-medium">Action</th></tr></thead><tbody>{pageItems.map((quote) => { const request = asRfq(quote); const chatHref = quote.status === "selected_for_order" ? buildMessagingComposeHref(auth?.role, userId(request?.buyer)) : null; return <tr key={quote._id} className="border-b border-gray6 last:border-0 text-sm"><td className="py-5 font-medium text-gray1">{quoteId(quote)}</td><td className="py-5 text-gray1">{request?.items.reduce((sum, item) => sum + item.quantity, 0) ?? "--"}</td><td className="py-5 text-gray1">{deliveryLocation(request)}</td><td className="py-5 text-gray1">{displayRequestDate(quote)}</td><td className={`py-5 font-medium ${quoteStatusClass(quote.status)}`}>{QUOTE_STATUS_LABELS[quote.status]}</td><td className="py-5">{quote.status === "pending_response" ? <button type="button" onClick={() => openQuote(quote, "respond")} className="inline-flex items-center gap-2 font-medium text-[#a66c43] hover:underline"><Send size={16} />Respond</button> : chatHref ? <Link href={chatHref} className="inline-flex items-center gap-2 font-medium text-fuchsia-500 hover:underline"><MessageCircle size={17} />Open chat</Link> : <button type="button" onClick={() => openQuote(quote)} className="inline-flex items-center gap-2 font-medium text-primary hover:underline"><Eye size={18} />View</button>}</td></tr>; })}</tbody></table></div>}
+    {isLoading ? <div className="mt-8 space-y-3"><Skeleton className="h-12" /><Skeleton className="h-12" /></div> : pageItems.length === 0 ? <EmptyState icon={<PackageCheck />} title="No quote requests" description="New category-matched requests will arrive here." /> : <>
+      <div className="mt-10 hidden overflow-x-auto md:block"><table className="min-w-[850px] w-full text-left"><thead className="border-b border-gray6 text-sm text-gray3"><tr><th className="pb-5 font-medium">Quote ID</th><th className="pb-5 font-medium">Qty</th><th className="pb-5 font-medium">Buyer region</th><th className="pb-5 font-medium">Date of request</th><th className="pb-5 font-medium">Status</th><th className="pb-5 font-medium">Action</th></tr></thead><tbody>{pageItems.map((quote) => { const request = asRfq(quote); const chatHref = quote.status === "selected_for_order" ? buildMessagingComposeHref(auth?.role, userId(request?.buyer)) : null; return <tr key={quote._id} className="border-b border-gray6 last:border-0 text-sm"><td className="py-5 font-medium text-gray1">{quoteId(quote)}</td><td className="py-5 text-gray1">{request?.items.reduce((sum, item) => sum + item.quantity, 0) ?? "--"}</td><td className="py-5 text-gray1">{deliveryLocation(request)}</td><td className="py-5 text-gray1">{displayRequestDate(quote)}</td><td className={`py-5 font-medium ${quoteStatusClass(quote.status)}`}>{QUOTE_STATUS_LABELS[quote.status]}</td><td className="py-5">{chatHref ? <Link href={chatHref} className="inline-flex items-center gap-2 font-medium text-fuchsia-500 hover:underline"><MessageCircle size={17} />Open chat</Link> : <button type="button" onClick={() => openQuote(quote)} className="inline-flex items-center gap-2 font-medium text-primary hover:underline"><Eye size={18} />View</button>}</td></tr>; })}</tbody></table></div>
+      <ul className="mt-8 space-y-4 md:hidden">{pageItems.map((quote) => { const request = asRfq(quote); const chatHref = quote.status === "selected_for_order" ? buildMessagingComposeHref(auth?.role, userId(request?.buyer)) : null; const card = <div className="rounded-xl border border-gray5 bg-white p-4"><div className="flex items-center justify-between border-b border-gray6 pb-3"><span className="text-base font-semibold text-gray1">{buyerName(request)}</span><ChevronRight size={18} className="shrink-0 text-gray2" /></div><dl className="mt-3 grid grid-cols-2 gap-y-3 text-sm"><div><dt className="text-xs uppercase tracking-wide text-gray3">Buyer region</dt><dd className="mt-1 font-medium text-gray1">{deliveryLocation(request)}</dd></div><div><dt className="text-xs uppercase tracking-wide text-gray3">Status</dt><dd className={`mt-1 font-medium ${quoteStatusClass(quote.status)}`}>{QUOTE_STATUS_LABELS[quote.status]}</dd></div><div className="col-span-2"><dt className="text-xs uppercase tracking-wide text-gray3">Request date</dt><dd className="mt-1 font-medium text-gray1">{displayRequestDate(quote)}</dd></div></dl></div>; return <li key={quote._id}>{chatHref ? <Link href={chatHref} className="block">{card}</Link> : <button type="button" onClick={() => openQuote(quote)} className="block w-full text-left">{card}</button>}</li>; })}</ul>
+    </>}
     <div className="mt-7 flex items-center gap-3 text-sm text-gray1"><span>Page</span><span className="grid size-11 place-items-center rounded-lg border border-gray5 bg-white">{Math.min(page, pageCount)}</span><span>of {pageCount}</span><button type="button" aria-label="Previous page" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))} className="ml-8 grid size-11 place-items-center rounded-lg border border-gray5 text-gray2 disabled:opacity-40"><ArrowLeft size={17} /></button><button type="button" aria-label="Next page" disabled={page >= pageCount} onClick={() => setPage((current) => Math.min(pageCount, current + 1))} className="grid size-11 place-items-center rounded-lg bg-primary text-white disabled:opacity-40"><ArrowLeft size={17} className="rotate-180" /></button></div>
-    </section></main><RightSlider open={Boolean(selected)} onClose={close} title={sliderTitle}>{selected && rfq ? view === "detail" ? <QuoteDetail quote={selected} rfq={rfq} onRespond={() => setView("respond")} /> : <QuoteResponseForm rfq={rfq} lines={lines} products={myProducts?.products ?? []} warranty={warranty} notes={notes} images={images} catalogue={catalogue} busy={respond.isPending} error={error} updateLine={updateLine} setWarranty={setWarranty} setNotes={setNotes} onImages={(event) => setImages(Array.from(event.target.files ?? []).slice(0, 3))} onCatalogue={(event) => setCatalogue(event.target.files?.[0])} onSubmit={() => void submitResponse()} /> : null}</RightSlider>{notice ? <div role="status" className="fixed bottom-6 right-6 z-50 rounded-lg bg-success px-4 py-3 text-sm text-white shadow-lg">{notice}</div> : null}</div>;
+    </section></main>
+    <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) close(); }}>
+      <DialogContent className="max-w-[520px] gap-0 p-0">
+        <DialogHeader className="flex-row items-center justify-between space-y-0 border-b border-gray5 px-6 py-4 text-left">
+          <DialogTitle className="text-xl font-semibold text-gray1">{view === "bulk" ? "Bulk RFQ Details" : "Quote Details"}</DialogTitle>
+        </DialogHeader>
+        <div className="max-h-[80vh] overflow-y-auto px-6 py-5">
+          {selected && rfq ? (
+            view === "bulk"
+              ? <BulkRespond rfq={rfq} lines={lines} itemStatus={itemStatus} editingItem={editingItem} bulkStep={bulkStep} productOptions={productOptions} warranty={warranty} deliveryTime={deliveryTime} images={images} catalogue={catalogue} busy={respond.isPending} error={error} buyerLabel={buyerName(rfq)} deliveryLoc={deliveryLocation(rfq)} onStartItem={startQuoteItem} onMarkUnavailable={markItemUnavailable} onUpdateLine={updateLine} onSaveItem={saveQuoteItem} onCancelItem={() => { setEditingItem(null); setError(null); }} onGoFinalize={() => { setError(null); setBulkStep("finalize"); }} onBackToItems={() => { setError(null); setBulkStep("items"); }} setWarranty={setWarranty} setDeliveryTime={setDeliveryTime} onImages={(event) => setImages(Array.from(event.target.files ?? []).slice(0, 4))} onCatalogue={(event) => setCatalogue(event.target.files?.[0])} onSend={() => void submitResponse()} />
+              : view === "detail"
+              ? <QuoteDetail quote={selected} rfq={rfq} busy={respond.isPending} error={error} onRespond={() => { setError(null); setView("respond"); }} onUnavailable={() => void markUnavailable()} />
+              : <QuoteResponseForm rfq={rfq} lines={lines} productOptions={productOptions} warranty={warranty} deliveryTime={deliveryTime} images={images} catalogue={catalogue} busy={respond.isPending} error={error} updateLine={updateLine} setWarranty={setWarranty} setDeliveryTime={setDeliveryTime} onImages={(event) => setImages(Array.from(event.target.files ?? []).slice(0, 4))} onCatalogue={(event) => setCatalogue(event.target.files?.[0])} onSubmit={() => void submitResponse()} />
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
+    {notice ? <div role="status" className="fixed bottom-6 right-6 z-50 rounded-lg bg-success px-4 py-3 text-sm text-white shadow-lg">{notice}</div> : null}</div>;
 }
 
 function Tab({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) { return <button type="button" onClick={onClick} className={`min-w-[170px] shrink-0 flex-1 border-b-2 px-5 py-4 text-base font-medium transition-colors md:px-5 ${active ? "border-primary text-primary" : "border-transparent text-gray3"}`}>{label}</button>; }
 
-function QuoteDetail({ quote, rfq, onRespond }: { quote: Quote; rfq: Rfq; onRespond: () => void }) {
-  const address = rfq.deliveryAddress ? [rfq.deliveryAddress.address, rfq.deliveryAddress.city, rfq.deliveryAddress.state].filter(Boolean).join(", ") : "No delivery address provided";
-  return <div className="space-y-6"><section className="space-y-4"><div><p className="text-sm text-gray3">Buyer</p><p className="mt-1 font-medium text-gray1">{buyerName(rfq)}</p></div><div><p className="text-sm text-gray3">Delivery address</p><p className="mt-1 flex gap-2 text-sm text-gray1"><MapPin size={16} className="shrink-0 text-primary" />{address}</p></div><div><p className="text-sm text-gray3">Delivery timeline</p><p className="mt-1 text-sm text-gray1">{rfq.deliveryTimeline || "Not specified"}</p></div></section><section><h3 className="font-semibold text-gray1">Requested items</h3><div className="mt-3 space-y-3">{rfq.items.map((item, index) => <div key={`${item.productName}-${index}`} className="rounded-lg border border-gray5 p-4"><p className="font-medium text-gray1">{item.productName}</p><p className="mt-1 text-sm text-gray3">Quantity: {item.quantity} · {item.model || "No model specified"}</p>{item.description ? <p className="mt-2 text-sm text-gray2">{item.description}</p> : null}</div>)}</div></section>{rfq.attachments?.length ? <section><p className="mb-2 text-sm text-gray3">Attachments</p>{rfq.attachments.map((file) => <a key={file.cloudinary_id} href={file.url} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-primary hover:underline"><FileText size={16} />{file.originalName || "Attachment"}</a>)}</section> : null}{quote.status === "pending_response" ? <Button title="Send Quote" variant="primary" size="md" onClick={onRespond} className="w-full" /> : <div className="rounded-lg bg-gray7 p-4 text-sm text-gray2">This request is {QUOTE_STATUS_LABELS[quote.status].toLowerCase()}.</div>}</div>;
+function Field({ label, children }: { label: string; children: React.ReactNode }) { return <div><p className="text-sm text-gray3">{label}</p><div className="mt-1 text-base text-gray1">{children}</div></div>; }
+
+function QuoteDetail({ quote, rfq, busy, error, onRespond, onUnavailable }: { quote: Quote; rfq: Rfq; busy: boolean; error: string | null; onRespond: () => void; onUnavailable: () => void }) {
+  const pending = quote.status === "pending_response";
+  return <div className="space-y-5">
+    {rfq.items.map((item, index) => <div key={`${item.productName}-${index}`} className="space-y-5">
+      <Field label="Product name">{item.productName}</Field>
+      <Field label="Model">{item.model || "Not specified"}</Field>
+      <Field label="Quantity">{item.quantity}</Field>
+      {item.description ? <Field label="Description"><p className="whitespace-pre-line leading-relaxed">{item.description}</p></Field> : null}
+    </div>)}
+    <Field label="Delivery location"><span className="flex items-start gap-2"><MapPin size={16} className="mt-0.5 shrink-0 text-primary" />{deliveryLocation(rfq)}</span></Field>
+    {rfq.attachments?.length ? <div><p className="text-sm text-gray3">Attachment</p><div className="mt-2 space-y-2">{rfq.attachments.map((file) => <div key={file.cloudinary_id} className="flex items-center justify-between gap-3"><span className="flex items-center gap-3 text-sm text-gray1"><span className="grid size-10 place-items-center rounded-lg bg-success-light text-success"><FileText size={18} /></span>{file.originalName || "Attachment"}</span><a href={file.url} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline"><Eye size={16} />View</a></div>)}</div></div> : null}
+    {error ? <p className="text-sm text-danger">{error}</p> : null}
+    {pending ? <div className="space-y-3 pt-2">
+      <Button title="Respond to Quote" variant="primary" size="lg" onClick={onRespond} className="w-full" />
+      <Button title={busy ? "Sending..." : "Not Available"} variant="primaryLight" size="lg" isBusy={busy} disabled={busy} onClick={onUnavailable} className="w-full" />
+    </div> : <div className="space-y-4">
+      <div className="rounded-lg bg-gray7 p-4 text-sm text-gray2">This request is {QUOTE_STATUS_LABELS[quote.status].toLowerCase()}.</div>
+      {quote.items.length ? <div className="space-y-3">
+        <p className="text-sm font-semibold text-gray1">Your response</p>
+        {rfq.items.map((item, index) => { const line = quote.items.find((entry) => entry.rfqItemIndex === index); return <div key={`response-${index}`} className="rounded-lg border border-gray5 p-3 text-sm">
+          <div className="flex items-center justify-between gap-3"><span className="font-medium text-gray1">{item.productName}</span><span className={line?.available ? "text-success" : "text-[#fe6e00]"}>{line?.available ? "Available" : "Unavailable"}</span></div>
+          {line?.available ? <dl className="mt-2 grid grid-cols-3 gap-2"><div><dt className="text-xs text-gray3">Price</dt><dd className="text-gray1">{money(line.pricePerUnit)}</dd></div><div><dt className="text-xs text-gray3">Qty</dt><dd className="text-gray1">{line.quantity ?? "--"}</dd></div><div><dt className="text-xs text-gray3">Model</dt><dd className="text-gray1">{line.availableModel || "--"}</dd></div></dl> : null}
+        </div>; })}
+        <div className="flex items-center justify-between border-t border-gray6 pt-3"><span className="text-sm text-gray3">Total</span><span className="text-base font-semibold text-gray1">{money(quote.totalPrice)}</span></div>
+        {quote.warranty ? <Field label="Warranty">{quote.warranty}</Field> : null}
+        {quote.notes ? <Field label="Notes"><p className="whitespace-pre-line">{quote.notes}</p></Field> : null}
+      </div> : null}
+    </div>}
+  </div>;
 }
 
-function QuoteResponseForm({ rfq, lines, products, warranty, notes, images, catalogue, busy, error, updateLine, setWarranty, setNotes, onImages, onCatalogue, onSubmit }: { rfq: Rfq; lines: Record<number, OfferLine>; products: { _id: string; name: string }[]; warranty: string; notes: string; images: File[]; catalogue?: File; busy: boolean; error: string | null; updateLine: (index: number, update: Partial<OfferLine>) => void; setWarranty: (value: string) => void; setNotes: (value: string) => void; onImages: (event: ChangeEvent<HTMLInputElement>) => void; onCatalogue: (event: ChangeEvent<HTMLInputElement>) => void; onSubmit: () => void; }) {
-  return <div className="space-y-6"><p className="text-sm text-gray3">Respond to every requested line. An unavailable line will be recorded clearly for the buyer.</p>{rfq.items.map((item, index) => { const line = lines[index]; return <section key={`${item.productName}-${index}`} className="space-y-4 rounded-lg border border-gray5 bg-white p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold text-gray1">{item.productName}</h3><p className="text-sm text-gray3">Requested quantity: {item.quantity}</p></div><label className="inline-flex items-center gap-2 text-sm text-gray1"><input type="checkbox" checked={line?.available ?? true} onChange={(event) => updateLine(index, { available: event.target.checked })} />Available</label></div>{line?.available ? <div className="space-y-4"><label className="block text-sm text-gray1">Your product<select value={line.product} onChange={(event) => updateLine(index, { product: event.target.value })} className="mt-2 h-11 w-full rounded-lg border border-gray5 bg-white px-3"><option value="">Select your listed product</option>{products.map((product) => <option key={product._id} value={product._id}>{product.name}</option>)}</select></label><div className="grid gap-4 sm:grid-cols-2"><Input id={`quote-price-${index}`} label="Unit price" type="number" placeholder="Enter price" value={line.price} onValueChange={(value) => updateLine(index, { price: value })} /><Input id={`quote-quantity-${index}`} label="Available quantity" type="number" placeholder="Enter quantity" value={line.quantity} onValueChange={(value) => updateLine(index, { quantity: value })} /></div><Input id={`quote-model-${index}`} label="Available model (optional)" placeholder="Enter model" value={line.availableModel} onValueChange={(value) => updateLine(index, { availableModel: value })} /><label className="block text-sm text-gray1">Line note<textarea value={line.notes} onChange={(event) => updateLine(index, { notes: event.target.value })} rows={2} className="mt-2 w-full rounded-lg border border-gray5 p-3" /></label></div> : <p className="rounded-lg bg-danger-light p-3 text-sm text-danger">This item will be sent as unavailable.</p>}</section>; })}<Input id="quote-warranty" label="Warranty (optional)" placeholder="e.g. 12 months" value={warranty} onValueChange={setWarranty} /><label className="block text-sm text-gray1">Additional note<textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} className="mt-2 w-full rounded-lg border border-gray5 p-3" /></label><label className="block text-sm text-gray1">Images (optional)<input type="file" multiple accept="image/png,image/jpeg" onChange={onImages} className="mt-2 block w-full text-sm" /></label>{images.length ? <p className="text-xs text-gray3">{images.map((file) => file.name).join(", ")}</p> : null}<label className="block text-sm text-gray1">Catalogue (optional)<input type="file" accept="application/pdf" onChange={onCatalogue} className="mt-2 block w-full text-sm" /></label>{catalogue ? <p className="text-xs text-gray3">{catalogue.name}</p> : null}{error ? <p className="text-sm text-danger">{error}</p> : null}<Button title={busy ? "Sending..." : "Send Quote"} variant="primary" size="md" isBusy={busy} onClick={onSubmit} className="w-full" /></div>;
+function QuoteResponseForm({ rfq, lines, productOptions, warranty, deliveryTime, images, catalogue, busy, error, updateLine, setWarranty, setDeliveryTime, onImages, onCatalogue, onSubmit }: { rfq: Rfq; lines: Record<number, OfferLine>; productOptions: { label: string; value: string }[]; warranty: string; deliveryTime: string; images: File[]; catalogue?: File; busy: boolean; error: string | null; updateLine: (index: number, update: Partial<OfferLine>) => void; setWarranty: (value: string) => void; setDeliveryTime: (value: string) => void; onImages: (event: ChangeEvent<HTMLInputElement>) => void; onCatalogue: (event: ChangeEvent<HTMLInputElement>) => void; onSubmit: () => void; }) {
+  const hasAvailable = rfq.items.some((_, index) => lines[index]?.available ?? true);
+  return <div className="space-y-6">
+    {rfq.items.map((item, index) => { const line = lines[index]; const available = line?.available ?? true; return <section key={`${item.productName}-${index}`} className="space-y-4">
+      {rfq.items.length > 1 ? <p className="text-sm font-semibold text-gray1">{item.productName}</p> : null}
+      <fieldset className="space-y-2">
+        <legend className="text-sm text-gray1">Is the requested model available?</legend>
+        <ModelRadio name={`avail-${index}`} checked={available} onChange={() => updateLine(index, { available: true })} label="Yes, I have the requested model" />
+        <ModelRadio name={`avail-${index}`} checked={!available} onChange={() => updateLine(index, { available: false })} label="No, I don't have the requested model" />
+      </fieldset>
+      <div className="flex gap-2 rounded-lg bg-primary-light p-4"><Info size={18} className="mt-0.5 shrink-0 text-primary" /><div className="text-sm"><p className="font-medium text-primary">Requested Model</p><p className="mt-0.5 text-gray1">{item.model || "No model specified"}</p></div></div>
+      {available ? <div className="space-y-4">
+        <Select label="Product from your catalogue" placeholder={productOptions.length ? "Select the product you're quoting" : "No products in your catalogue yet"} options={productOptions} value={line.product} onValueChange={(value) => updateLine(index, { product: value })} />
+        <Input id={`quote-model-${index}`} label="Available model" placeholder="Enter model" value={line.availableModel} onValueChange={(value) => updateLine(index, { availableModel: value })} />
+        <Input id={`quote-price-${index}`} label="Price ₦" type="number" placeholder="Enter price" value={line.price} onValueChange={(value) => updateLine(index, { price: value })} />
+        <Select label="Stock Count" placeholder="Select option" options={STOCK_OPTIONS} value={line.stockCount} onValueChange={(value) => updateLine(index, { stockCount: value })} />
+      </div> : <p className="rounded-lg bg-danger-light p-3 text-sm text-danger">This item will be sent to the buyer as unavailable.</p>}
+    </section>; })}
+    {hasAvailable ? <>
+      <Select label="Warranty" placeholder="Select option" options={WARRANTY_OPTIONS} value={warranty} onValueChange={setWarranty} />
+      <Input id="quote-delivery-time" label="Delivery time" placeholder="How long would it take you to deliver this item" value={deliveryTime} onValueChange={setDeliveryTime} />
+      <div><FileUpload id="quote-images" label="Upload pictures of the item" accept="image/png,image/jpeg,image/webp" multiple onChange={onImages} />{images.length ? <p className="mt-2 px-3 text-xs text-gray3">{images.map((file) => file.name).join(", ")}</p> : null}</div>
+      <div><FileUpload id="quote-catalogue" label="Upload PDF catalogue (Optional)" accept="image/png,image/jpeg,image/webp,application/pdf,.doc,.docx" onChange={onCatalogue} />{catalogue ? <p className="mt-2 px-3 text-xs text-gray3">{catalogue.name}</p> : null}</div>
+    </> : null}
+    {error ? <p className="text-sm text-danger">{error}</p> : null}
+    <Button title={busy ? "Sending..." : "Send Quote"} variant="primary" size="lg" isBusy={busy} disabled={busy} onClick={onSubmit} className="w-full" />
+  </div>;
+}
+
+function BulkRespond({ rfq, lines, itemStatus, editingItem, bulkStep, productOptions, warranty, deliveryTime, images, catalogue, busy, error, buyerLabel, deliveryLoc, onStartItem, onMarkUnavailable, onUpdateLine, onSaveItem, onCancelItem, onGoFinalize, onBackToItems, setWarranty, setDeliveryTime, onImages, onCatalogue, onSend }: {
+  rfq: Rfq; lines: Record<number, OfferLine>; itemStatus: Record<number, "quoted" | "unavailable">; editingItem: number | null; bulkStep: "items" | "finalize"; productOptions: { label: string; value: string }[]; warranty: string; deliveryTime: string; images: File[]; catalogue?: File; busy: boolean; error: string | null; buyerLabel: string; deliveryLoc: string;
+  onStartItem: (index: number) => void; onMarkUnavailable: (index: number) => void; onUpdateLine: (index: number, update: Partial<OfferLine>) => void; onSaveItem: (index: number) => void; onCancelItem: () => void; onGoFinalize: () => void; onBackToItems: () => void; setWarranty: (value: string) => void; setDeliveryTime: (value: string) => void; onImages: (event: ChangeEvent<HTMLInputElement>) => void; onCatalogue: (event: ChangeEvent<HTMLInputElement>) => void; onSend: () => void;
+}) {
+  const addressedCount = rfq.items.filter((_, index) => itemStatus[index]).length;
+  const allAddressed = addressedCount === rfq.items.length;
+
+  // Per-item quote form
+  if (editingItem !== null) {
+    const item = rfq.items[editingItem];
+    const line = lines[editingItem];
+    return <div className="space-y-4">
+      <button type="button" onClick={onCancelItem} className="inline-flex items-center gap-1 text-sm font-medium text-gray3 hover:text-gray1"><ArrowLeft size={15} />Back to items</button>
+      <p className="text-sm font-semibold text-gray1">Item {editingItem + 1}: {item.productName}</p>
+      <div className="flex gap-2 rounded-lg bg-primary-light p-4"><Info size={18} className="mt-0.5 shrink-0 text-primary" /><div className="text-sm"><p className="font-medium text-primary">Requested Model</p><p className="mt-0.5 text-gray1">{item.model || "No model specified"}</p></div></div>
+      <Select label="Product from your catalogue" placeholder={productOptions.length ? "Select the product you're quoting" : "No products in your catalogue yet"} options={productOptions} value={line?.product || ""} onValueChange={(value) => onUpdateLine(editingItem, { product: value })} />
+      <Input id={`bulk-model-${editingItem}`} label="Available model" placeholder="Enter model" value={line?.availableModel || ""} onValueChange={(value) => onUpdateLine(editingItem, { availableModel: value })} />
+      <Input id={`bulk-price-${editingItem}`} label="Price ₦" type="number" placeholder="Enter price" value={line?.price || ""} onValueChange={(value) => onUpdateLine(editingItem, { price: value })} />
+      <Select label="Stock Count" placeholder="Select option" options={STOCK_OPTIONS} value={line?.stockCount || ""} onValueChange={(value) => onUpdateLine(editingItem, { stockCount: value })} />
+      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      <Button title="Save item" variant="primary" size="lg" onClick={() => onSaveItem(editingItem)} className="w-full" />
+    </div>;
+  }
+
+  // Warranty / delivery / images, then send
+  if (bulkStep === "finalize") {
+    return <div className="space-y-5">
+      <button type="button" onClick={onBackToItems} className="inline-flex items-center gap-1 text-sm font-medium text-gray3 hover:text-gray1"><ArrowLeft size={15} />Back to items</button>
+      <p className="text-sm text-gray2">These apply to the whole quote.</p>
+      <Select label="Warranty" placeholder="Select option" options={WARRANTY_OPTIONS} value={warranty} onValueChange={setWarranty} />
+      <Input id="bulk-delivery-time" label="Delivery time" placeholder="How long would it take you to deliver these items" value={deliveryTime} onValueChange={setDeliveryTime} />
+      <div><FileUpload id="bulk-images" label="Upload pictures of the items" accept="image/png,image/jpeg,image/webp" multiple onChange={onImages} />{images.length ? <p className="mt-2 px-3 text-xs text-gray3">{images.map((file) => file.name).join(", ")}</p> : null}</div>
+      <div><FileUpload id="bulk-catalogue" label="Upload PDF catalogue (Optional)" accept="image/png,image/jpeg,image/webp,application/pdf,.doc,.docx" onChange={onCatalogue} />{catalogue ? <p className="mt-2 px-3 text-xs text-gray3">{catalogue.name}</p> : null}</div>
+      {error ? <p className="text-sm text-danger">{error}</p> : null}
+      <Button title={busy ? "Sending..." : "Send bulk quote"} variant="primary" size="lg" isBusy={busy} disabled={busy} onClick={onSend} className="w-full" />
+    </div>;
+  }
+
+  // Item cards
+  return <div className="space-y-5">
+    <div className="flex items-center gap-3 border-b border-gray5 pb-4"><span className="grid size-10 place-items-center rounded-lg bg-primary-light text-primary"><User size={20} /></span><span className="text-lg font-semibold text-gray1">{buyerLabel}</span></div>
+    <Field label="Delivery Address"><span className="flex items-start gap-2"><MapPin size={16} className="mt-0.5 shrink-0 text-primary" />{deliveryLoc}</span></Field>
+    <p className="text-sm font-medium text-gray1">{addressedCount} of {rfq.items.length} item{rfq.items.length === 1 ? "" : "s"} addressed</p>
+    {rfq.items.map((item, index) => { const status = itemStatus[index]; return <div key={`bulk-item-${index}`} className="space-y-3 rounded-xl border border-gray5 p-4">
+      <div className="flex items-center justify-between border-b border-gray6 pb-3"><p className="font-medium text-gray1">Item {index + 1} of {rfq.items.length}</p>{status === "quoted" ? <span className="text-sm font-medium text-success">✓ Quoted</span> : status === "unavailable" ? <span className="text-sm font-medium text-[#fe6e00]">Not available</span> : null}</div>
+      <dl className="space-y-2 text-sm">
+        <div className="flex items-center justify-between gap-3"><dt className="text-gray3">Product</dt><dd className="text-right font-medium text-gray1">{item.productName}</dd></div>
+        <div className="flex items-center justify-between gap-3"><dt className="text-gray3">Model</dt><dd className="text-right text-gray1">{item.model || "--"}</dd></div>
+        <div className="flex items-center justify-between gap-3"><dt className="text-gray3">Quantity</dt><dd className="text-right text-gray1">{item.quantity}</dd></div>
+      </dl>
+      <div className="grid grid-cols-2 gap-3">
+        <Button title={status === "quoted" ? "Edit quote" : "Quote this item"} variant="primary" size="md" onClick={() => onStartItem(index)} />
+        <Button title="Mark as Not available" variant="primaryLight" size="md" onClick={() => onMarkUnavailable(index)} className={status === "unavailable" ? "!border-[#fe6e00] !text-[#fe6e00]" : ""} />
+      </div>
+    </div>; })}
+    {error ? <p className="text-sm text-danger">{error}</p> : null}
+    <Button title="Continue to send" variant="primary" size="lg" disabled={!allAddressed} onClick={onGoFinalize} className="w-full" />
+    {!allAddressed ? <p className="text-center text-xs text-gray3">Quote or mark every item to continue.</p> : null}
+  </div>;
+}
+
+function ModelRadio({ name, checked, onChange, label }: { name: string; checked: boolean; onChange: () => void; label: string }) {
+  return <label className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-sm transition-colors ${checked ? "border-primary bg-primary-light/40 text-gray1" : "border-gray5 text-gray1"}`}>
+    <input type="radio" name={name} checked={checked} onChange={onChange} className="size-4 accent-primary" />
+    {label}
+  </label>;
 }
 
 export default function DistributorQuotesPage() { return <Suspense fallback={<div className="p-6 text-sm text-gray3">Loading...</div>}><DistributorQuotesPageInner /></Suspense>; }

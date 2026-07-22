@@ -1,8 +1,7 @@
 "use client";
 
-import SubmitterKycView from "@/components/kyc/submitter-kyc-view";
-import { UserRole } from "@/types/user";
+import OemKycView from "@/components/kyc/oem-kyc-view";
 
 export default function OemKycVerificationPage() {
-  return <SubmitterKycView role={UserRole.OEM} />;
+  return <OemKycView />;
 }

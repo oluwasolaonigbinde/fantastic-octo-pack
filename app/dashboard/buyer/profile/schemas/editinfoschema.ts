@@ -23,6 +23,13 @@ export const editInfoSchema = z.object({
     .max(20, "Please provide a valid phone number"),
   // Buyers manage a structured delivery-address book instead of a free-text
   // profile address; PATCH /auth/profile ignores `address` for buyer accounts.
+  // Every other role (engineer, agent, distributor, OEM) may set it, so the
+  // field is optional here and only rendered/submitted for non-buyers.
+  address: z
+    .string()
+    .trim()
+    .max(255, "Address must be 255 characters or fewer")
+    .optional(),
 });
 
 export type EditFormData = z.infer<typeof editInfoSchema>;

@@ -12,7 +12,8 @@ Keys: `queryKeys.kyc` (`mine`, `adminList`, `adminDetail`).
   - [ ] upload / review (approve/reject) mutations → invalidate
         `queryKeys.kyc.all`.
 - [ ] Migrate consumers (replace their local fetch state):
-  - [ ] `components/kyc/submitter-kyc-view.tsx`
+  - [x] `components/kyc/submitter-kyc-view.tsx` — deleted; each role now has
+        its own view (`buyer-`, `distributor-`, `oem-`, `engineer-kyc-view.tsx`).
   - [ ] `components/kyc/distributor-kyc-view.tsx`
   - [ ] `components/kyc/admin-kyc-management.tsx`
 - [ ] `npx tsc --noEmit` clean.
