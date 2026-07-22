@@ -19,7 +19,6 @@ import { useAppSelector, useAppDispatch } from "@/hooks/useAppSelector";
 import { logout } from "@/store/slices/auth-slice";
 import { UserRole } from "@/types/user";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/base";
-import { DEFAULT_AVATAR_SRC } from "@/constants/avatar";
 import { MoreHorizontal, UserPlus, FilePlus } from "lucide-react";
 import { useRef } from "react";
 import {
@@ -378,17 +377,15 @@ export default function PublicNavBar() {
               className="relative rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FE6E00]"
               aria-label="Open account panel"
             >
-              <Avatar className="size-10">
-                <AvatarImage
-                  src={authUser?.displayPhoto?.url || DEFAULT_AVATAR_SRC}
-                  alt={
-                    mounted && isAuthenticated ? accountDisplayName : "Guest"
-                  }
-                />
+              <Avatar className="size-10 bg-[#F9FAFB]">
+                {mounted && isAuthenticated && authUser?.displayPhoto?.url ? (
+                  <AvatarImage
+                    src={authUser.displayPhoto.url}
+                    alt={accountDisplayName}
+                  />
+                ) : null}
                 <AvatarFallback>
-                  <span className="text-sm font-semibold text-[#0669D9]">
-                    {mounted && authUser?.firstName?.charAt(0) || "G"}
-                  </span>
+                  <UserCircle size={22} strokeWidth={1.5} className="text-[#4B5563]" />
                 </AvatarFallback>
               </Avatar>
             </button>
@@ -407,17 +404,15 @@ export default function PublicNavBar() {
 
               {/* Header: avatar + name/email + three-dot */}
               <div className="flex items-center gap-3 px-4 py-5 border-b border-[#E5E7EB]">
-                <Avatar className="size-10 shrink-0">
-                  <AvatarImage
-                    src={authUser?.displayPhoto?.url || DEFAULT_AVATAR_SRC}
-                    alt={
-                      mounted && isAuthenticated ? accountDisplayName : "Guest"
-                    }
-                  />
+                <Avatar className="size-10 shrink-0 bg-[#F9FAFB]">
+                  {mounted && isAuthenticated && authUser?.displayPhoto?.url ? (
+                    <AvatarImage
+                      src={authUser.displayPhoto.url}
+                      alt={accountDisplayName}
+                    />
+                  ) : null}
                   <AvatarFallback>
-                    <span className="text-sm font-semibold text-[#0669D9]">
-                      {authUser?.firstName?.charAt(0) || "G"}
-                    </span>
+                    <UserCircle size={22} strokeWidth={1.5} className="text-[#4B5563]" />
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">

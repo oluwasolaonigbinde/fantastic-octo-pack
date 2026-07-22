@@ -6,7 +6,8 @@ export const formatNaira = (naira: number) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(naira);
 
 /** Format a kobo amount directly as a naira currency string. */

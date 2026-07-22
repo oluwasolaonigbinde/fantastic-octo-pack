@@ -47,7 +47,7 @@ const toApiFilters = (
 
 export default function ServiceEngineersPage() {
   const dispatch = useAppDispatch();
-  const { users, pagination, facets, loading } = useAppSelector((state) => state.user);
+  const { users, pagination, facets, loading, error } = useAppSelector((state) => state.user);
 
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -202,6 +202,11 @@ export default function ServiceEngineersPage() {
               <div className="flex justify-center py-20">
                 <Spinner />
               </div>
+            ) : error ? (
+              <EmptyState
+                title="Couldn't load engineers"
+                description={error}
+              />
             ) : users.length === 0 ? (
               <EmptyState
                 title="No engineers found"

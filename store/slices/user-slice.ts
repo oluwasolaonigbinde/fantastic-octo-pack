@@ -114,6 +114,8 @@ export const userSlice = createSlice({
       .addCase(fetchPublicProfiles.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || "Failed to fetch public profiles";
+        state.users = [];
+        state.pagination = null;
       })
       .addCase(fetchPublicProfileById.pending, (state) => {
         state.loading = true;
