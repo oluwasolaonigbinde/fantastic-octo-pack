@@ -27,6 +27,7 @@ import {
 import {
   useAdminOrderSummaryQuery,
   useAdminOrdersQuery,
+  useAdminQuoteSummaryQuery,
   useAdminQuotesQuery,
   useAdminRfqsOrdersSummaryQuery,
   useAdminRfqsQuery,
@@ -43,23 +44,19 @@ import { fetchOrderDetail } from "@/services/orderService";
 import { fetchQuoteDetail, fetchRfqDetail } from "@/services/rfqService";
 import type { Order, OrderSummary } from "@/types/order";
 import { ORDER_STATUS_LABELS } from "@/types/order";
-import type { Quote, QuoteStatus, Rfq, RfqDetailResponse, UserRef } from "@/types/rfq";
+import type {
+  Quote,
+  QuoteStatus,
+  QuoteSummary,
+  Rfq,
+  RfqDetailResponse,
+  UserRef,
+} from "@/types/rfq";
 import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS } from "@/types/rfq";
 import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 const POLL_INTERVAL_MS = 30_000;
 const PAGE_SIZE = 20;
-const FIGMA_DETAIL_FALLBACK = {
-  distributorName: "Oluwatobiloba Babatunde",
-  distributorPhone: "08130000000",
-  distributorEmail: "oluwatunde@gmail.com",
-  productName: "The name of the product",
-  quantity: "12",
-  unitPrice: 60028,
-  totalPrice: 780070,
-  requestDate: "12/09/2025",
-  orderDateTime: "12/09/2025 - 12:20am",
-} as const;
 
 type TopTab = "rfqs" | "orders";
 type RfqSubTab =
@@ -90,6 +87,15 @@ const EMPTY_SUMMARY: AdminRfqsOrdersSummary = {
     shipped: 0,
     deliveredCompleted: 0,
   },
+};
+
+const EMPTY_QUOTE_SUMMARY: QuoteSummary = {
+  total: 0,
+  received: 0,
+  pendingResponse: 0,
+  approved: 0,
+  declined: 0,
+  byStatus: {} as QuoteSummary["byStatus"],
 };
 
 const EMPTY_ORDER_SUMMARY: OrderSummary = {
@@ -193,16 +199,12 @@ function pickFirstText(...values: Array<string | null | undefined>): string | un
   return undefined;
 }
 
-function presentText(value: string | undefined, fallback: string): string {
-  return value && value !== "Not available" ? value : fallback;
+function presentDate(value?: string | null): string {
+  return formatDate(value);
 }
 
-function presentDate(value?: string | null, fallback = FIGMA_DETAIL_FALLBACK.requestDate): string {
-  return presentText(formatDate(value), fallback);
-}
-
-function presentDateTime(value?: string | null, fallback = FIGMA_DETAIL_FALLBACK.orderDateTime): string {
-  return presentText(formatDateTimeUtc(value), fallback);
+function presentDateTime(value?: string | null): string {
+  return formatDateTimeUtc(value);
 }
 
 function isUserRef(value: unknown): value is UserRef {
@@ -214,17 +216,11 @@ function getUserName(value: unknown, fallback = "Not available"): string {
   return getPartyDisplayName(value, value.email);
 }
 
-function getUserEmail(
-  value: unknown,
-  fallback = FIGMA_DETAIL_FALLBACK.distributorEmail
-): string {
+function getUserEmail(value: unknown, fallback = "Not available"): string {
   return isUserRef(value) && value.email ? value.email : fallback;
 }
 
-function getUserPhone(
-  value: unknown,
-  fallback = FIGMA_DETAIL_FALLBACK.distributorPhone
-): string {
+function getUserPhone(value: unknown, fallback = "Not available"): string {
   return isUserRef(value) && value.phoneNumber ? value.phoneNumber : fallback;
 }
 
@@ -451,6 +447,13 @@ export default function AdminRfqsOrdersPage() {
     ...pollOptions,
     enabled: isOrders,
   });
+  // Quote Received/Approved/Declined tiles on the "All" RFQ tab read from the
+  // dedicated /admin/quotes/summary endpoint instead of the RFQ summary above,
+  // which only tracks requests and quotes sent.
+  const quoteSummaryQuery = useAdminQuoteSummaryQuery({
+    ...pollOptions,
+    enabled: isRfqs,
+  });
   const rfqsQuery = useAdminRfqsQuery(baseParams, {
     ...pollOptions,
     enabled: isRfqs,
@@ -466,6 +469,7 @@ export default function AdminRfqsOrdersPage() {
 
   const summary = summaryQuery.data ?? EMPTY_SUMMARY;
   const orderSummary = orderSummaryQuery.data ?? EMPTY_ORDER_SUMMARY;
+  const quoteSummary = quoteSummaryQuery.data ?? EMPTY_QUOTE_SUMMARY;
   const ordersPage =
     (ordersQuery.data as AdminPagination<AdminOrderRow> | undefined) ??
     emptyPage<AdminOrderRow>();
@@ -621,21 +625,15 @@ export default function AdminRfqsOrdersPage() {
                 />
                 <MetricCard
                   title="Total Quotes Received"
-                  value={String(
-                    ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteReceived
-                  )}
+                  value={formatWholeNumber(quoteSummary.received)}
                 />
                 <MetricCard
                   title="Total Quotes Approved"
-                  value={String(
-                    ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteApproved
-                  )}
+                  value={formatWholeNumber(quoteSummary.approved)}
                 />
                 <MetricCard
                   title="Total quote Declined"
-                  value={String(
-                    ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteDeclined
-                  )}
+                  value={formatWholeNumber(quoteSummary.declined)}
                 />
               </div>
             ) : (
@@ -1042,34 +1040,25 @@ function DetailPanel({
         />
         <DetailField
           label="Distributor's name"
-          value={getUserName(
-            distributor,
-            target.row.distributorName || FIGMA_DETAIL_FALLBACK.distributorName
-          )}
+          value={getUserName(distributor, target.row.distributorName || "Not available")}
         />
         <DetailField label="Distributor's phone number" value={getUserPhone(distributor)} />
         <DetailField label="Distributor's email" value={getUserEmail(distributor)} />
         <DetailField
           label="Product name"
-          value={getItemProductName(
-            rfq,
-            target.row.productName || FIGMA_DETAIL_FALLBACK.productName
-          )}
+          value={getItemProductName(rfq, target.row.productName || "Not available")}
         />
         <DetailField
           label="Quantity"
-          value={presentText(
-            formatQuantity(getFirstRfqItem(rfq)?.quantity ?? target.row.quantity),
-            FIGMA_DETAIL_FALLBACK.quantity
-          )}
+          value={formatQuantity(getFirstRfqItem(rfq)?.quantity ?? target.row.quantity)}
         />
         <DetailField
           label="Unit price"
-          value={getItemUnitPrice(rfq, target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice)}
+          value={getItemUnitPrice(rfq, target.row.unitPrice)}
         />
         <DetailField
           label="Total price"
-          value={formatMoney(target.row.totalPrice ?? FIGMA_DETAIL_FALLBACK.totalPrice)}
+          value={formatMoney(target.row.totalPrice)}
         />
         <DetailField
           label="Date of request"
@@ -1116,36 +1105,28 @@ function DetailPanel({
           label="Distributor's name"
           value={getUserName(
             quote?.distributor,
-            target.row.distributorName || FIGMA_DETAIL_FALLBACK.distributorName
+            target.row.distributorName || "Not available"
           )}
         />
         <DetailField label="Distributor's phone number" value={getUserPhone(quote?.distributor)} />
         <DetailField label="Distributor's email" value={getUserEmail(quote?.distributor)} />
         <DetailField
           label="Product name"
-          value={getItemProductName(
-            rfq,
-            target.row.productName || FIGMA_DETAIL_FALLBACK.productName
-          )}
+          value={getItemProductName(rfq, target.row.productName || "Not available")}
         />
         <DetailField
           label="Quantity"
-          value={presentText(
-            formatQuantity(getFirstQuoteItem(quote)?.quantity ?? target.row.quantity),
-            FIGMA_DETAIL_FALLBACK.quantity
-          )}
+          value={formatQuantity(getFirstQuoteItem(quote)?.quantity ?? target.row.quantity)}
         />
         <DetailField
           label="Unit price"
           value={formatMoney(
-            getFirstQuoteItem(quote)?.pricePerUnit ?? target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice
+            getFirstQuoteItem(quote)?.pricePerUnit ?? target.row.unitPrice
           )}
         />
         <DetailField
           label="Total price"
-          value={formatMoney(
-            quote?.totalPrice ?? target.row.totalPrice ?? FIGMA_DETAIL_FALLBACK.totalPrice
-          )}
+          value={formatMoney(quote?.totalPrice ?? target.row.totalPrice)}
         />
         <DetailField
           label="Date received"
@@ -1185,36 +1166,25 @@ function DetailPanel({
       />
       <DetailField
         label="Distributor's name"
-        value={getUserName(
-          order?.seller,
-          target.row.distributorName || FIGMA_DETAIL_FALLBACK.distributorName
-        )}
+        value={getUserName(order?.seller, target.row.distributorName || "Not available")}
       />
       <DetailField label="Distributor's phone number" value={getUserPhone(order?.seller)} />
       <DetailField label="Distributor's email" value={getUserEmail(order?.seller)} />
       <DetailField
         label="Product name"
-        value={getOrderProductName(
-          order,
-          target.row.productName || FIGMA_DETAIL_FALLBACK.productName
-        )}
+        value={getOrderProductName(order, target.row.productName || "Not available")}
       />
       <DetailField
         label="Quantity"
-        value={presentText(
-          formatQuantity(order?.items?.[0]?.quantity ?? target.row.quantity),
-          FIGMA_DETAIL_FALLBACK.quantity
-        )}
+        value={formatQuantity(order?.items?.[0]?.quantity ?? target.row.quantity)}
       />
       <DetailField
         label="Unit price"
-        value={formatMoney(target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice)}
+        value={formatMoney(target.row.unitPrice)}
       />
       <DetailField
         label="Total price"
-        value={formatMoney(
-          order?.totalPrice ?? target.row.totalPrice ?? FIGMA_DETAIL_FALLBACK.totalPrice
-        )}
+        value={formatMoney(order?.totalPrice ?? target.row.totalPrice)}
       />
       <DetailField
         label="Date of order placed"
