@@ -42,6 +42,7 @@ import {
   writePendingAuthIntent,
 } from "@/utils/pendingAuth";
 import { buildMessagingComposeHref } from "@/utils/messagingRoutes";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 import productService from "@/services/productService";
 import orderService from "@/services/orderService";
 import addressService from "@/services/addressService";
@@ -237,8 +238,9 @@ export default function ProductDetailsPage() {
     [product?.createdBy],
   );
 
-  const sellerName =
-    `${createdBy?.firstName ?? ""} ${createdBy?.lastName ?? ""}`.trim() || "Seller";
+  // Distributors that finished KYC tier 2 trade under a business name — buyers
+  // see that rather than the account holder's personal name.
+  const sellerName = getPartyDisplayName(createdBy, "Seller");
   const sellerId =
     createdBy?._id ??
     (typeof product?.createdBy === "string" ? product.createdBy : undefined);

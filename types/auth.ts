@@ -9,7 +9,8 @@ export type PendingAuthIntentAction =
   | "send_inquiry"
   | "order_now"
   | "request_service"
-  | "send_message";
+  | "send_message"
+  | "request_quote";
 
 export interface PendingServiceRequestDraft {
   jobType: string;
@@ -78,10 +79,23 @@ export interface PendingServiceRequestIntent {
   serviceRequestDraft?: PendingServiceRequestDraft;
 }
 
+/**
+ * A buyer asked a named distributor for a quote before signing in. Resumed as a
+ * direct-routed RFQ (`routingMode: "direct"`) addressed to that distributor
+ * alone, rather than going through the marketplace routing engine.
+ */
+export interface PendingRequestQuoteIntent {
+  sourcePath: string;
+  action: "request_quote";
+  distributorId: string;
+  distributorName?: string;
+}
+
 export type PendingAuthIntent =
   | PendingSendMessageIntent
   | PendingProductIntent
-  | PendingServiceRequestIntent;
+  | PendingServiceRequestIntent
+  | PendingRequestQuoteIntent;
 
 export interface PendingResetContext {
   email: string;

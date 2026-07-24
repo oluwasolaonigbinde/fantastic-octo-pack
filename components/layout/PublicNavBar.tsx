@@ -344,7 +344,10 @@ export default function PublicNavBar() {
                         onClick={async () => {
                           setAccountMenuOpen(false);
                           await dispatch(logout());
-                          router.push("/");
+                          // Full document navigation: drops Next's client router
+                          // cache so the next account cannot replay this
+                          // role's cached dashboard routes (BAI-61).
+                          window.location.assign("/");
                         }}
                         className="flex w-full items-center gap-3 rounded-[8px] px-2 py-2 text-[15px] font-normal text-[#EF4444] transition hover:bg-[#FEF2F2]"
                       >
@@ -527,7 +530,10 @@ export default function PublicNavBar() {
                         onClick={async () => {
                           setMobilePanelOpen(false);
                           await dispatch(logout());
-                          router.push("/");
+                          // Full document navigation: drops Next's client router
+                          // cache so the next account cannot replay this
+                          // role's cached dashboard routes (BAI-61).
+                          window.location.assign("/");
                         }}
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[#EF4444] transition hover:bg-[#FEF2F2]"
                       >

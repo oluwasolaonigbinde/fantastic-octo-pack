@@ -14,6 +14,7 @@ import {
   buildDistributorVerificationSnapshot,
   getDistributorVerificationMeta,
 } from "../../oem-ui";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 export default function OemDistributorProfilePage() {
   const params = useParams();
@@ -32,13 +33,10 @@ export default function OemDistributorProfilePage() {
     dispatch(fetchPublicProfileById(id));
   }, [dispatch, id]);
 
-  const distributorName = useMemo(() => {
-    if (!selectedUser) {
-      return "This is the name of the distributor";
-    }
-
-    return `${selectedUser.firstName} ${selectedUser.lastName}`.trim();
-  }, [selectedUser]);
+  const distributorName = useMemo(
+    () => getPartyDisplayName(selectedUser, "This is the name of the distributor"),
+    [selectedUser],
+  );
   const distributorEmail = useMemo(() => {
     if (!selectedUser || !("email" in selectedUser)) {
       return "Not publicly listed";

@@ -77,6 +77,24 @@ export const useOrderQuery = (
   });
 };
 
+/**
+ * `GET /orders/summary` — order counters and value for the current user, scoped
+ * by role on the backend. Prefer this over deriving counts from `useOrdersQuery`:
+ * the backend knows which statuses count as active, in-escrow or awaiting buyer
+ * confirmation (which depends on `requiresInstallation`), and the client does not.
+ */
+export const useOrderSummaryQuery = (options?: { enabled?: boolean }) => {
+  const token = useAuthToken();
+  const userId = useCurrentUserId();
+
+  return useQuery({
+    queryKey: queryKeys.orders.summary(userId ?? "anonymous"),
+    queryFn: () => orderService.fetchOrderSummary(token as string),
+    enabled: Boolean(token) && (options?.enabled ?? true),
+    select: (res) => res.data,
+  });
+};
+
 /** Escrow summary for the current user (keyed under the wallet namespace). */
 export const useEscrowSummaryQuery = (options?: { enabled?: boolean }) => {
   const token = useAuthToken();

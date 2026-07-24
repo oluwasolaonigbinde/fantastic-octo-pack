@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  useAdminOrderSummaryQuery,
   useAdminOrdersQuery,
   useAdminQuotesQuery,
   useAdminRfqsOrdersSummaryQuery,
@@ -40,10 +41,11 @@ import {
 } from "@/services/adminService";
 import { fetchOrderDetail } from "@/services/orderService";
 import { fetchQuoteDetail, fetchRfqDetail } from "@/services/rfqService";
-import type { Order } from "@/types/order";
+import type { Order, OrderSummary } from "@/types/order";
 import { ORDER_STATUS_LABELS } from "@/types/order";
 import type { Quote, QuoteStatus, Rfq, RfqDetailResponse, UserRef } from "@/types/rfq";
 import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS } from "@/types/rfq";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 const POLL_INTERVAL_MS = 30_000;
 const PAGE_SIZE = 20;
@@ -90,6 +92,19 @@ const EMPTY_SUMMARY: AdminRfqsOrdersSummary = {
   },
 };
 
+const EMPTY_ORDER_SUMMARY: OrderSummary = {
+  total: 0,
+  currency: "NGN",
+  totalValue: { allTime: 0, thisMonth: 0 },
+  ordersThisMonth: 0,
+  averageOrderValue: 0,
+  awaitingBuyerConfirmation: 0,
+  activeOrders: 0,
+  inEscrow: 0,
+  disputeActive: 0,
+  byStatus: {},
+};
+
 const emptyPage = <T,>(): AdminPagination<T> => ({
   docs: [],
   totalDocs: 0,
@@ -111,11 +126,6 @@ const moneyFormatter = new Intl.NumberFormat("en-NG", {
 
 const wholeNumberFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
-});
-
-const decimalNumberFormatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
 });
 
 const RFQ_VIEW_TABS: Array<{ key: RfqSubTab; label: string }> = [
@@ -170,10 +180,6 @@ function formatWholeNumber(value?: number | null): string {
   return typeof value === "number" ? wholeNumberFormatter.format(value) : "0";
 }
 
-function formatDecimalNumber(value?: number | null): string {
-  return typeof value === "number" ? decimalNumberFormatter.format(value) : "0.00";
-}
-
 function formatQuantity(value?: number | null): string {
   return typeof value === "number" ? String(value) : "Not available";
 }
@@ -205,12 +211,7 @@ function isUserRef(value: unknown): value is UserRef {
 
 function getUserName(value: unknown, fallback = "Not available"): string {
   if (!isUserRef(value)) return fallback;
-  return (
-    value.distributorStoreProfile?.businessName?.trim() ||
-    value.businessName?.trim() ||
-    `${value.firstName ?? ""} ${value.lastName ?? ""}`.trim() ||
-    value.email
-  );
+  return getPartyDisplayName(value, value.email);
 }
 
 function getUserEmail(
@@ -372,8 +373,13 @@ function DetailStatusBanner({ label, value }: { label: string; value: string }) 
 
 function getOrderStatusTone(status: string): StatusTone {
   if (status === "delivered" || status === "completed") return "success";
-  if (status === "shipped") return "primary";
-  if (status === "cancelled_pre_payment") return "danger";
+  // Money is in escrow and the order is moving through fulfillment.
+  if (status === "paid" || status === "received" || status === "installed") {
+    return "primary";
+  }
+  if (status === "cancelled_pre_payment" || status === "payment_failed") {
+    return "danger";
+  }
   return "warning";
 }
 
@@ -381,8 +387,6 @@ function getOrderStatusLabel(status: string): string {
   const adminLabels: Record<string, string> = {
     created_pending_payment: "Pending",
     cancelled_pre_payment: "Cancelled",
-    processing: "Processing",
-    shipped: "Shipped",
     delivered: "Delivered",
     completed: "Delivered",
   };
@@ -440,6 +444,13 @@ export default function AdminRfqsOrdersPage() {
   };
 
   const summaryQuery = useAdminRfqsOrdersSummaryQuery(pollOptions);
+  // The order half of /admin/rfqs-orders-summary is not implemented server-side
+  // (processing/shipped/deliveredCompleted are hardcoded to 0), so the order
+  // tiles read from the dedicated /admin/orders/summary endpoint instead.
+  const orderSummaryQuery = useAdminOrderSummaryQuery({
+    ...pollOptions,
+    enabled: isOrders,
+  });
   const rfqsQuery = useAdminRfqsQuery(baseParams, {
     ...pollOptions,
     enabled: isRfqs,
@@ -454,6 +465,7 @@ export default function AdminRfqsOrdersPage() {
   });
 
   const summary = summaryQuery.data ?? EMPTY_SUMMARY;
+  const orderSummary = orderSummaryQuery.data ?? EMPTY_ORDER_SUMMARY;
   const ordersPage =
     (ordersQuery.data as AdminPagination<AdminOrderRow> | undefined) ??
     emptyPage<AdminOrderRow>();
@@ -825,25 +837,27 @@ export default function AdminRfqsOrdersPage() {
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <SummaryCard
                 title="Total pending orders"
-                value={formatWholeNumber(summary.orders.createdPendingPayment)}
+                value={formatWholeNumber(
+                  orderSummary.byStatus.created_pending_payment,
+                )}
                 icon={<UsersRound size={18} className="text-primary" />}
                 iconBg="bg-[#E7F1FF]"
               />
               <SummaryCard
                 title="Total processing orders"
-                value={formatWholeNumber(summary.orders.processing)}
+                value={formatWholeNumber(orderSummary.inEscrow)}
                 icon={<ClipboardList size={18} className="text-[#C04FE0]" />}
                 iconBg="bg-[#F8E8FF]"
               />
               <SummaryCard
-                title="Total shipped orders"
-                value={formatDecimalNumber(summary.orders.shipped)}
+                title="Total delivered orders"
+                value={formatWholeNumber(orderSummary.byStatus.delivered)}
                 icon={<CircleDollarSign size={18} className="text-[#13A83B]" />}
                 iconBg="bg-[#E8FAEE]"
               />
               <SummaryCard
-                title="Total delivered/completed"
-                value={formatWholeNumber(summary.orders.deliveredCompleted)}
+                title="Total completed orders"
+                value={formatWholeNumber(orderSummary.byStatus.completed)}
                 icon={<ClipboardList size={18} className="text-[#F6B90A]" />}
                 iconBg="bg-[#FFF5DB]"
               />

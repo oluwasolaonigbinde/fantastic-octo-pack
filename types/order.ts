@@ -2,13 +2,16 @@ import type { UserRef, ProductRef } from "./rfq";
 
 /**
  * Backend order lifecycle (single source of truth — there is no separate
- * `paymentStatus` field). The money-in / in-escrow states are
- * `paid | processing | fulfilled | completed`. `completed` = escrow released to
- * the distributor; `closed` = buyer refunded after a dispute.
+ * `paymentStatus` field), mirroring the server's `OrderStatus` enum exactly.
  *
- * NOTE: `shipped` / `delivered` are NOT returned by the API. They remain in the
- * union only because some legacy admin/dashboard screens still reference them;
- * new code should use the real states below.
+ * Once paid, `status` advances through the fulfillment stages the distributor
+ * reports (`received → delivered → installed`), so the money-in / in-escrow
+ * states are `paid | received | delivered | installed`. `completed` = escrow
+ * released to the distributor; `closed` = buyer refunded after a dispute.
+ *
+ * NOTE: `processing` / `fulfilled` / `shipped` are NOT returned by the API.
+ * They remain in the union only because some legacy admin/dashboard screens and
+ * demo fixtures still reference them; new code must use the real states.
  */
 export type OrderStatus =
   | "draft_pending_buyer"
@@ -16,14 +19,16 @@ export type OrderStatus =
   | "payment_initiated"
   | "payment_failed"
   | "paid"
-  | "processing"
-  | "fulfilled"
+  | "received"
+  | "delivered"
+  | "installed"
   | "completed"
   | "closed"
   | "cancelled_pre_payment"
   // legacy-only, never emitted by the live API:
-  | "shipped"
-  | "delivered";
+  | "processing"
+  | "fulfilled"
+  | "shipped";
 
 export interface OrderLineItem {
   product: string | ProductRef;
@@ -55,6 +60,8 @@ export type FulfillmentStage = "received" | "delivered" | "installed";
 
 export interface Order {
   _id: string;
+  /** Short human-facing reference, unique per order. */
+  publicId?: string;
   buyer: string | UserRef;
   seller: string | UserRef;
   rfq?: string;
@@ -162,6 +169,31 @@ export interface EscrowSummary {
   platformFeePercent: number;
   platformFeeCap: number | null;
   orderCount: number;
+}
+
+/**
+ * Role-scoped order counters (GET /orders/summary, GET /admin/orders/summary).
+ * Buyers and engineers see their purchases (drafts excluded), distributors their
+ * sales, admins the whole platform. Amounts are naira, not kobo.
+ */
+export interface OrderSummary {
+  total: number;
+  currency: "NGN";
+  totalValue: {
+    allTime: number;
+    thisMonth: number;
+  };
+  ordersThisMonth: number;
+  averageOrderValue: number;
+  awaitingBuyerConfirmation: number;
+  activeOrders: number;
+  inEscrow: number;
+  disputeActive: number;
+  /**
+   * Partial because the backend only emits its own `OrderStatus` values, which
+   * do not include the legacy statuses still present in the union above.
+   */
+  byStatus: Partial<Record<OrderStatus, number>>;
 }
 
 /**
@@ -309,6 +341,70 @@ export function isAwaitingBuyerConfirmation(
   if (order.status === "completed") return false;
   if (!isPaidOrderStatus(order.status)) return false;
   return getNextFulfillmentStage(order) === null;
+}
+
+/**
+ * The reference shown to users. The API assigns every order a `publicId`, so
+ * that's what we display; the truncated `_id` is only a fallback for legacy
+ * records (and demo rows) that predate the field.
+ */
+export function getOrderReference(
+  order: Pick<Order, "_id" | "publicId"> | null | undefined,
+  fallback = "Order ID",
+): string {
+  const publicId = order?.publicId?.trim();
+  if (publicId) return publicId;
+  if (!order?._id) return fallback;
+  if (order._id.startsWith("ORD-")) return order._id;
+  return `ORD-${order._id.slice(-6).toUpperCase()}`;
+}
+
+/** The auto-receive window, as returned by GET /admin/settings. */
+export interface AutoReceiveSettings {
+  autoReceiveDays: number;
+  autoReceiveEnabled: boolean;
+}
+
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * When escrow auto-releases to the distributor: the platform's auto-receive
+ * window counted from the moment the order reached its final logistics stage
+ * (installation when the order requires it, delivery otherwise).
+ *
+ * Returns `null` — meaning there is no countdown to show — when the stage isn't
+ * reached yet, the buyer already confirmed receipt, or auto-receive is disabled
+ * platform-wide. Callers must render an idle state rather than invent a window.
+ */
+export function getAutoReceiveDeadline(
+  order:
+    | Pick<
+        Order,
+        | "status"
+        | "deliveredAt"
+        | "installedAt"
+        | "receivedByBuyerAt"
+        | "requiresInstallation"
+      >
+    | null
+    | undefined,
+  settings: AutoReceiveSettings | null | undefined,
+): Date | null {
+  if (!order || !settings?.autoReceiveEnabled) return null;
+  if (order.status === "completed" || order.receivedByBuyerAt) return null;
+
+  const anchor = order.requiresInstallation
+    ? order.installedAt
+    : order.deliveredAt;
+  if (!anchor) return null;
+
+  const startedAt = new Date(anchor).getTime();
+  if (Number.isNaN(startedAt)) return null;
+
+  const days = Number(settings.autoReceiveDays);
+  if (!Number.isFinite(days) || days <= 0) return null;
+
+  return new Date(startedAt + days * DAY_IN_MS);
 }
 
 /**

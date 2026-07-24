@@ -14,6 +14,7 @@ import {
   ArrowRight,
   BadgeCheck,
   ChevronRight,
+  FileText,
   Flag,
   Home,
   ImageIcon,
@@ -37,6 +38,8 @@ import {
   writePendingAuthIntent,
 } from "@/utils/pendingAuth";
 import { buildMessagingComposeHref } from "@/utils/messagingRoutes";
+import { buildTargetedQuoteHref } from "@/utils/rfqRoutes";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 const ITEMS_PER_PAGE = 8;
 
@@ -66,11 +69,7 @@ function buildName(profile?: PublicProfileData | null): string {
     return "Distributor Profile";
   }
 
-  return (
-    profile.distributorStoreProfile?.businessName?.trim() ||
-    `${profile.firstName} ${profile.lastName}`.trim() ||
-    "Distributor Profile"
-  );
+  return getPartyDisplayName(profile, "Distributor Profile");
 }
 
 function buildRegisterHref(selectedId: string): string {
@@ -334,6 +333,42 @@ function DistributorProfileContent() {
     router.push(composeHref);
   };
 
+  /**
+   * Targeted quote request — routes an RFQ to this distributor alone instead of
+   * through the marketplace matching engine. Only buyers can raise one, so a
+   * signed-out visitor is parked on the intent and resumed after login.
+   */
+  const handleRequestQuote = () => {
+    if (!selectedId) {
+      return;
+    }
+
+    const quoteHref = buildTargetedQuoteHref({
+      distributorId: selectedId,
+      distributorName: distributorName || undefined,
+    });
+
+    if (!authData?.tokens?.accessToken) {
+      writePendingAuthIntent({
+        action: "request_quote",
+        sourcePath: `/distributor/profile?id=${selectedId}`,
+        distributorId: selectedId,
+        distributorName: distributorName || undefined,
+      });
+      router.push("/login");
+      return;
+    }
+
+    if (authData.role !== "buyer") {
+      clearPendingAuthIntent();
+      router.push("/dashboard");
+      return;
+    }
+
+    clearPendingAuthIntent();
+    router.push(quoteHref);
+  };
+
   return (
     <PublicLayout contentClassName="min-h-screen bg-[#f7f8fb]">
       <main className="bg-[#f7f8fb]">
@@ -385,6 +420,17 @@ function DistributorProfileContent() {
               </div>
 
               <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleRequestQuote}
+                  disabled={!selectedId}
+                  className="col-span-2 inline-flex h-7 items-center justify-center rounded-[6px] bg-[#fe6e00] px-3 text-[10px] font-semibold text-white shadow-[0_8px_18px_rgba(254,110,0,0.2)] transition hover:bg-[#e46200] disabled:cursor-not-allowed disabled:opacity-60"
+                  title="Request Quote"
+                >
+                  <FileText size={12} className="mr-1.5" />
+                  Request Quote
+                </button>
+
                 <button
                   type="button"
                   onClick={redirectToRegister}

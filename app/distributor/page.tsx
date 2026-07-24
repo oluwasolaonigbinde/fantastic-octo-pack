@@ -13,6 +13,7 @@ import {
 } from "@/store/slices/user-slice";
 import type { PublicProfileData } from "@/types/user";
 import { UserRole } from "@/types/user";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 const DISTRIBUTORS_PER_PAGE = 10;
 
@@ -43,20 +44,11 @@ export default function DistributorPage() {
   const [filterType, setFilterType] = useState<DirectoryRoleFilter>("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  const getCompanyDisplayName = (company: PublicProfileData) => {
-    const companyName = [company.firstName, company.lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-
-    if (companyName) {
-      return companyName;
-    }
-
-    return company.role?.toLowerCase() === "oem"
-      ? "OEM account"
-      : "Distributor account";
-  };
+  const getCompanyDisplayName = (company: PublicProfileData) =>
+    getPartyDisplayName(
+      company,
+      company.role?.toLowerCase() === "oem" ? "OEM account" : "Distributor account",
+    );
 
   const fetchDirectoryPage = useCallback(
     (page: number, searchValue: string, roleValue: DirectoryRoleFilter) => {

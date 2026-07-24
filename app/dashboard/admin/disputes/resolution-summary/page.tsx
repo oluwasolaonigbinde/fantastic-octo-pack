@@ -56,12 +56,14 @@ function getPartyName(
     return null;
   }
 
+  // A distributor that completed KYC tier 2 trades under a business name, so
+  // that identifies the party ahead of the account holder's personal name.
   const fullName = [party.firstName, party.lastName].filter(Boolean).join(" ").trim();
 
   return (
+    party.distributorStoreProfile?.businessName?.trim() ||
+    party.businessName?.trim() ||
     fullName ||
-    party.businessName ||
-    party.distributorStoreProfile?.businessName ||
     party.organization ||
     party.email ||
     party.phoneNumber ||

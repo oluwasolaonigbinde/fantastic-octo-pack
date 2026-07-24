@@ -74,6 +74,24 @@ export interface UpdateServiceRequestStatusPayload {
   unitPrice?: number;
 }
 
+/**
+ * `GET /service-requests/summary` (role-scoped) and
+ * `GET /admin/service-requests/summary` (platform-wide).
+ */
+export interface ServiceRequestSummary {
+  total: number;
+  /** Accepted or in progress. */
+  active: number;
+  disputeActive: number;
+  byStatus: Record<ServiceRequestStatus, number>;
+}
+
+export interface ServiceRequestSummaryResponse {
+  success: boolean;
+  message: string;
+  data: ServiceRequestSummary;
+}
+
 export interface ServiceRequestStatusCounts {
   total: number;
   pending: number;

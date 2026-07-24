@@ -46,25 +46,17 @@ import {
 } from "@/types/service-dispute";
 import type { OrderDisputeStatus } from "@/types/order-dispute";
 import { UserRole } from "@/types/user";
+import {
+  getPartyDisplayName,
+  type NameablePartyLike,
+} from "@/utils/partyDisplayName";
 
 const DISPUTE_NOTE_ACCENTS = ["bg-[#2F6BFF]", "bg-[#F6B90A]", "bg-[#22C55E]"] as const;
 
 function getPartyName(
-  party:
-    | string
-    | {
-        firstName?: string;
-        lastName?: string;
-        email?: string;
-      }
-    | undefined,
+  party: string | NameablePartyLike | undefined,
 ): string {
-  if (!party || typeof party === "string") {
-    return "--";
-  }
-
-  const fullName = [party.firstName, party.lastName].filter(Boolean).join(" ").trim();
-  return fullName || party.email || "--";
+  return getPartyDisplayName(party, "--");
 }
 
 function formatDate(value?: string): string {

@@ -31,6 +31,7 @@ import {
 } from "@/utils/productDisplay";
 import type { Product, ProductStatus, ProductStatusCounts } from "@/types/product";
 import type { UserData } from "@/types/user";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 import CategoriesManagement from "./categories-management";
 import OemsManagement from "./oems-management";
 
@@ -86,7 +87,7 @@ const formatDate = (iso?: string | null): string => {
 
 const getDistributorName = (createdBy: string | UserData): string => {
   if (typeof createdBy === "string") return createdBy;
-  return `${createdBy.firstName ?? ""} ${createdBy.lastName ?? ""}`.trim() || "Distributor";
+  return getPartyDisplayName(createdBy, "Distributor");
 };
 
 const getAdminTableStatusTextClass = (status: ProductStatus): string => {

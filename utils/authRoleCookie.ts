@@ -48,6 +48,24 @@ export const writeAuthRoleCookie = (
   document.cookie = attributes.join("; ");
 };
 
+export const readAuthRoleCookie = (): string | null => {
+  if (!hasDocument()) {
+    return null;
+  }
+
+  const match = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(`${AUTH_ROLE_COOKIE_KEY}=`));
+
+  if (!match) {
+    return null;
+  }
+
+  const value = decodeURIComponent(match.slice(AUTH_ROLE_COOKIE_KEY.length + 1));
+
+  return value || null;
+};
+
 export const clearAuthRoleCookie = (): void => {
   if (!hasDocument()) {
     return;

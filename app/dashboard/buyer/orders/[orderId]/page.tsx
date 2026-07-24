@@ -21,13 +21,13 @@ import { Skeleton } from "@/components/base";
 import DeliveryStepper from "@/components/orders/DeliveryStepper";
 import {
   getBuyerOrderStatusTone,
-  getOrderDisplayId,
   getOrderProductImage,
   getPersonName,
   toBuyerOrderRow,
   type BuyerOrderRow,
   type BuyerOrderStage,
 } from "@/constants/demoBuyerOrders";
+import { getBusinessName, getPersonalName } from "@/utils/partyDisplayName";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import {
   useConfirmOrderReceiptMutation,
@@ -44,11 +44,14 @@ import type { Order, OrderPaymentMethod } from "@/types/order";
 import {
   formatDeliveryAddress,
   getActiveMilestoneCount,
+  getAutoReceiveDeadline,
   getOrderMilestones,
+  getOrderReference,
   getPaymentStatusDisplay,
   isAwaitingBuyerConfirmation,
   isPaidOrderStatus,
 } from "@/types/order";
+import { useAdminPlatformSettingsQuery } from "@/hooks/queries/admin";
 
 type ModalKind =
   | "payment"
@@ -248,22 +251,38 @@ function ActionNotice({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Live escrow countdown shown on the tracking card (HOUR : MINUTES : SECONDS). */
-function CountdownTimer({ target }: { target?: Date }) {
+/**
+ * Live escrow countdown shown on the tracking card (DAYS : HOURS : MINUTES :
+ * SECONDS). `target` is the backend-derived auto-receive deadline; when there
+ * isn't one there is nothing to count down to, so we render an idle state rather
+ * than invent a window.
+ */
+function CountdownTimer({
+  target,
+  emptyLabel = "Not started",
+}: {
+  target?: Date | null;
+  emptyLabel?: string;
+}) {
   const [now, setNow] = useState(() => Date.now());
-  // When the order carries no real deadline, anchor a 24h window at mount time.
-  const [fallbackDeadline] = useState(() => Date.now() + 24 * 60 * 60 * 1000);
 
   useEffect(() => {
+    if (!target) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [target]);
 
-  const deadline = target ? target.getTime() : fallbackDeadline;
-  const remaining = Math.max(0, deadline - now);
+  if (!target) {
+    return (
+      <p className="mt-2 text-sm text-[#6B7280]">{emptyLabel}</p>
+    );
+  }
+
+  const remaining = Math.max(0, target.getTime() - now);
   const totalSeconds = Math.floor(remaining / 1000);
   const segments: { value: number; label: string }[] = [
-    { value: Math.floor(totalSeconds / 3600), label: "HOUR" },
+    { value: Math.floor(totalSeconds / 86400), label: "DAYS" },
+    { value: Math.floor((totalSeconds % 86400) / 3600), label: "HOURS" },
     { value: Math.floor((totalSeconds % 3600) / 60), label: "MINUTES" },
     { value: totalSeconds % 60, label: "SECONDS" },
   ];
@@ -311,6 +330,10 @@ export default function BuyerOrderDetailPage() {
     error,
   } = useOrderQuery(orderId);
   const message = error instanceof Error ? error.message : "";
+
+  // Drives the escrow countdown. If the endpoint rejects this role the query
+  // just stays empty and the timer renders its idle state.
+  const { data: platformSettings } = useAdminPlatformSettingsQuery();
 
   const confirmMutation = useConfirmOrderReceiptMutation();
   const isConfirming = confirmMutation.isPending;
@@ -413,18 +436,12 @@ export default function BuyerOrderDetailPage() {
   // once the distributor has finished delivering.
   const deliveryUnderway = awaitingBuyerConfirmation;
   const hasActiveDispute = Boolean(liveOrder?.activeDisputeId);
-  // Only the live order can carry a real deadline; the API doesn't return one
-  // today, so this is usually undefined and CountdownTimer falls back to a
-  // mount-anchored 24h window.
-  const proposedDate = liveOrder?.proposedDeliveryDate
-    ? new Date(liveOrder.proposedDeliveryDate)
-    : null;
-  const escrowDeadline =
-    proposedDate && !Number.isNaN(proposedDate.getTime())
-      ? proposedDate
-      : undefined;
-  const expectedByText = liveOrder?.proposedDeliveryDate
-    ? formatDate(liveOrder.proposedDeliveryDate)
+  // Escrow auto-release deadline: the platform's auto-receive window counted
+  // from the backend timestamp for the final logistics stage (installed when
+  // installation is required, delivered otherwise). Null until that stage lands.
+  const escrowDeadline = getAutoReceiveDeadline(liveOrder, platformSettings);
+  const expectedByText = escrowDeadline
+    ? formatDate(escrowDeadline.toISOString())
     : "—";
   const statusTone = getBuyerOrderStatusTone(stage === "completed" ? "completed" : liveStatus);
   const productImage = order?.productImage || getOrderProductImage(liveOrder);
@@ -438,10 +455,15 @@ export default function BuyerOrderDetailPage() {
     (typeof liveOrder?.seller === "string" ? liveOrder.seller : "");
   const supplierEmail = sellerRef?.email || "—";
   const supplierPhone = sellerRef?.phoneNumber || "—";
-  const supplierRole =
-    sellerRef?.businessName ||
-    sellerRef?.distributorStoreProfile?.businessName ||
-    "Supplier";
+  // `supplierName` already shows the business name once the distributor has
+  // one (KYC tier 2), so the secondary line carries the person behind it —
+  // otherwise there is nothing to add beyond the role.
+  const supplierBusinessName = getBusinessName(sellerRef);
+  const supplierContactName = getPersonalName(sellerRef);
+  const supplierSecondaryLabel = supplierBusinessName ? "Contact person" : "Role";
+  const supplierSecondaryValue = supplierBusinessName
+    ? supplierContactName || "—"
+    : "Supplier";
   const buyerName = getPersonName(liveOrder?.buyer, "You");
   const buyerEmail =
     liveOrder?.buyer && typeof liveOrder.buyer === "object"
@@ -744,7 +766,10 @@ export default function BuyerOrderDetailPage() {
 
                 <div className="grid content-start gap-5 xl:grid-cols-[1fr_auto]">
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-                    <DetailStat label="Order ID" value={order.id || getOrderDisplayId(orderId)} />
+                    <DetailStat
+                      label="Order ID"
+                      value={order.id || getOrderReference(liveOrder ?? { _id: orderId })}
+                    />
                     <DetailStat
                       label={order.itemCount > 1 ? "Products" : "Name of product"}
                       value={order.productSummary}
@@ -878,8 +903,14 @@ export default function BuyerOrderDetailPage() {
                 </InfoCard>
                 <InfoCard title="Supplier Information">
                   <div className="grid gap-5 sm:grid-cols-2">
-                    <DetailStat label="Full name" value={supplierName} />
-                    <DetailStat label="Role" value={supplierRole} />
+                    <DetailStat
+                      label={supplierBusinessName ? "Business name" : "Full name"}
+                      value={supplierName}
+                    />
+                    <DetailStat
+                      label={supplierSecondaryLabel}
+                      value={supplierSecondaryValue}
+                    />
                     <DetailStat label="Phone number" value={supplierPhone} />
                     <DetailStat label="Email address" value={supplierEmail} />
                   </div>
@@ -966,7 +997,10 @@ export default function BuyerOrderDetailPage() {
                           <p className="text-base font-medium text-[#111827]">
                             Time Remaining
                           </p>
-                          <CountdownTimer target={escrowDeadline} />
+                          <CountdownTimer
+                            target={escrowDeadline}
+                            emptyLabel="Starts once the supplier marks this order delivered"
+                          />
                         </div>
                       </div>
 
@@ -983,8 +1017,8 @@ export default function BuyerOrderDetailPage() {
                     <p className="flex items-start gap-2 text-sm leading-5 text-[#0669D9]">
                       <Info size={18} className="mt-0.5 shrink-0" />
                       {deliveryUnderway
-                        ? "Confirm you've received this order to release escrow to the supplier."
-                        : "Order auto cancels if supplier doesn't confirm before timer ends"}
+                        ? "Confirm you've received this order to release escrow to the supplier. Escrow releases automatically when the timer ends."
+                        : "The escrow timer starts once the supplier marks this order delivered."}
                     </p>
                   </div>
                 </div>

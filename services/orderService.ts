@@ -5,6 +5,7 @@ import type {
   OnBehalfOrderPayload,
   Order,
   OrderPaymentResult,
+  OrderSummary,
   PayOrderPayload,
 } from "@/types/order";
 import { apiUrl } from "@/utils/api-base-url";
@@ -167,6 +168,21 @@ export const advanceFulfillment = async (
   return handleResponse(res);
 };
 
+/**
+ * GET /orders/summary — counters and order value for the caller's own orders.
+ * The backend scopes it by role, so buyers/engineers get purchases, distributors
+ * get sales and admins get the platform total.
+ */
+export const fetchOrderSummary = async (
+  token: string
+): Promise<{ success: boolean; message: string; data: OrderSummary }> => {
+  const res = await fetch(apiUrl("/orders/summary"), {
+    method: "GET",
+    headers: authHeaders(token),
+  });
+  return handleResponse(res);
+};
+
 export const fetchEscrowSummary = async (
   token: string
 ): Promise<{ success: boolean; message: string; data: EscrowSummary }> => {
@@ -187,6 +203,7 @@ const orderService = {
   payOrder,
   markOrderReceived,
   advanceFulfillment,
+  fetchOrderSummary,
   fetchEscrowSummary,
 };
 

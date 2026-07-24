@@ -97,6 +97,9 @@ export default function DashboardMobileSidebar({
 
   const handleLogout = async () => {
     await dispatch(logout());
+    // Full document navigation: drops Next's client router cache so the next
+    // account cannot replay this role's cached dashboard routes (BAI-61).
+    window.location.assign("/login");
   };
 
   return (

@@ -16,6 +16,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useCurrentUserId } from "@/hooks/queries/products";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { queryKeys } from "@/lib/query-keys";
 import serviceRequestService from "@/services/serviceRequestService";
@@ -42,6 +43,26 @@ const selectList = (res: Awaited<
   meta: res.data,
   message: res.message,
 });
+
+/**
+ * `GET /service-requests/summary` — status counters scoped to the caller by the
+ * backend. Buyers, distributors and engineers only; admins have their own
+ * `/admin/service-requests/summary`.
+ */
+export const useServiceRequestSummaryQuery = (options?: {
+  enabled?: boolean;
+}) => {
+  const token = useAuthToken();
+  const userId = useCurrentUserId();
+
+  return useQuery({
+    queryKey: queryKeys.serviceRequests.summary(userId ?? "anonymous"),
+    queryFn: () =>
+      serviceRequestService.fetchServiceRequestSummary(token as string),
+    enabled: Boolean(token) && (options?.enabled ?? true),
+    select: (res) => res.data,
+  });
+};
 
 /** The buyer's service requests. */
 export const useBuyerServiceRequestsQuery = (

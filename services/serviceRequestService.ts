@@ -2,6 +2,7 @@ import {
   CreateServiceRequestPayload,
   ServiceRequestListResponse,
   ServiceRequestResponse,
+  ServiceRequestSummaryResponse,
   UpdateServiceRequestStatusPayload,
 } from "@/types/service-request";
 import { apiUrl } from "@/utils/api-base-url";
@@ -93,6 +94,33 @@ const fetchServiceRequests = async (
   }
 
   return body as ServiceRequestListResponse;
+};
+
+/**
+ * GET /service-requests/summary — status counters scoped to the caller. Only
+ * buyers, distributors and engineers may call it; admins use the /admin variant.
+ */
+const fetchServiceRequestSummary = async (
+  token: string
+): Promise<ServiceRequestSummaryResponse> => {
+  const response = await fetch(apiUrl("/service-requests/summary"), {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await parseErrorMessage(
+        response,
+        "Failed to fetch service request summary"
+      )
+    );
+  }
+
+  return response.json();
 };
 
 const fetchServiceRequestById = async (
@@ -235,6 +263,7 @@ const buyerMarkCompleted = async (
 const serviceRequestService = {
   createServiceRequest,
   fetchServiceRequests,
+  fetchServiceRequestSummary,
   fetchServiceRequestById,
   updateServiceRequestStatus,
   buyerMarkCompleted,

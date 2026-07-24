@@ -22,6 +22,7 @@ import SafeProductImage from "@/components/product/SafeProductImage";
 import { getProductAvailabilityLabel } from "@/utils/productDisplay";
 import { useRecommendedProductsQuery } from "@/hooks/queries/products";
 import type { UserData } from "@/types/user";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 type ProductWithDistributor = Omit<Product, "images"> & {
   distributor?: { businessName?: string };
@@ -152,14 +153,7 @@ function resolveDistributorName(product: ProductWithDistributor) {
   }
 
   if (product.createdBy && typeof product.createdBy === "object") {
-    const owner = product.createdBy as UserData;
-    const fullName = [owner.firstName, owner.lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-    if (fullName) {
-      return fullName;
-    }
+    return getPartyDisplayName(product.createdBy as UserData, "Verified Distributor");
   }
 
   return "Verified Distributor";

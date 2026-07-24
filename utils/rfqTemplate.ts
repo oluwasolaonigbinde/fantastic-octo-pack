@@ -42,6 +42,13 @@ export interface ParsedTemplateResult {
    * flags that row so the buyer can fix it inline before sending.
    */
   items: CreateRfqItem[];
+  /**
+   * Parallel to `items`. Filled only when the buyer added a "Distributor Email"
+   * column to the sheet — the targeted bulk contract (`POST /rfqs/bulk`) routes
+   * by email, and the downloaded template has no such column, so this is an
+   * opt-in convenience rather than something the file is guaranteed to carry.
+   */
+  distributorEmails: string[];
   /** Set only for whole-file problems (wrong sheet, unreadable file). */
   fileError?: string;
 }
@@ -110,6 +117,7 @@ export const parseRfqTemplate = async (
   if (!sheet) {
     return {
       items: [],
+      distributorEmails: [],
       fileError:
         'This file has no "RFQ Items" sheet. Please upload the template downloaded from Baiy without renaming its sheet.',
     };
@@ -124,6 +132,11 @@ export const parseRfqTemplate = async (
   const { categoryIdByName, subIdByCatSub } = buildLookup(rows);
 
   const items: CreateRfqItem[] = [];
+  const distributorEmails: string[] = [];
+  // Located by header text, since it is a column the buyer adds themselves.
+  const emailColumn = (rows[0] ?? []).findIndex((cell) =>
+    /distributor\s*e-?mail/i.test(text(cell)),
+  );
 
   // Row 0 is the header row; buyer input starts at row 1 (Excel row 2).
   for (let index = 1; index < rows.length; index += 1) {
@@ -154,7 +167,8 @@ export const parseRfqTemplate = async (
       description: text(row[COL_DESCRIPTION]) || "",
       notes: text(row[COL_NOTES]) || "",
     });
+    distributorEmails.push(emailColumn >= 0 ? text(row[emailColumn]) : "");
   }
 
-  return { items };
+  return { items, distributorEmails };
 };

@@ -11,10 +11,16 @@
  *     "Need attention" and can be fixed inline (dropdowns / inputs) or deleted.
  *     Only ready rows are sent.
  *
- * All rows are submitted together as one RFQ via POST /rfqs (isBulk), then that
- * RFQ is submitted so the routing engine fans it out — the same contract the
- * single-quote flow uses, just with many line items. Delivery address and
- * timeline are shared across the batch, which is all the template + API carry.
+ * Two ways to send, chosen in the review step:
+ *
+ *  • Automatic — all rows go out as one RFQ via POST /rfqs (isBulk) which is
+ *    then submitted, letting the routing engine fan it out by category.
+ *  • Targeted — each row names the distributor it is for, and the batch goes to
+ *    POST /rfqs/bulk, which creates one RFQ per row addressed to that email.
+ *    Rows the backend cannot place come back in `errors` and are shown inline.
+ *
+ * A "Distributor Email" column added to the sheet is picked up on upload; rows
+ * can also be addressed by hand in the review table.
  */
 
 import { ChangeEvent, useMemo, useState } from "react";
@@ -23,7 +29,7 @@ import { Download, FileText, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/base";
 import { useAppSelector } from "@/hooks/useAppSelector";
-import { useCreateRfqMutation } from "@/hooks/queries/rfqs";
+import { useCreateBulkRfqMutation, useCreateRfqMutation } from "@/hooks/queries/rfqs";
 import rfqService from "@/services/rfqService";
 import type { Category } from "@/types/categories";
 import type { UserAddress } from "@/types/address";
@@ -32,11 +38,24 @@ import { parseRfqTemplate } from "@/utils/rfqTemplate";
 
 const PAGE_SIZE = 6;
 
+/** A parsed row plus the distributor it is addressed to, when targeted. */
+type BulkRow = CreateRfqItem & { distributorEmail: string };
+
+type BulkRouting = "automatic" | "targeted";
+
 const addressLabel = (address: UserAddress) =>
   [address.address, address.city, address.state].filter(Boolean).join(", ");
 
-const isReady = (item: CreateRfqItem) =>
-  Boolean(item.productName.trim()) && Boolean(item.category) && item.quantity >= 1;
+const isEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+/**
+ * Automatic routing needs a category to match on; targeted routing does not —
+ * it needs the distributor's email instead, which is what the backend resolves.
+ */
+const isReady = (item: BulkRow, routing: BulkRouting) =>
+  Boolean(item.productName.trim()) &&
+  item.quantity >= 1 &&
+  (routing === "targeted" ? isEmail(item.distributorEmail) : Boolean(item.category));
 
 interface BulkQuoteFlowProps {
   open: boolean;
@@ -55,10 +74,14 @@ export default function BulkQuoteFlow({
 }: BulkQuoteFlowProps) {
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const createRfq = useCreateRfqMutation();
+  const createBulkRfq = useCreateBulkRfqMutation();
 
   const [step, setStep] = useState<"upload" | "review">("upload");
   const [fileName, setFileName] = useState("");
-  const [items, setItems] = useState<CreateRfqItem[]>([]);
+  const [items, setItems] = useState<BulkRow[]>([]);
+  const [routing, setRouting] = useState<BulkRouting>("automatic");
+  const [title, setTitle] = useState("");
+  const [rowErrors, setRowErrors] = useState<{ row: number; message: string }[]>([]);
   const [isParsing, setIsParsing] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +102,7 @@ export default function BulkQuoteFlow({
     return map;
   }, [categories]);
 
-  const readyCount = items.filter(isReady).length;
+  const readyCount = items.filter((item) => isReady(item, routing)).length;
   const attentionCount = items.length - readyCount;
   const pageCount = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
@@ -96,6 +119,9 @@ export default function BulkQuoteFlow({
     setPage(1);
     setPendingDelete(null);
     setDeliveryTimeline("");
+    setRouting("automatic");
+    setTitle("");
+    setRowErrors([]);
   };
 
   const close = () => {
@@ -123,7 +149,7 @@ export default function BulkQuoteFlow({
     setIsParsing(true);
     setError(null);
     try {
-      const { items: parsed, fileError } = await parseRfqTemplate(file);
+      const { items: parsed, distributorEmails, fileError } = await parseRfqTemplate(file);
       if (fileError) {
         setError(fileError);
         return;
@@ -133,7 +159,14 @@ export default function BulkQuoteFlow({
         return;
       }
       setFileName(file.name);
-      setItems(parsed);
+      setItems(
+        parsed.map((item, index) => ({
+          ...item,
+          distributorEmail: distributorEmails[index] ?? "",
+        })),
+      );
+      // A sheet that named distributors is a sheet meant to be sent to them.
+      if (distributorEmails.some((email) => email.trim())) setRouting("targeted");
     } catch {
       setError("Could not read that file. Please upload the .xlsx template downloaded from Baiy.");
     } finally {
@@ -141,7 +174,7 @@ export default function BulkQuoteFlow({
     }
   };
 
-  const updateItem = (indexOnPage: number, update: Partial<CreateRfqItem>) => {
+  const updateItem = (indexOnPage: number, update: Partial<BulkRow>) => {
     const absolute = pageStart + indexOnPage;
     setItems((current) =>
       current.map((item, index) => (index === absolute ? { ...item, ...update } : item)),
@@ -156,9 +189,10 @@ export default function BulkQuoteFlow({
   };
 
   const downloadReviewedExcel = () => {
-    const rows = items.filter(isReady).map((item) => ({
+    const rows = items.filter((item) => isReady(item, routing)).map((item) => ({
       "Product Name": item.productName,
       Quantity: item.quantity,
+      "Distributor Email": item.distributorEmail || "",
       Category: categoryName.get(item.category) || "",
       "Sub-Category": item.subCategory ? subName.get(item.subCategory) || "" : "",
       Brand: item.brand || "",
@@ -172,11 +206,61 @@ export default function BulkQuoteFlow({
     XLSX.writeFile(workbook, "baiy-rfq-reviewed.xlsx");
   };
 
+  /**
+   * Targeted rows go to `POST /rfqs/bulk`, which addresses each row to the named
+   * distributor. It answers partial success, so rows the backend rejected are
+   * kept on screen instead of the whole submission being treated as failed.
+   */
+  const submitTargeted = async (ready: BulkRow[]) => {
+    setRowErrors([]);
+    const deliveryLocation = addresses.find((address) => address._id === addressId);
+    try {
+      const result = await createBulkRfq.mutateAsync({
+        items: ready.map((item) => ({
+          productName: item.productName.trim(),
+          quantity: item.quantity,
+          distributorEmail: item.distributorEmail.trim(),
+          ...(deliveryTimeline ? { proposedDeliveryDate: deliveryTimeline } : {}),
+          ...(deliveryLocation ? { deliveryLocation: addressLabel(deliveryLocation) } : {}),
+          ...(item.description?.trim() || item.notes?.trim()
+            ? { additionalNote: [item.description, item.notes].filter(Boolean).join(" — ").trim() }
+            : {}),
+        })),
+        ...(title.trim() ? { title: title.trim() } : {}),
+      });
+      if (result.data.errors.length > 0) {
+        setRowErrors(result.data.errors);
+        setError(
+          `${result.data.created} row${result.data.created === 1 ? "" : "s"} sent. The rows below could not be delivered.`,
+        );
+        onSubmitted();
+        return;
+      }
+      close();
+      onSubmitted();
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Unable to send the bulk request. Please try again.",
+      );
+    }
+  };
+
   const submit = async () => {
     if (!token) return;
-    const ready = items.filter(isReady);
+    const ready = items.filter((item) => isReady(item, routing));
     if (ready.length === 0) {
-      setError("Add at least one ready item before sending.");
+      setError(
+        routing === "targeted"
+          ? "Every row needs a product, quantity, and a valid distributor email."
+          : "Add at least one ready item before sending.",
+      );
+      return;
+    }
+    if (routing === "targeted") {
+      setError(null);
+      await submitTargeted(ready);
       return;
     }
     if (!addressId) {
@@ -299,6 +383,45 @@ export default function BulkQuoteFlow({
             </header>
 
             <div className="flex-1 space-y-5 overflow-y-auto p-5">
+              <fieldset className="rounded-xl border border-gray5 p-4">
+                <legend className="px-1 text-sm font-semibold text-gray1">How should these go out?</legend>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    aria-pressed={routing === "automatic"}
+                    onClick={() => setRouting("automatic")}
+                    className={`rounded-lg border p-3 text-left transition-colors ${routing === "automatic" ? "border-primary bg-primary-light/40" : "border-gray5 hover:bg-gray7"}`}
+                  >
+                    <span className="block text-sm font-medium text-gray1">Match suppliers for me</span>
+                    <span className="mt-1 block text-xs leading-5 text-gray3">
+                      One request routed by category to matching distributors.
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={routing === "targeted"}
+                    onClick={() => setRouting("targeted")}
+                    className={`rounded-lg border p-3 text-left transition-colors ${routing === "targeted" ? "border-primary bg-primary-light/40" : "border-gray5 hover:bg-gray7"}`}
+                  >
+                    <span className="block text-sm font-medium text-gray1">Send to named distributors</span>
+                    <span className="mt-1 block text-xs leading-5 text-gray3">
+                      Each row goes only to the distributor email on it.
+                    </span>
+                  </button>
+                </div>
+                {routing === "targeted" ? (
+                  <label className="mt-4 block text-sm text-gray3">
+                    Batch title (optional)
+                    <input
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      placeholder="e.g. Q3 theatre restock"
+                      className="mt-1 h-11 w-full rounded-lg border border-gray5 bg-white px-3 text-sm text-gray1"
+                    />
+                  </label>
+                ) : null}
+              </fieldset>
+
               <div className="rounded-xl border border-gray5 p-4">
                 <div className="flex items-center justify-between">
                   <p className="font-medium text-gray1">Items Summary</p>
@@ -354,6 +477,9 @@ export default function BulkQuoteFlow({
                       <tr>
                         <th className="px-3 py-3 font-medium">#</th>
                         <th className="px-3 py-3 font-medium">Product</th>
+                        {routing === "targeted" ? (
+                          <th className="px-3 py-3 font-medium">Distributor email</th>
+                        ) : null}
                         <th className="px-3 py-3 font-medium">Category</th>
                         <th className="px-3 py-3 font-medium">Sub Category</th>
                         <th className="px-3 py-3 font-medium">Model</th>
@@ -366,7 +492,9 @@ export default function BulkQuoteFlow({
                     <tbody>
                       {pageItems.map((item, indexOnPage) => {
                         const category = categories.find((c) => c._id === item.category);
-                        const ready = isReady(item);
+                        const ready = isReady(item, routing);
+                        // Backend row numbers are 1-based over the rows that were sent.
+                        const rowError = rowErrors.find((entry) => entry.row === pageStart + indexOnPage + 1);
                         return (
                           <tr key={pageStart + indexOnPage} className="border-b border-gray6 align-top last:border-0">
                             <td className="px-3 py-3 text-gray3">{pageStart + indexOnPage + 1}</td>
@@ -378,11 +506,27 @@ export default function BulkQuoteFlow({
                                 className={`h-9 w-40 rounded border px-2 ${item.productName.trim() ? "border-gray5" : "border-warning bg-warning/5"}`}
                               />
                             </td>
+                            {routing === "targeted" ? (
+                              <td className="px-3 py-3">
+                                <input
+                                  type="email"
+                                  value={item.distributorEmail}
+                                  onChange={(event) => updateItem(indexOnPage, { distributorEmail: event.target.value })}
+                                  placeholder="distributor@email.com"
+                                  aria-label={`Distributor email for row ${pageStart + indexOnPage + 1}`}
+                                  className={`h-9 w-48 rounded border px-2 ${isEmail(item.distributorEmail) ? "border-gray5" : "border-warning bg-warning/5"}`}
+                                />
+                                {rowError ? (
+                                  <span className="mt-1 block max-w-48 text-xs text-danger">{rowError.message}</span>
+                                ) : null}
+                              </td>
+                            ) : null}
                             <td className="px-3 py-3">
                               <select
                                 value={item.category}
                                 onChange={(event) => updateItem(indexOnPage, { category: event.target.value, subCategory: "" })}
-                                className={`h-9 w-36 rounded border px-2 ${item.category ? "border-gray5" : "border-warning bg-warning/5"}`}
+                                disabled={routing === "targeted"}
+                                className={`h-9 w-36 rounded border px-2 disabled:bg-gray7 ${item.category || routing === "targeted" ? "border-gray5" : "border-warning bg-warning/5"}`}
                               >
                                 <option value="">Select</option>
                                 {categories.map((c) => (
@@ -487,11 +631,13 @@ export default function BulkQuoteFlow({
               <div className="flex gap-3">
                 <Button title="Cancel" variant="secondaryLight" size="md" onClick={close} className="!w-auto" />
                 <Button
-                  title={createRfq.isPending ? "Sending..." : "Send Bulk RFQ"}
+                  title={createRfq.isPending || createBulkRfq.isPending ? "Sending..." : "Send Bulk RFQ"}
                   variant="primary"
                   size="md"
-                  isBusy={createRfq.isPending}
-                  disabled={readyCount === 0 || !addressId}
+                  isBusy={createRfq.isPending || createBulkRfq.isPending}
+                  // Targeted rows are addressed by email; only the automatic
+                  // path needs the shared saved delivery address.
+                  disabled={readyCount === 0 || (routing === "automatic" && !addressId)}
                   onClick={() => void submit()}
                   className="!w-auto"
                 />
