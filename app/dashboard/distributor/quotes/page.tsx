@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, Suspense, useMemo, useState } from "react";
+import { ChangeEvent, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ChevronRight, Eye, FileText, Filter, Info, MapPin, MessageCircle, PackageCheck, User } from "lucide-react";
 import Header from "../../component/header";
@@ -88,6 +88,13 @@ function DistributorQuotesPageInner() {
   const [draftDateRange, setDraftDateRange] = useState("");
   const [appliedFilters, setAppliedFilters] = useState({ product: "", dateRange: "" });
   const [page, setPage] = useState(1);
+
+  // Extract files while the input change event is still active. Passing a
+  // synthetic event through several components made the upload flow fragile
+  // and is unnecessary now that the form only needs the selected files.
+  const selectImages = (event: ChangeEvent<HTMLInputElement>) => {
+    setImages(Array.from(event.currentTarget.files ?? []).slice(0, 4));
+  };
 
   const typeScoped = useMemo(() => inbox.filter((quote) => asRfq(quote)?.isBulk === (mode === "bulk")), [inbox, mode]);
   const filtered = useMemo(() => {
@@ -184,10 +191,10 @@ function DistributorQuotesPageInner() {
         <div className="max-h-[80vh] overflow-y-auto px-6 py-5">
           {selected && rfq ? (
             view === "bulk"
-              ? <BulkRespond rfq={rfq} lines={lines} itemStatus={itemStatus} editingItem={editingItem} bulkStep={bulkStep} productOptions={productOptions} warranty={warranty} deliveryTime={deliveryTime} images={images} catalogue={catalogue} busy={respond.isPending} error={error} buyerLabel={buyerName(rfq)} deliveryLoc={deliveryLocation(rfq)} onStartItem={startQuoteItem} onMarkUnavailable={markItemUnavailable} onUpdateLine={updateLine} onSaveItem={saveQuoteItem} onCancelItem={() => { setEditingItem(null); setError(null); }} onGoFinalize={() => { setError(null); setBulkStep("finalize"); }} onBackToItems={() => { setError(null); setBulkStep("items"); }} setWarranty={setWarranty} setDeliveryTime={setDeliveryTime} onImages={(event) => setImages(Array.from(event.target.files ?? []).slice(0, 4))} onCatalogue={(event) => setCatalogue(event.target.files?.[0])} onSend={() => void submitResponse()} />
+              ? <BulkRespond rfq={rfq} lines={lines} itemStatus={itemStatus} editingItem={editingItem} bulkStep={bulkStep} productOptions={productOptions} warranty={warranty} deliveryTime={deliveryTime} images={images} catalogue={catalogue} busy={respond.isPending} error={error} buyerLabel={buyerName(rfq)} deliveryLoc={deliveryLocation(rfq)} onStartItem={startQuoteItem} onMarkUnavailable={markItemUnavailable} onUpdateLine={updateLine} onSaveItem={saveQuoteItem} onCancelItem={() => { setEditingItem(null); setError(null); }} onGoFinalize={() => { setError(null); setBulkStep("finalize"); }} onBackToItems={() => { setError(null); setBulkStep("items"); }} setWarranty={setWarranty} setDeliveryTime={setDeliveryTime} onImages={selectImages} onCatalogue={(event) => setCatalogue(event.currentTarget.files?.[0])} onSend={() => void submitResponse()} />
               : view === "detail"
               ? <QuoteDetail quote={selected} rfq={rfq} busy={respond.isPending} error={error} onRespond={() => { setError(null); setView("respond"); }} onUnavailable={() => void markUnavailable()} />
-              : <QuoteResponseForm rfq={rfq} lines={lines} productOptions={productOptions} warranty={warranty} deliveryTime={deliveryTime} images={images} catalogue={catalogue} busy={respond.isPending} error={error} updateLine={updateLine} setWarranty={setWarranty} setDeliveryTime={setDeliveryTime} onImages={(event) => setImages(Array.from(event.target.files ?? []).slice(0, 4))} onCatalogue={(event) => setCatalogue(event.target.files?.[0])} onSubmit={() => void submitResponse()} />
+              : <QuoteResponseForm rfq={rfq} lines={lines} productOptions={productOptions} warranty={warranty} deliveryTime={deliveryTime} images={images} catalogue={catalogue} busy={respond.isPending} error={error} updateLine={updateLine} setWarranty={setWarranty} setDeliveryTime={setDeliveryTime} onImages={selectImages} onCatalogue={(event) => setCatalogue(event.currentTarget.files?.[0])} onSubmit={() => void submitResponse()} />
           ) : null}
         </div>
       </DialogContent>
@@ -251,11 +258,37 @@ function QuoteResponseForm({ rfq, lines, productOptions, warranty, deliveryTime,
     {hasAvailable ? <>
       <Select label="Warranty" placeholder="Select option" options={WARRANTY_OPTIONS} value={warranty} onValueChange={setWarranty} />
       <Input id="quote-delivery-time" label="Delivery time" placeholder="How long would it take you to deliver this item" value={deliveryTime} onValueChange={setDeliveryTime} />
-      <div><FileUpload id="quote-images" label="Upload pictures of the item" accept="image/png,image/jpeg,image/webp" multiple onChange={onImages} />{images.length ? <p className="mt-2 px-3 text-xs text-gray3">{images.map((file) => file.name).join(", ")}</p> : null}</div>
+      <QuoteImageUpload id="quote-images" label="Upload pictures of the item" images={images} onChange={onImages} />
       <div><FileUpload id="quote-catalogue" label="Upload PDF catalogue (Optional)" accept="image/png,image/jpeg,image/webp,application/pdf,.doc,.docx" onChange={onCatalogue} />{catalogue ? <p className="mt-2 px-3 text-xs text-gray3">{catalogue.name}</p> : null}</div>
     </> : null}
     {error ? <p className="text-sm text-danger">{error}</p> : null}
     <Button title={busy ? "Sending..." : "Send Quote"} variant="primary" size="lg" isBusy={busy} disabled={busy} onClick={onSubmit} className="w-full" />
+  </div>;
+}
+
+function QuoteImageUpload({ id, label, images, onChange }: {
+  id: string;
+  label: string;
+  images: File[];
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const previews = useMemo(
+    () => images.map((image) => URL.createObjectURL(image)),
+    [images],
+  );
+
+  useEffect(() => {
+    return () => previews.forEach((url) => URL.revokeObjectURL(url));
+  }, [previews]);
+
+  return <div>
+    <FileUpload id={id} label={label} accept="image/png,image/jpeg,image/webp" multiple onChange={onChange} />
+    {images.length ? <div className="mt-3 grid grid-cols-4 gap-2 px-3" aria-label="Selected quote images">
+      {images.map((image, index) => <figure key={`${image.name}-${image.lastModified}-${index}`} className="min-w-0">
+        {previews[index] ? <img src={previews[index]} alt={`Selected image: ${image.name}`} className="aspect-square w-full rounded-lg border border-gray5 object-cover" /> : null}
+        <figcaption className="mt-1 truncate text-xs text-gray3" title={image.name}>{image.name}</figcaption>
+      </figure>)}
+    </div> : null}
   </div>;
 }
 
@@ -290,7 +323,7 @@ function BulkRespond({ rfq, lines, itemStatus, editingItem, bulkStep, productOpt
       <p className="text-sm text-gray2">These apply to the whole quote.</p>
       <Select label="Warranty" placeholder="Select option" options={WARRANTY_OPTIONS} value={warranty} onValueChange={setWarranty} />
       <Input id="bulk-delivery-time" label="Delivery time" placeholder="How long would it take you to deliver these items" value={deliveryTime} onValueChange={setDeliveryTime} />
-      <div><FileUpload id="bulk-images" label="Upload pictures of the items" accept="image/png,image/jpeg,image/webp" multiple onChange={onImages} />{images.length ? <p className="mt-2 px-3 text-xs text-gray3">{images.map((file) => file.name).join(", ")}</p> : null}</div>
+      <QuoteImageUpload id="bulk-images" label="Upload pictures of the items" images={images} onChange={onImages} />
       <div><FileUpload id="bulk-catalogue" label="Upload PDF catalogue (Optional)" accept="image/png,image/jpeg,image/webp,application/pdf,.doc,.docx" onChange={onCatalogue} />{catalogue ? <p className="mt-2 px-3 text-xs text-gray3">{catalogue.name}</p> : null}</div>
       {error ? <p className="text-sm text-danger">{error}</p> : null}
       <Button title={busy ? "Sending..." : "Send bulk quote"} variant="primary" size="lg" isBusy={busy} disabled={busy} onClick={onSend} className="w-full" />

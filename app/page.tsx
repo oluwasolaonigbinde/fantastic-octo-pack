@@ -381,16 +381,16 @@ export default function Home() {
             Verified Distributors &amp; OEMs
           </h2>
 
-          <div className="mt-16 overflow-x-auto pb-2 sm:overflow-visible sm:pb-0">
-            <div className="flex w-full items-center justify-center gap-8 sm:grid sm:grid-cols-7 sm:justify-items-center sm:gap-x-12 sm:gap-y-8 lg:gap-x-[158px]">
-              {partnerLogos.map((logo, index) => (
+          <div className="mt-16 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_8%,black_92%,transparent)]">
+            <div className="animate-marquee flex w-max items-center gap-16 lg:gap-[158px]">
+              {[...partnerLogos, ...partnerLogos].map((logo, index) => (
                 <div
                   key={`${logo}-${index}`}
                   className="relative h-12 w-[72px] shrink-0 sm:h-14 sm:w-[86px]"
                 >
                   <Image
                     src={logo}
-                    alt={`Verified partner ${index + 1}`}
+                    alt={`Verified partner ${(index % partnerLogos.length) + 1}`}
                     fill
                     sizes="(max-width: 640px) 72px, 86px"
                     className="object-contain"

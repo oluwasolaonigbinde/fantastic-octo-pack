@@ -19,18 +19,10 @@ import { useWallet } from "@/hooks/useWallet";
 import { useWalletTopup } from "@/hooks/useWalletTopup";
 import { useEscrowSummary } from "@/hooks/useEscrowSummary";
 import { TopUpDrawer, TopUpReturnBanner } from "@/components/wallet/wallet-topup";
+import { koboToNaira, formatNaira } from "@/lib/wallet-format";
 import type { PaymentChannel, PaymentIntent, PaymentStatus } from "@/types/payment";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-const koboToNaira = (kobo: number) => kobo / 100;
-
-const formatNaira = (naira: number) =>
-  new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    maximumFractionDigits: 0,
-  }).format(naira);
 
 const formatDateTime = (iso: string) => {
   const d = new Date(iso);
