@@ -25,7 +25,7 @@ import {
   toBuyerDisputeRow,
   type BuyerDisputeRow,
 } from "@/lib/order-dispute-presenter";
-import { useOrdersQuery } from "@/hooks/queries/orders";
+import { useOrderSummaryQuery, useOrdersQuery } from "@/hooks/queries/orders";
 import { useOrderDisputes } from "@/hooks/useOrderDisputes";
 
 type ActiveTab = "orders" | "disputes";
@@ -36,6 +36,16 @@ const formatCurrency = (value: number) =>
     currency: "NGN",
     minimumFractionDigits: 2,
   }).format(value);
+
+const isThisCalendarMonth = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const now = new Date();
+  return (
+    parsed.getFullYear() === now.getFullYear() &&
+    parsed.getMonth() === now.getMonth()
+  );
+};
 
 const formatDate = (value: string) => {
   const parsed = new Date(value);
@@ -369,6 +379,7 @@ function MobileDisputeList({
 export default function BuyerOrders() {
   const router = useRouter();
   const { data: orders, isLoading } = useOrdersQuery();
+  const { data: orderSummary } = useOrderSummaryQuery();
   const { disputes, isLoading: disputesLoading } = useOrderDisputes();
   const [activeTab, setActiveTab] = useState<ActiveTab>("orders");
   const [orderIdQuery, setOrderIdQuery] = useState("");
@@ -428,18 +439,29 @@ export default function BuyerOrders() {
     };
   }, [displayDisputes]);
 
+  // Cards are labelled "This month", so every count here must actually be
+  // scoped to the current calendar month. Total orders comes from the
+  // backend summary (GET /orders/summary) — it knows the canonical status
+  // groupings — falling back to a client-side count while that request is
+  // in flight; the backend has no per-status monthly breakdown, so those
+  // three counts are derived from this month's orders directly.
+  const thisMonthOrders = useMemo(
+    () => displayOrders.filter((order) => isThisCalendarMonth(order.createdAt)),
+    [displayOrders],
+  );
+
   const metrics = {
-    total: String(displayOrders.length).padStart(2, "0"),
+    total: String(orderSummary?.ordersThisMonth ?? thisMonthOrders.length).padStart(2, "0"),
     delivered: String(
-      displayOrders.filter((order) => order.status === "completed").length || 0,
+      thisMonthOrders.filter((order) => order.status === "completed").length || 0,
     ).padStart(2, "0"),
     pending: String(
-      displayOrders.filter((order) =>
+      thisMonthOrders.filter((order) =>
         ["created_pending_payment", "not_paid"].includes(order.status),
       ).length,
     ).padStart(2, "0"),
     cancelled: String(
-      displayOrders.filter((order) => order.status === "cancelled_pre_payment").length,
+      thisMonthOrders.filter((order) => order.status === "cancelled_pre_payment").length,
     ).padStart(2, "0"),
   };
 
