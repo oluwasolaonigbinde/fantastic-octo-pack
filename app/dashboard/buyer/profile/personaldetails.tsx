@@ -9,6 +9,7 @@ import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { formatDate } from "@/utils/formatDate";
 import { UserRole } from "@/types/user";
 import { reset as clearFeedback, uploadDisplayPhoto } from "@/store/slices/auth-slice";
+import { getPartyDisplayName, getPartyInitials } from "@/utils/partyDisplayName";
 
 import { DEFAULT_AVATAR_SRC } from "@/constants/avatar";
 
@@ -106,6 +107,8 @@ const PersonalDetails = () => {
     }
   };
 
+  const accountName = getPartyDisplayName(data, "User");
+  const accountInitials = getPartyInitials(data, "User");
   const dateOfBirth = data.dateOfBirth ? formatDate(data.dateOfBirth) : "Not set yet";
   const photoFeedbackVisible = lastCompletedAction === "uploadDisplayPhoto";
 
@@ -117,12 +120,11 @@ const PersonalDetails = () => {
             <Avatar className="size-16 md:size-[4.375rem]">
               <AvatarImage
                 src={preview || data.displayPhoto?.url || DEFAULT_AVATAR_SRC}
-                alt={`${data.firstName || "User"} ${data.lastName || ""}`}
+                alt={accountName}
               />
               <AvatarFallback>
                 <span className="text-[12px] capitalize text-primary">
-                  {data.firstName?.slice(0, 1) || "U"}
-                  {data.lastName?.slice(0, 1) || ""}
+                  {accountInitials}
                 </span>
               </AvatarFallback>
             </Avatar>
@@ -145,11 +147,8 @@ const PersonalDetails = () => {
           />
 
           <div className="min-w-0 max-w-[220px] sm:max-w-xs">
-            <h2
-              className="medium4 truncate capitalize"
-              title={`${data.firstName || "User"} ${data.lastName || ""}`}
-            >
-              {`${data.firstName || "User"} ${data.lastName || ""}`}
+            <h2 className="medium4 truncate capitalize" title={accountName}>
+              {accountName}
             </h2>
             <p className="inline-flex flex-col gap-2 text-sm leading-3 md:flex-row md:items-center">
               <span>{roleDisplayLabel(data.role)}</span> | {data.email}

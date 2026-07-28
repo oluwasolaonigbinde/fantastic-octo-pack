@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import {
-  CalendarDays,
   CircleDollarSign,
   ClipboardList,
   Download,
@@ -15,7 +14,6 @@ import {
 
 import Header from "../../component/header";
 import { Button, Input, RightSlider, SummaryCard } from "@/components/base";
-import { ADMIN_RFQS_ORDERS_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import {
   Table,
   TableBody,
@@ -285,15 +283,6 @@ function PlainAction({
       {icon}
       {children}
     </button>
-  );
-}
-
-function AdminDateChip({ label }: { label: string }) {
-  return (
-    <div className="inline-flex h-11 sm:h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
-      <span>{label}</span>
-      <CalendarDays size={18} className="text-gray2" />
-    </div>
   );
 }
 
@@ -607,10 +596,6 @@ export default function AdminRfqsOrdersPage() {
 
         {topTab === "rfqs" && (
           <>
-            <AdminDateChip
-              label={ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.dateRangeLabel}
-            />
-
             {rfqSub === "all" ? (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <MetricCard
@@ -829,9 +814,6 @@ export default function AdminRfqsOrdersPage() {
 
         {topTab === "orders" && (
           <>
-            <AdminDateChip
-              label={ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.dateRangeLabel}
-            />
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <SummaryCard
                 title="Total pending orders"

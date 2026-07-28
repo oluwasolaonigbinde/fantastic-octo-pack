@@ -19,6 +19,7 @@ import { useAppSelector, useAppDispatch } from "@/hooks/useAppSelector";
 import { logout } from "@/store/slices/auth-slice";
 import { UserRole } from "@/types/user";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/base";
+import { getBusinessName, getPersonalName } from "@/utils/partyDisplayName";
 import { MoreHorizontal, UserPlus, FilePlus } from "lucide-react";
 import { useRef } from "react";
 import {
@@ -131,13 +132,9 @@ export default function PublicNavBar() {
         dashboard: `/dashboard/${authRole}`,
       })
     : { dashboard: "/dashboard" };
+  // Email is already rendered on the line below, so it is skipped as a fallback here.
   const accountDisplayName =
-    authUser?.distributorStoreProfile?.businessName ||
-    [authUser?.firstName, authUser?.lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim() ||
-    "MedProcure";
+    getBusinessName(authUser) ?? getPersonalName(authUser) ?? "MedProcure";
   const accountDisplayLine = authUser?.email || "Join to access account tools";
   const authedMenuItems = [
     {

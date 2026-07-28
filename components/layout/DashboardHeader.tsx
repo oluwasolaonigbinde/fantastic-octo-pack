@@ -9,6 +9,7 @@ import { useToggleSidebar } from "@/contexts/sidebar-context";
 import { formatDate } from "@/utils/formatDate";
 import { DEFAULT_AVATAR_SRC } from "@/constants/avatar";
 import { UserRole } from "@/types/user";
+import { getPartyDisplayName, getPartyInitials } from "@/utils/partyDisplayName";
 
 interface DashboardHeaderProps {
   title: string;
@@ -27,6 +28,8 @@ export default function DashboardHeader({
     data?.role === UserRole.ENGINEER
       ? data?.engineerTierLabel || data?.kycBadgeLabel || "Unverified"
       : data?.kycBadgeLabel || data?.email;
+  const accountName = getPartyDisplayName(data, "User");
+  const accountInitials = getPartyInitials(data, "User");
 
   return (
     <div className="text-gray1 sticky top-0 z-10">
@@ -62,24 +65,16 @@ export default function DashboardHeader({
               <Avatar className="size-[2.875rem]">
                 <AvatarImage
                   src={data?.displayPhoto?.url || DEFAULT_AVATAR_SRC}
-                  alt={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                  alt={accountName}
                 />
                 <AvatarFallback>
-                  <span className="type-label-sm text-primary">
-                    {data?.firstName?.split("")[0] || "U"}
-                    {data?.lastName?.split("")[0] || ""}
-                  </span>
+                  <span className="type-label-sm text-primary">{accountInitials}</span>
                 </AvatarFallback>
               </Avatar>
 
               <div className="hidden lg:block min-w-0 max-w-[200px]">
-                <p
-                  className="truncate text-sm"
-                  title={`${data?.firstName || "User"} ${data?.lastName || ""}`}
-                >
-                  {`Hello, ${data?.firstName || "User"} ${
-                    data?.lastName || ""
-                  }`}
+                <p className="truncate text-sm" title={accountName}>
+                  {`Hello, ${accountName}`}
                 </p>
                 <p className="text-xs text-gray3 truncate">{secondaryIdentityLine}</p>
               </div>

@@ -10,6 +10,8 @@ import { useServiceDisputeQuery } from "@/hooks/queries/service-disputes";
 import { ServiceDisputeData } from "@/types/service-dispute";
 import { ServiceRequestData, ServiceRequestParty } from "@/types/service-request";
 
+const NOT_AVAILABLE = "Not available";
+
 function hasValue(value?: string | number | null): value is string | number {
   return (
     (typeof value === "string" && value.trim().length > 0) ||
@@ -188,8 +190,7 @@ export default function AdminDisputeResolutionSummaryPage() {
         firstFilled(
           getServiceRequestId(liveDispute),
           routedSnapshot.invoiceId,
-          ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.invoiceId,
-        ) ?? ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.invoiceId,
+        ) ?? NOT_AVAILABLE,
         false,
       ],
       [
@@ -197,8 +198,7 @@ export default function AdminDisputeResolutionSummaryPage() {
         firstFilled(
           serviceRequest?.equipmentName,
           routedSnapshot.itemName,
-          ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.itemName,
-        ) ?? ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.itemName,
+        ) ?? NOT_AVAILABLE,
         false,
       ],
       [
@@ -206,8 +206,7 @@ export default function AdminDisputeResolutionSummaryPage() {
         firstFilled(
           liveUnitPrice,
           formatCurrency(routedSnapshot.unitPrice),
-          ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.unitPrice,
-        ) ?? ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.unitPrice,
+        ) ?? NOT_AVAILABLE,
         true,
       ],
       [
@@ -215,8 +214,7 @@ export default function AdminDisputeResolutionSummaryPage() {
         firstFilled(
           deriveQuantity(serviceRequest),
           routedSnapshot.quantity,
-          ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.quantity,
-        ) ?? ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.quantity,
+        ) ?? NOT_AVAILABLE,
         false,
       ],
       [
@@ -224,8 +222,7 @@ export default function AdminDisputeResolutionSummaryPage() {
         firstFilled(
           liveTotalAmount,
           formatCurrency(routedSnapshot.totalAmount),
-          ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.totalAmount,
-        ) ?? ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.totalAmount,
+        ) ?? NOT_AVAILABLE,
         true,
       ],
       [
@@ -233,8 +230,7 @@ export default function AdminDisputeResolutionSummaryPage() {
         firstFilled(
           getPartyName(liveDispute?.buyer),
           routedSnapshot.buyerName,
-          ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.buyerName,
-        ) ?? ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.buyerName,
+        ) ?? NOT_AVAILABLE,
         false,
       ],
       [
@@ -242,8 +238,7 @@ export default function AdminDisputeResolutionSummaryPage() {
         firstFilled(
           getPartyName(liveDispute?.engineer),
           routedSnapshot.distributorName,
-          ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.distributorName,
-        ) ?? ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.distributorName,
+        ) ?? NOT_AVAILABLE,
         false,
       ],
       [
@@ -275,8 +270,7 @@ export default function AdminDisputeResolutionSummaryPage() {
         firstFilled(
           formatSummaryDate(liveDispute?.createdAt),
           formatSummaryDate(routedSnapshot.dateCreated),
-          ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.dateCreated,
-        ) ?? ADMIN_DISPUTE_RESOLUTION_FIGMA_FALLBACK.dateCreated,
+        ) ?? NOT_AVAILABLE,
         false,
       ],
     ] as const;

@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { CreditCard, Eye, Filter, Wallet } from "lucide-react";
 import Header from "../../component/header";
 import { Button, Input, SummaryCard } from "@/components/base";
-import { ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import {
   Table,
   TableBody,
@@ -259,7 +258,7 @@ export default function AdminPaymentPage() {
             value={
               escrowSummary
                 ? formatKobo(escrowSummary.expectedNetKobo, escrowSummary.currency)
-                : ADMIN_PAYMENT_INVOICE_FIGMA_FALLBACK.totalAmount
+                : "Not available"
             }
             icon={<Wallet size={18} className="text-primary" />}
             iconBg="bg-[#E7F1FF]"

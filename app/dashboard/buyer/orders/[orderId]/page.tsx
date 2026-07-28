@@ -40,7 +40,14 @@ import { useOrderPayment } from "@/hooks/useOrderPayment";
 import { koboToNaira } from "@/lib/wallet-format";
 import addressService from "@/services/addressService";
 import type { UserAddress } from "@/types/address";
-import type { Order, OrderPaymentMethod } from "@/types/order";
+import type { Order } from "@/types/order";
+import { PaymentMethodPanel } from "@/components/payments/PaymentMethodPanel";
+import { PaymentOrderSummary } from "@/components/payments/PaymentOrderSummary";
+import {
+  ORDER_PAYMENT_METHODS,
+  getPaymentMethodOption,
+  type PaymentMethodId,
+} from "@/components/payments/paymentMethods";
 import {
   formatDeliveryAddress,
   getActiveMilestoneCount,
@@ -62,27 +69,20 @@ type ModalKind =
   | "editDraft"
   | null;
 
-type PaymentOption = {
-  label: string;
-  /** Functional rails carry a method; disabled rails are "coming soon". */
-  method: OrderPaymentMethod | null;
-};
-
-const paymentMethods: PaymentOption[] = [
-  { label: "BAIY trade assurance", method: "wallet" },
-  { label: "Paystack", method: "paystack" },
-  { label: "Flutterwave", method: null },
-  { label: "Google Pay", method: null },
-  { label: "Apple Pay", method: null },
-  { label: "Bank wallet", method: null },
-];
-
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
     minimumFractionDigits: 2,
   }).format(value);
+
+/** Whole-naira form used on the payment screen, matching the design. */
+const formatAmount = (value: number) =>
+  new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0,
+  }).format(value || 0);
 
 const formatDate = (value: string) => {
   const parsed = new Date(value);
@@ -314,7 +314,9 @@ export default function BuyerOrderDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const [selectedPayment, setSelectedPayment] = useState(paymentMethods[0].label);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethodId>(
+    ORDER_PAYMENT_METHODS[0].id,
+  );
   const [modal, setModal] = useState<ModalKind>(null);
   const [notice, setNotice] = useState("");
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
@@ -479,7 +481,7 @@ export default function BuyerOrderDetailPage() {
   // wallet balances are in kobo.
   const orderTotal = order?.totalPrice ?? 0;
   const walletNaira = wallet ? koboToNaira(wallet.availableBalance) : 0;
-  const selectedOption = paymentMethods.find((m) => m.label === selectedPayment);
+  const selectedOption = getPaymentMethodOption(selectedPayment);
   const insufficientWallet =
     selectedOption?.method === "wallet" && walletNaira < orderTotal;
 
@@ -672,91 +674,44 @@ export default function BuyerOrderDetailPage() {
         </button>
 
         {stage === "payment" ? (
-          <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-            <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
-              <h1 className="text-lg font-medium text-[#111827]">Payment</h1>
-              <p className="mt-1 text-sm font-medium text-[#111827]">Payment options</p>
-              <p className="mt-0.5 text-sm text-[#6B7280]">
-                Select preferred payment method to proceed
-              </p>
-
-              <div className="mt-6 rounded-2xl border border-[#DDE0E5]">
-                {paymentMethods.map((option) => {
-                  const disabled = option.method === null;
-                  const isWallet = option.method === "wallet";
-                  return (
-                    <button
-                      key={option.label}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => setSelectedPayment(option.label)}
-                      className={`flex w-full items-center justify-between border-b border-[#EEF2F7] px-5 py-4 text-left last:border-b-0 ${
-                        disabled ? "cursor-not-allowed opacity-50" : ""
-                      }`}
-                    >
-                      <span className="flex items-start gap-3 text-sm text-[#111827]">
-                        <span
-                          className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${
-                            selectedPayment === option.label
-                              ? "border-primary"
-                              : "border-[#DDE0E5]"
-                          }`}
-                        >
-                          {selectedPayment === option.label ? (
-                            <span className="size-2 rounded-full bg-primary" />
-                          ) : null}
-                        </span>
-                        <span className="flex flex-col">
-                          {option.label}
-                          {isWallet ? (
-                            <span className="text-xs text-[#6B7280]">
-                              Balance: {formatCurrency(walletNaira)}
-                            </span>
-                          ) : null}
-                          {disabled ? (
-                            <span className="text-xs text-[#9CA3AF]">Coming soon</span>
-                          ) : null}
-                        </span>
-                      </span>
-                      <CreditCard size={18} className="text-[#6B7280]" />
-                    </button>
-                  );
-                })}
-              </div>
-
+          <div className="grid items-start gap-6 lg:grid-cols-[1fr_400px]">
+            <PaymentMethodPanel
+              selected={selectedPayment}
+              onSelect={setSelectedPayment}
+              walletBalanceLabel={`Balance: ${formatCurrency(walletNaira)}`}
+            >
               {insufficientWallet ? (
-                <p className="mt-4 rounded-lg border border-[#F5A400] bg-[#FFFBEB] px-4 py-3 text-sm text-[#B45309]">
+                <p className="rounded-lg border border-[#F5A400] bg-[#FFFBEB] px-4 py-3 text-sm text-[#B45309]">
                   Your wallet balance is too low for this order. Top up your wallet
                   or pay with Paystack.
                 </p>
               ) : null}
 
               {payError ? (
-                <p className="mt-4 rounded-lg border border-[#E33C13] bg-[#FFF5F3] px-4 py-3 text-sm text-[#E33C13]">
+                <p className="rounded-lg border border-[#E33C13] bg-[#FFF5F3] px-4 py-3 text-sm text-[#E33C13]">
                   {payError}
                 </p>
               ) : null}
+            </PaymentMethodPanel>
 
-              <p className="mt-5 text-xs leading-5 text-[#6B7280]">
-                Paystack payments redirect you to a secure checkout for{" "}
-                {formatCurrency(orderTotal)} and return here once complete.
-              </p>
-
-              <button
-                type="button"
-                onClick={handleSubmitPayment}
-                disabled={isPaying || insufficientWallet || !selectedOption?.method}
-                className="mt-6 h-12 w-full rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60 md:max-w-[260px]"
-              >
-                {isPaying
-                  ? selectedOption?.method === "paystack"
-                    ? "Redirecting to Paystack…"
-                    : "Processing payment…"
-                  : `Pay ${formatCurrency(orderTotal)}`}
-              </button>
-            </section>
-
-            <OrderSummaryCard order={order} />
+            <PaymentOrderSummary
+              productName={order.productSummary}
+              productImage={order.productImage}
+              quantity={order.totalQuantity}
+              orderId={order.id}
+              invoiceId={liveOrder?.paymentReference}
+              itemsTotal={orderTotal}
+              total={orderTotal}
+              formatAmount={formatAmount}
+              onPay={handleSubmitPayment}
+              isPaying={isPaying}
+              disabled={insufficientWallet || !selectedOption?.method}
+              payLabel={
+                isPaying && selectedOption?.method === "paystack"
+                  ? "Redirecting to Paystack…"
+                  : undefined
+              }
+            />
           </div>
         ) : (
           <>
@@ -1098,7 +1053,7 @@ export default function BuyerOrderDetailPage() {
                 recipientName={supplierName}
                 senderName={buyerName}
                 reference={payReference}
-                methodLabel={selectedOption?.label ?? "BAIY trade assurance"}
+                methodLabel={selectedOption?.title ?? "BAIY Trade Assurance"}
                 onTrack={() => {
                   resetPayment();
                   setModal(null);

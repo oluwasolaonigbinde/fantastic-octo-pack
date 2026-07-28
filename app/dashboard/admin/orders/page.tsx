@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import {
-  CalendarDays,
   ClipboardList,
   Eye,
   Filter,
@@ -13,7 +12,6 @@ import {
 
 import Header from "../../component/header";
 import { Button, Input, RightSlider, SummaryCard } from "@/components/base";
-import { ADMIN_RFQS_ORDERS_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import {
   Table,
   TableBody,
@@ -215,15 +213,6 @@ function getUserPhone(
   return isUserRef(value) && value.phoneNumber ? value.phoneNumber : fallback;
 }
 
-function AdminDateChip({ label }: { label: string }) {
-  return (
-    <div className="inline-flex h-11 sm:h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
-      <span>{label}</span>
-      <CalendarDays size={18} className="text-gray2" />
-    </div>
-  );
-}
-
 type StatusToneProps = { children: ReactNode; tone?: StatusTone };
 
 function StatusText({ children, tone = "warning" }: StatusToneProps) {
@@ -380,8 +369,6 @@ export default function AdminOrdersPage() {
             {error}
           </div>
         ) : null}
-
-        <AdminDateChip label={ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.dateRangeLabel} />
 
         <div className="grid gap-4 sm:grid-cols-3">
           <SummaryCard

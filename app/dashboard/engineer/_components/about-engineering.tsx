@@ -19,6 +19,7 @@ import {
   uploadDisplayPhoto,
 } from "@/store/slices/auth-slice";
 import { DEFAULT_AVATAR_SRC } from "@/constants/avatar";
+import { getPartyInitials } from "@/utils/partyDisplayName";
 
 import EngineerTagField from "./engineer-tag-field";
 
@@ -222,8 +223,7 @@ function EditEngineeringDialog({ onClose }: { onClose: () => void }) {
                     />
                     <AvatarFallback>
                       <span className="text-sm capitalize text-primary">
-                        {data?.firstName?.slice(0, 1) || "U"}
-                        {data?.lastName?.slice(0, 1) || ""}
+                        {getPartyInitials(data, "User")}
                       </span>
                     </AvatarFallback>
                   </Avatar>
