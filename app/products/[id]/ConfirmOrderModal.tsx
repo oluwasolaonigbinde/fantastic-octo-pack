@@ -16,6 +16,7 @@ import {
 import { useState } from "react";
 
 import type { AddAddressPayload, UserAddress } from "@/types/address";
+import { formatProductPrice } from "@/utils/productDisplay";
 
 interface ConfirmOrderModalProps {
   isOpen: boolean;
@@ -63,17 +64,6 @@ const CITIES: Record<string, string[]> = {
   Oyo: ["Ibadan", "Ogbomosho", "Oyo"],
   Kano: ["Kano Municipal", "Fagge", "Dala"],
 };
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
-    .format(value || 0)
-    .replace(/^NGN\s?/, "₦");
-}
 
 function formatAddress(addr: UserAddress): string {
   return [addr.address, addr.city, addr.state, addr.country]
@@ -283,7 +273,7 @@ export default function ConfirmOrderModal({
 
                   <div className="flex flex-col items-start gap-3 md:items-end">
                     <p className="text-[24px] font-bold leading-tight text-[#4B5563] sm:text-[28px]">
-                      {formatCurrency(total)}
+                      {formatProductPrice(total)}
                     </p>
 
                     <div className="inline-flex items-center gap-3 rounded-xl border border-[#F3F4F6] bg-[rgba(221,224,229,0.2)] p-2.5">
@@ -352,7 +342,7 @@ export default function ConfirmOrderModal({
 
               <div className="flex items-center gap-3 text-[#111827]">
                 <p className="text-xl font-semibold leading-9">
-                  {formatCurrency(total)}
+                  {formatProductPrice(total)}
                 </p>
                 <p className="text-sm leading-5">Total Amount</p>
               </div>

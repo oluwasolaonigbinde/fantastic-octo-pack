@@ -345,6 +345,21 @@ export const getProductListingLocation = (
   return sellerAddress || country;
 };
 
+/**
+ * Renders a product price without discarding decimal value. Trailing zero
+ * cents are hidden for a cleaner look, but a price like 10999.99 must never
+ * be rounded away to 11000 — that misrepresents the actual listed price.
+ */
+export const formatProductPrice = (value: number): string =>
+  new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })
+    .format(value || 0)
+    .replace(/^NGN\s?/, "₦");
+
 export const getPricingModeLabel = (
   product?: Pick<Product, "priceMode" | "pricing_type"> | null,
 ): string => {

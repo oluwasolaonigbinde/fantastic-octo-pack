@@ -7,6 +7,7 @@ import ConditionBadge from "@/components/product/ConditionBadge";
 import SafeProductImage from "@/components/product/SafeProductImage";
 import type { Product } from "@/types/product";
 import {
+  formatProductPrice,
   getPrimaryProductLocation,
   getProductDefaultImageUrl,
   getProductFreeStock,
@@ -16,17 +17,6 @@ import {
 interface RelatedProductsProps {
   products: Product[];
   isLoading?: boolean;
-}
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
-    .format(value || 0)
-    .replace(/^NGN\s?/, "\u20A6");
 }
 
 export default function RelatedProducts({
@@ -109,7 +99,7 @@ export default function RelatedProducts({
                       <span className="truncate">{getPrimaryProductLocation(product) || "Lagos Nigeria"}</span>
                     </div>
                     <span className="w-fit rounded-md bg-[rgba(254,110,0,0.04)] px-2 py-1 text-sm font-bold leading-5 text-[#FE6E00] md:text-base">
-                      {formatCurrency(product.pricePerUnit)}
+                      {formatProductPrice(product.pricePerUnit)}
                     </span>
                   </div>
 
