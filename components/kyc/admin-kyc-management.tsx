@@ -222,7 +222,7 @@ export default function AdminKycManagement() {
             {/* Premium tiers have no application flow — granting is admin-only. */}
             <Button
               onClick={() => setGrantOpen(true)}
-              className="inline-flex h-[38px] items-center gap-2 rounded-xl border border-[#DDE0E5] bg-white px-4 text-[13px] text-[#4B5563]"
+              className="inline-flex h-[38px] w-auto items-center gap-2 rounded-xl border border-[#DDE0E5] bg-white px-4 text-[13px] text-[#4B5563] hover:bg-[#F3F4F6] hover:text-[#111827]"
             >
               <Star size={14} className="text-[#F59E0B]" />
               Grant premium

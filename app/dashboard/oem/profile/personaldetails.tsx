@@ -9,6 +9,7 @@ import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { uploadDisplayPhoto } from "@/store/slices/auth-slice";
 import { formatDate } from "@/utils/formatDate";
 import { DEFAULT_AVATAR_SRC } from "@/constants/avatar";
+import { getPartyDisplayName, getPersonalName } from "@/utils/partyDisplayName";
 
 import EditInfoForm from "./editInfoForm";
 
@@ -17,16 +18,11 @@ export default function PersonalDetails() {
   const { data } = useAppSelector((state) => state.auth);
   const [editing, setEditing] = useState(false);
 
-  const displayName = useMemo(() => {
-    if (!data) {
-      return "Otor John Stephen";
-    }
-
-    return `${data.firstName || ""} ${data.lastName || ""}`.trim();
-  }, [data]);
+  const displayName = useMemo(() => getPartyDisplayName(data, "--"), [data]);
+  const personalName = useMemo(() => getPersonalName(data), [data]);
 
   const details = [
-    { label: "Name", value: displayName || "--" },
+    { label: "Name", value: personalName || "--" },
     { label: "Email address", value: data?.email || "--" },
     { label: "Phone number", value: data?.phoneNumber || "--" },
     {

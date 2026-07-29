@@ -32,6 +32,8 @@ export const queryKeys = {
     list: (filters: Record<string, unknown>) =>
       [...queryKeys.orders.all, "list", filters] as const,
     detail: (id: string) => [...queryKeys.orders.all, "detail", id] as const,
+    summary: (userId: string) =>
+      [...queryKeys.orders.all, "summary", userId] as const,
   },
   wallet: {
     all: ["wallet"] as const,
@@ -73,6 +75,10 @@ export const queryKeys = {
     list: (filters: Record<string, unknown>) =>
       [...queryKeys.rfqs.all, "list", filters] as const,
     detail: (id: string) => [...queryKeys.rfqs.all, "detail", id] as const,
+    buyerQuoteSummary: (userId: string) =>
+      [...queryKeys.rfqs.all, "buyer-quote-summary", userId] as const,
+    distributorQuoteSummary: (userId: string) =>
+      [...queryKeys.rfqs.all, "distributor-quote-summary", userId] as const,
   },
   serviceRequests: {
     all: ["service-requests"] as const,
@@ -82,6 +88,8 @@ export const queryKeys = {
       [...queryKeys.serviceRequests.all, "engineer", filters] as const,
     detail: (id: string) =>
       [...queryKeys.serviceRequests.all, "detail", id] as const,
+    summary: (userId: string) =>
+      [...queryKeys.serviceRequests.all, "summary", userId] as const,
   },
   orderDisputes: {
     all: ["order-disputes"] as const,
@@ -141,10 +149,16 @@ export const queryKeys = {
       [...queryKeys.admin.all, "rfqs-orders-summary"] as const,
     rfqs: (filters: Record<string, unknown>) =>
       [...queryKeys.admin.all, "rfqs", filters] as const,
+    rfqDetail: (id: string) =>
+      [...queryKeys.admin.all, "rfq-detail", id] as const,
     quotes: (filters: Record<string, unknown>) =>
       [...queryKeys.admin.all, "quotes", filters] as const,
+    quoteSummary: () => [...queryKeys.admin.all, "quote-summary"] as const,
+    serviceRequestSummary: () =>
+      [...queryKeys.admin.all, "service-request-summary"] as const,
     orders: (filters: Record<string, unknown>) =>
       [...queryKeys.admin.all, "orders", filters] as const,
+    orderSummary: () => [...queryKeys.admin.all, "order-summary"] as const,
     settings: () => [...queryKeys.admin.all, "settings"] as const,
   },
 } as const;

@@ -219,9 +219,6 @@ function RfqRatioCard({
   const rfqPercent = total ? 100 - quotePercent : 0;
   const quoteDegrees = total ? Math.round((quotesSent / total) * 360) : 0;
   const desktopGradientStart = 148;
-  const mobileQuoteDegrees = Math.round(
-    (ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.quotesPercent / 100) * 360,
-  );
 
   return (
     <div className="flex min-h-[361px] w-full flex-col rounded-2xl border border-gray5 bg-white p-4 md:min-h-[428px] md:p-5">
@@ -250,7 +247,7 @@ function RfqRatioCard({
         <div
           className="relative aspect-square w-36 max-w-full rounded-full sm:w-40 md:hidden"
           style={{
-            background: `conic-gradient(#F6B90A 0deg ${mobileQuoteDegrees}deg,#0669D9 ${mobileQuoteDegrees}deg 360deg)`,
+            background: `conic-gradient(#F6B90A 0deg ${quoteDegrees}deg,#0669D9 ${quoteDegrees}deg 360deg)`,
           }}
         >
           <div className="absolute inset-[26%] flex items-center justify-center rounded-full bg-white">
@@ -264,13 +261,13 @@ function RfqRatioCard({
         <div className="flex items-start gap-3 text-sm text-gray2">
           <span className="mt-0.5 size-4 shrink-0 rounded bg-[#F6B90A]" />
           <span className="min-w-0 break-words">
-            {ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.quotesLabel}
+            {quotePercent}% - Quotes received ({compactFormatter.format(quotesSent)})
           </span>
         </div>
         <div className="flex items-start gap-3 text-sm text-gray2">
           <span className="mt-0.5 size-4 shrink-0 rounded bg-primary" />
           <span className="min-w-0 break-words">
-            {ADMIN_DASHBOARD_FIGMA_FALLBACK.mobileRfqRatio.rfqsLabel}
+            {rfqPercent}% - Request For Quotes sent ({compactFormatter.format(rfqsSent)})
           </span>
         </div>
       </div>

@@ -25,7 +25,7 @@ import {
   toBuyerDisputeRow,
   type BuyerDisputeRow,
 } from "@/lib/order-dispute-presenter";
-import { useOrdersQuery } from "@/hooks/queries/orders";
+import { useOrderSummaryQuery, useOrdersQuery } from "@/hooks/queries/orders";
 import { useOrderDisputes } from "@/hooks/useOrderDisputes";
 
 type ActiveTab = "orders" | "disputes";
@@ -59,17 +59,14 @@ function MetricCard({
   iconClassName: string;
 }) {
   return (
-    <div className="flex min-h-[104px] flex-col justify-between rounded-2xl border border-[#DDE0E5] bg-white px-5 py-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm text-[#111827]">{title}</p>
-          <p className="mt-2 text-lg font-medium text-[#111827]">{value}</p>
-        </div>
-        <span className={`flex size-10 items-center justify-center rounded-lg ${iconClassName}`}>
-          {icon}
-        </span>
+    <div className="flex min-h-[104px] items-start justify-between gap-4 rounded-2xl border border-[#DDE0E5] bg-white px-5 py-4">
+      <div>
+        <p className="text-sm text-[#111827]">{title}</p>
+        <p className="mt-2 text-lg font-medium text-[#111827]">{value}</p>
       </div>
-      <p className="text-xs text-[#6B7280]">This month</p>
+      <span className={`flex size-10 items-center justify-center rounded-lg ${iconClassName}`}>
+        {icon}
+      </span>
     </div>
   );
 }
@@ -369,6 +366,7 @@ function MobileDisputeList({
 export default function BuyerOrders() {
   const router = useRouter();
   const { data: orders, isLoading } = useOrdersQuery();
+  const { data: orderSummary } = useOrderSummaryQuery();
   const { disputes, isLoading: disputesLoading } = useOrderDisputes();
   const [activeTab, setActiveTab] = useState<ActiveTab>("orders");
   const [orderIdQuery, setOrderIdQuery] = useState("");
@@ -428,20 +426,30 @@ export default function BuyerOrders() {
     };
   }, [displayDisputes]);
 
-  const metrics = {
-    total: String(displayOrders.length).padStart(2, "0"),
-    delivered: String(
-      displayOrders.filter((order) => order.status === "completed").length || 0,
-    ).padStart(2, "0"),
-    pending: String(
-      displayOrders.filter((order) =>
-        ["created_pending_payment", "not_paid"].includes(order.status),
-      ).length,
-    ).padStart(2, "0"),
-    cancelled: String(
-      displayOrders.filter((order) => order.status === "cancelled_pre_payment").length,
-    ).padStart(2, "0"),
-  };
+  // Every counter comes from the backend summary (GET /orders/summary), which is
+  // role-scoped to this buyer. Deriving them from `useOrdersQuery` is not safe:
+  // that list endpoint can come back paginated, so a client-side count would only
+  // ever cover the first page. All four are all-time — the backend's only monthly
+  // figure is `ordersThisMonth`, and `byStatus` has no monthly breakdown, so the
+  // cards carry no time-period caption rather than an inaccurate one.
+  const metrics = useMemo(() => {
+    const pad = (value: number | undefined) => String(value ?? 0).padStart(2, "0");
+    const byStatus = orderSummary?.byStatus ?? {};
+    return {
+      total: pad(orderSummary?.total),
+      // An order that reached `installed` or `completed` (escrow released) was
+      // necessarily delivered first, so the delivered total is cumulative.
+      delivered: pad(
+        (byStatus.delivered ?? 0) +
+          (byStatus.installed ?? 0) +
+          (byStatus.completed ?? 0),
+      ),
+      pending: pad(
+        (byStatus.created_pending_payment ?? 0) + (byStatus.payment_initiated ?? 0),
+      ),
+      cancelled: pad(byStatus.cancelled_pre_payment),
+    };
+  }, [orderSummary]);
 
   const viewOrder = (order: BuyerOrderRow) => {
     router.push(`/dashboard/buyer/orders/${order.sourceId}`);

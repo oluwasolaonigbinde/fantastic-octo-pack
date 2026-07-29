@@ -1,5 +1,11 @@
-import { ORDER_STATUS_LABELS, type Order, type OrderLineItem } from "@/types/order";
+import {
+  ORDER_STATUS_LABELS,
+  getOrderReference,
+  type Order,
+  type OrderLineItem,
+} from "@/types/order";
 import type { ProductRef, UserRef } from "@/types/rfq";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 export type BuyerOrderStage =
   | "ongoing"
@@ -110,22 +116,22 @@ export const getBuyerOrderStatusTone = (status: string | undefined) => {
   }
 };
 
-export const getOrderDisplayId = (orderId: string | undefined) => {
-  if (!orderId) return "Order ID";
-  if (orderId.startsWith("ORD-")) return orderId;
-  return `ORD-${orderId.slice(-6).toUpperCase()}`;
-};
+/**
+ * Id-only fallback for screens (disputes, messaging) that hold a raw order id
+ * rather than the order itself. Prefer `getOrderReference(order)` — it uses the
+ * backend `publicId` — wherever the order object is available.
+ */
+export const getOrderDisplayId = (orderId: string | undefined) =>
+  orderId ? getOrderReference({ _id: orderId }) : "Order ID";
 
+/**
+ * Names a counterparty on an order. Distributors that completed KYC tier 2
+ * trade under a business name, so that wins over the personal name.
+ */
 export const getPersonName = (
   person: string | UserRef | undefined,
   fallback: string,
-) => {
-  if (person && typeof person === "object") {
-    const name = [person.firstName, person.lastName].filter(Boolean).join(" ").trim();
-    return name || person.email || fallback;
-  }
-  return fallback;
-};
+) => getPartyDisplayName(person, fallback);
 
 export const getOrderProductImage = (order: Order | null | undefined) => {
   // Live API returns a flat `product`; legacy/demo data nests it under items[0].
@@ -170,7 +176,7 @@ export const toBuyerOrderRow = (order: Order): BuyerOrderRow => {
   const first = items[0];
 
   return {
-    id: getOrderDisplayId(order._id),
+    id: getOrderReference(order),
     sourceId: order._id,
     // Single-product back-compat fields mirror the first line.
     productName: first.productName,

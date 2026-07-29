@@ -6,6 +6,8 @@ import { CheckSquare, X } from "lucide-react";
 
 import { ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 
+const NOT_AVAILABLE = "Not available";
+
 const pickParam = (
   searchParams: URLSearchParams,
   key: string,
@@ -16,12 +18,12 @@ export default function AdminPaymentEscrowDetailPage() {
   const searchParams = useSearchParams();
 
   const detailRows = [
-    ["Order ID", pickParam(searchParams, "orderId", ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.orderId), false],
-    ["Buyer ID", pickParam(searchParams, "buyerId", ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.buyerId), false],
-    ["Seller ID", pickParam(searchParams, "sellerId", ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.sellerId), false],
-    ["Name of item", pickParam(searchParams, "itemName", ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.itemName), false],
+    ["Order ID", pickParam(searchParams, "orderId", NOT_AVAILABLE), false],
+    ["Buyer ID", pickParam(searchParams, "buyerId", NOT_AVAILABLE), false],
+    ["Seller ID", pickParam(searchParams, "sellerId", NOT_AVAILABLE), false],
+    ["Name of item", pickParam(searchParams, "itemName", NOT_AVAILABLE), false],
     ["Engineer ID", pickParam(searchParams, "engineerId", ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.engineerId), false],
-    ["Amount", pickParam(searchParams, "amount", ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.amount), true],
+    ["Amount", pickParam(searchParams, "amount", NOT_AVAILABLE), true],
     ["Age of days", ADMIN_PAYMENT_ESCROW_FIGMA_FALLBACK.ageOfDays, false],
   ] as const;
 

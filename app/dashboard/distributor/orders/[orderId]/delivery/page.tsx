@@ -19,15 +19,19 @@ import {
   useFulfillOrderMutation,
   useOrderQuery,
 } from "@/hooks/queries/orders";
-import type { FulfillmentStage, Order } from "@/types/order";
+import type { FulfillmentStage } from "@/types/order";
 import {
   formatDeliveryAddress,
   getActiveMilestoneCount,
+  getAutoReceiveDeadline,
   getNextFulfillmentStage,
   getOrderMilestones,
+  getOrderReference,
   isAwaitingBuyerConfirmation,
 } from "@/types/order";
+import { useAdminPlatformSettingsQuery } from "@/hooks/queries/admin";
 import type { UserRef } from "@/types/rfq";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 type ModalKind = "action" | "success" | null;
 
@@ -96,16 +100,8 @@ const formatDate = (value: string) => {
   return new Intl.DateTimeFormat("en-GB").format(parsed);
 };
 
-const getOrderDisplayId = (order: Order) =>
-  order._id ? `ORD-${order._id.slice(-6).toUpperCase()}` : "Order ID";
-
-const getPersonName = (person: string | UserRef | undefined, fallback: string) => {
-  if (person && typeof person === "object") {
-    const name = [person.firstName, person.lastName].filter(Boolean).join(" ").trim();
-    return name || person.email || fallback;
-  }
-  return fallback;
-};
+const getPersonName = (person: string | UserRef | undefined, fallback: string) =>
+  getPartyDisplayName(person, fallback);
 
 function OrderStat({
   label,
@@ -124,20 +120,37 @@ function OrderStat({
   );
 }
 
-/** Live escrow countdown (HOUR : MINUTES : SECONDS). */
-function CountdownTimer({ target }: { target?: Date }) {
+/**
+ * Live escrow countdown (DAYS : HOURS : MINUTES : SECONDS) against the
+ * backend-derived auto-receive deadline. Without a deadline there's nothing to
+ * count down to, so it renders an idle state instead of a made-up window.
+ */
+function CountdownTimer({
+  target,
+  emptyLabel = "Not started",
+}: {
+  target?: Date | null;
+  emptyLabel?: string;
+}) {
   const [now, setNow] = useState(() => Date.now());
-  const [fallbackDeadline] = useState(() => Date.now() + 24 * 60 * 60 * 1000);
 
   useEffect(() => {
+    if (!target) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [target]);
 
-  const deadline = target ? target.getTime() : fallbackDeadline;
-  const totalSeconds = Math.max(0, Math.floor((deadline - now) / 1000));
+  if (!target) {
+    return <p className="mt-2 text-sm text-[#6B7280]">{emptyLabel}</p>;
+  }
+
+  const totalSeconds = Math.max(
+    0,
+    Math.floor((target.getTime() - now) / 1000),
+  );
   const segments = [
-    { value: Math.floor(totalSeconds / 3600), label: "HOUR" },
+    { value: Math.floor(totalSeconds / 86400), label: "DAYS" },
+    { value: Math.floor((totalSeconds % 86400) / 3600), label: "HOURS" },
     { value: Math.floor((totalSeconds % 3600) / 60), label: "MINUTES" },
     { value: totalSeconds % 60, label: "SECONDS" },
   ];
@@ -175,6 +188,8 @@ export default function DistributorDeliveryStatusPage() {
   const orderId = params.orderId as string;
 
   const { data: currentOrder, isLoading } = useOrderQuery(orderId);
+  // Drives the escrow countdown; empty if the endpoint rejects this role.
+  const { data: platformSettings } = useAdminPlatformSettingsQuery();
   const fulfillMutation = useFulfillOrderMutation();
   const isFulfilling = fulfillMutation.isPending;
 
@@ -198,7 +213,8 @@ export default function DistributorDeliveryStatusPage() {
 
   const status = order?.status;
   const statusTone = getOrderStatusTone(status);
-  const displayId = order ? getOrderDisplayId(order) : orderId;
+  const displayId = getOrderReference(order ?? { _id: orderId });
+  const escrowDeadline = getAutoReceiveDeadline(order, platformSettings);
   const quantity = order?.quantity || order?.items?.[0]?.quantity || 1;
   const productName =
     order?.productName || order?.items?.[0]?.productName || "Product name";
@@ -439,12 +455,16 @@ export default function DistributorDeliveryStatusPage() {
                 <p className="text-base font-medium text-[#111827]">
                   Time Remaining
                 </p>
-                <CountdownTimer />
+                <CountdownTimer
+                  target={escrowDeadline}
+                  emptyLabel="Starts once you mark this order delivered"
+                />
               </div>
 
               <p className="mt-6 flex items-start gap-2 text-sm leading-5 text-[#0669D9]">
                 <Info size={18} className="mt-0.5 shrink-0" />
-                Escrow auto-releases after the buyer confirms receipt.
+                Escrow releases when the buyer confirms receipt, or automatically
+                once the timer ends.
               </p>
             </section>
 

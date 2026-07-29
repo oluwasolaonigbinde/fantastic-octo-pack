@@ -23,11 +23,13 @@ import {
 } from "@/lib/order-dispute-presenter";
 import { useOrdersQuery } from "@/hooks/queries/orders";
 import { useOrderDisputes } from "@/hooks/useOrderDisputes";
-import { isPaidOrderStatus, type Order } from "@/types/order";
+import { getOrderReference, isPaidOrderStatus, type Order } from "@/types/order";
 
 type ActiveTab = "orders" | "disputes";
 type OrderRow = {
   id: string;
+  /** Human-facing reference (backend `publicId`), shown and searched on. */
+  reference: string;
   productName: string;
   quantity: number;
   unitPrice: number;
@@ -53,13 +55,11 @@ const formatDate = (value: string) => {
   }).format(parsed);
 };
 
-const formatOrderId = (id: string) =>
-  id.startsWith("ORD-") ? id : `ORD-${id.slice(-6).toUpperCase()}`;
-
 const toOrderRow = (order: Order): OrderRow => {
   const quantity = order.quantity ?? order.items?.[0]?.quantity ?? 1;
   return {
     id: order._id,
+    reference: getOrderReference(order),
     productName:
       order.productName || order.items?.[0]?.productName || "Name of the product",
     quantity,
@@ -135,7 +135,7 @@ function MobileOrderList({
     <div className="mt-6 space-y-3 md:hidden">
       {orders.map((order) => {
         const statusTone = getOrderStatusTone(order.status);
-        const orderId = formatOrderId(order.id);
+        const orderId = order.reference;
         return (
           <article
             key={order.id}
@@ -298,7 +298,7 @@ export default function DistributorOrdersPage() {
     const idQuery = orderIdQuery.toLowerCase().trim();
     const status = statusQuery.toLowerCase().trim();
     return visibleOrders.filter((order) => {
-      const matchesId = formatOrderId(order.id).toLowerCase().includes(idQuery);
+      const matchesId = order.reference.toLowerCase().includes(idQuery);
       const matchesStatus = getOrderStatusTone(order.status)
         .label.toLowerCase()
         .includes(status);
@@ -507,7 +507,7 @@ export default function DistributorOrdersPage() {
                             className="cursor-pointer border-b border-[#F3F4F6]"
                           >
                             <td className="py-4 pr-4 text-[#111827]">
-                              {formatOrderId(order.id)}
+                              {order.reference}
                             </td>
                             <td className="py-4 pr-4 text-[#111827]">
                               {order.productName}

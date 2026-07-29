@@ -9,8 +9,13 @@ import { Skeleton } from "@/components/base";
 import { getOrderStatusTone } from "@/constants/demoDistributorOrders";
 import { useOrderQuery } from "@/hooks/queries/orders";
 import type { Order } from "@/types/order";
-import { getPaymentStatusDisplay, isPaidOrderStatus } from "@/types/order";
+import {
+  getOrderReference,
+  getPaymentStatusDisplay,
+  isPaidOrderStatus,
+} from "@/types/order";
 import type { ProductRef, UserRef } from "@/types/rfq";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-NG", {
@@ -28,16 +33,7 @@ const formatDate = (value: string) => {
 const getPersonName = (
   person: string | UserRef | undefined,
   fallback: string,
-) => {
-  if (person && typeof person === "object") {
-    const name = [person.firstName, person.lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim();
-    return name || person.email || fallback;
-  }
-  return fallback;
-};
+) => getPartyDisplayName(person, fallback);
 
 const getProductImage = (order: Order | null) => {
   const product = order?.product ?? order?.items?.[0]?.product;
@@ -46,9 +42,6 @@ const getProductImage = (order: Order | null) => {
   }
   return undefined;
 };
-
-const getOrderDisplayId = (order: Order) =>
-  order._id ? `ORD-${order._id.slice(-6).toUpperCase()}` : "Order ID";
 
 function DetailStat({
   label,
@@ -132,7 +125,7 @@ export default function DistributorOrderDetailPage() {
   const showDeliveryButton = paid;
   const paymentStatus = getPaymentStatusDisplay(status, paid);
   const payReference = order?.paymentReference || "—";
-  const displayId = order ? getOrderDisplayId(order) : orderId;
+  const displayId = getOrderReference(order ?? { _id: orderId });
   const quantity = order?.quantity || order?.items?.[0]?.quantity || 1;
   const productName =
     order?.productName || order?.items?.[0]?.productName || "Product name";

@@ -2,6 +2,7 @@
 
 import { CheckCircle2, MessageCircle, ShieldCheck } from "lucide-react";
 import ConditionBadge from "@/components/product/ConditionBadge";
+import { formatProductPrice } from "@/utils/productDisplay";
 
 interface ProductInfoProps {
   title: string;
@@ -14,17 +15,6 @@ interface ProductInfoProps {
   onSendInquiry?: () => void;
   onOrderNow?: () => void;
   onMessageSeller?: () => void;
-}
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("en-NG", {
-    style: "currency",
-    currency: "NGN",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
-    .format(value || 0)
-    .replace(/^NGN\s?/, "\u20A6");
 }
 
 export default function ProductInfo({
@@ -53,7 +43,7 @@ export default function ProductInfo({
           <span className="sr-only">{availabilityLabel}</span>
 
           <p className="text-3xl font-bold leading-10 text-[#111827] md:text-[38px] md:leading-[48px]">
-            {formatCurrency(price)}
+            {formatProductPrice(price)}
           </p>
 
           <div className="mt-5 flex flex-wrap items-center gap-3">

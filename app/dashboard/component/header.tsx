@@ -13,6 +13,7 @@ import { useToggleSidebar } from "@/contexts/sidebar-context";
 import { UserRole } from "@/types/user";
 import { DEFAULT_AVATAR_SRC } from "@/constants/avatar";
 import { cn } from "@/lib/utils";
+import { getPartyDisplayName, getPartyInitials } from "@/utils/partyDisplayName";
 
 interface HeaderProps {
   title: string;
@@ -50,6 +51,8 @@ export default function Header({
       : data?.kycBadgeLabel ||
         (data?.role === UserRole.BUYER ? "Basic Buyer" : data?.email);
   const engineerIdentityEmail = data?.email || "No email available";
+  const accountName = getPartyDisplayName(data, "User");
+  const accountInitials = getPartyInitials(data, "User");
   const agentProfileFallback =
     data?.role === UserRole.AGENT ? "/images/admin-distributor-avatar.jpg" : DEFAULT_AVATAR_SRC;
   const useAgentMobileProfileReference =
@@ -80,7 +83,7 @@ export default function Header({
               {useAgentMobileProfileReference ? (
                 <Image
                   src="/images/agent-profile-mobile-ref.png"
-                  alt={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                  alt={accountName}
                   width={48}
                   height={48}
                   className="size-11 rounded-full"
@@ -91,11 +94,11 @@ export default function Header({
                   <Avatar className="size-10 ring-1 ring-[#E5E7EB]">
                     <AvatarImage
                       src={data?.displayPhoto?.url || agentProfileFallback}
-                      alt={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                      alt={accountName}
                     />
                     <AvatarFallback>
                       <span className="type-label-sm text-primary">
-                        {data?.firstName?.split("")[0] || "U"}{data?.lastName?.split("")[0] || ""}
+                        {accountInitials}
                       </span>
                     </AvatarFallback>
                   </Avatar>
@@ -174,11 +177,11 @@ export default function Header({
               <Avatar className="size-[2.875rem]">
                 <AvatarImage
                   src={data?.displayPhoto?.url || DEFAULT_AVATAR_SRC}
-                  alt={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                  alt={accountName}
                 />
                 <AvatarFallback>
                   <span className="type-label-sm text-primary">
-                    {data?.firstName?.split('')[0] || "U"}{data?.lastName?.split('')[0] || ""}
+                    {accountInitials}
                   </span>
                 </AvatarFallback>
               </Avatar>
@@ -188,9 +191,9 @@ export default function Header({
                   <div className="flex flex-col gap-0.5 min-w-0">
                     <p
                       className="truncate text-sm font-medium text-gray1"
-                      title={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                      title={accountName}
                     >
-                      {`Hello, ${data?.firstName || "User"} ${data?.lastName || ""}`}
+                      {`Hello, ${accountName}`}
                     </p>
                     <p className="text-xs text-gray3 truncate">{data?.email}</p>
                     <p className="inline-flex items-center gap-1 text-xs text-gray3 truncate">
@@ -202,9 +205,9 @@ export default function Header({
                   <div className="flex flex-col gap-0.5 min-w-0">
                     <p
                       className="truncate text-sm font-medium text-gray1"
-                      title={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                      title={accountName}
                     >
-                      {`Hello, ${data?.firstName || "User"} ${data?.lastName || ""}`}
+                      {`Hello, ${accountName}`}
                     </p>
                     <p className="text-xs text-gray3 truncate">{engineerIdentityEmail}</p>
                     <p className="text-xs text-gray3 truncate">{secondaryIdentityLine}</p>
@@ -213,9 +216,9 @@ export default function Header({
                   <>
                     <p
                       className="truncate text-sm font-medium text-gray1"
-                      title={`${data?.firstName || "User"} ${data?.lastName || ""}`}
+                      title={accountName}
                     >
-                      {`Hello, ${data?.firstName || "User"} ${data?.lastName || ""}`}
+                      {`Hello, ${accountName}`}
                     </p>
                     {data?.role === UserRole.BUYER || data?.kycBadgeLabel ? (
                       <p className="text-xs text-gray3 inline-flex items-center gap-1">

@@ -27,6 +27,7 @@ import { useAppSelector } from "@/hooks/useAppSelector";
 import { cn } from "@/lib/utils";
 import { useOemListingRequestsQuery } from "@/hooks/queries/products";
 import type { Product } from "@/types/product";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 import { buildDistributorSummaries, normalizeOemStatus } from "./oem-ui";
 import { getProductCategoryName } from "@/utils/productDisplay";
@@ -195,8 +196,7 @@ const buildLiveDistributorRows = (products: Product[]): DistributorRow[] => {
     const name =
       typeof createdBy === "string"
         ? "Authorized Distributor"
-        : `${createdBy.firstName || ""} ${createdBy.lastName || ""}`.trim() ||
-          "Authorized Distributor";
+        : getPartyDisplayName(createdBy, "Authorized Distributor");
 
     rows.set(distributorId, {
       id: distributorId,
@@ -220,8 +220,7 @@ const buildLiveMappingRows = (products: Product[]): MappingRow[] =>
     const distributor =
       typeof createdBy === "string"
         ? "Distributor"
-        : `${createdBy.firstName || ""} ${createdBy.lastName || ""}`.trim() ||
-          "Distributor";
+        : getPartyDisplayName(createdBy, "Distributor");
 
     return {
       id: product._id,

@@ -16,7 +16,6 @@ import {
   Banknote,
   BriefcaseBusiness,
   CheckCheck,
-  CircleDollarSign,
   CreditCard,
   Hammer,
   Mail,
@@ -28,9 +27,12 @@ import {
 import Header from "../component/header";
 import { OverviewNoticeBanner } from "../component/overview-primitives";
 import { useAppSelector } from "@/hooks/useAppSelector";
-import { useOrdersQuery } from "@/hooks/queries/orders";
+import { useOrderSummaryQuery, useOrdersQuery } from "@/hooks/queries/orders";
 import { useThreadsQuery } from "@/hooks/queries/messaging";
 import { useBuyerServiceRequestsQuery } from "@/hooks/queries/service-requests";
+import { useWallet } from "@/hooks/useWallet";
+import { useKycUpgradePrompt } from "@/hooks/useKycUpgradePrompt";
+import { useBuyerReceivedQuotesQuery } from "@/hooks/queries/rfqs";
 
 import {
   buildBuyerDashboardModel,
@@ -56,6 +58,15 @@ const formatCompactNaira = (value: number) => {
   }
   return `₦${value}`;
 };
+
+/**
+ * Metric renderers. A `null` figure means the API has not supplied one — show a
+ * dash rather than a placeholder number the buyer could read as real.
+ */
+const showCount = (value: number | null) =>
+  value === null ? "—" : value.toLocaleString("en-NG");
+const showMoney = (value: number | null) =>
+  value === null ? "—" : formatCurrency(value);
 
 function BalanceMetricCard({
   title,
@@ -250,28 +261,35 @@ function RecentActivityItem({
 const BuyerDashboard: React.FC = () => {
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const { data: orders } = useOrdersQuery();
+  const { data: orderSummary } = useOrderSummaryQuery();
   const { data: serviceRequestsData } = useBuyerServiceRequestsQuery();
   const serviceRequestStatusCounts = serviceRequestsData?.statusCounts ?? null;
-  const [showKycBanner, setShowKycBanner] = useState(true);
+  const [kycBannerDismissed, setKycBannerDismissed] = useState(false);
+  const { shouldPrompt: needsKyc, nextTierLabel } = useKycUpgradePrompt();
   const { data: conversations = null } = useThreadsQuery(5);
+  const { data: receivedQuotes = null } = useBuyerReceivedQuotesQuery();
+  const { wallet } = useWallet();
 
   const dashboardModel = useMemo(
     () =>
       buildBuyerDashboardModel({
         orders: orders ?? null,
+        orderSummary: orderSummary ?? null,
+        wallet,
         serviceRequests: serviceRequestsData?.requests ?? [],
         serviceRequestStatusCounts,
-        // The deployed RFQ API exposes quote responses through an RFQ detail,
-        // not a dashboard-wide received-quotes endpoint.
-        quotes: null,
+        quotes: token ? receivedQuotes : null,
         conversations: token ? conversations : null,
       }),
     [
       conversations,
       orders,
+      orderSummary,
+      receivedQuotes,
       serviceRequestStatusCounts,
       serviceRequestsData,
       token,
+      wallet,
     ],
   );
 
@@ -284,10 +302,14 @@ const BuyerDashboard: React.FC = () => {
 
       <main className="min-h-[calc(100vh-100px)] bg-[#F5F7FA] p-3 md:p-6">
         <div className="mx-auto max-w-[1180px] space-y-4">
-          {showKycBanner ? (
+          {needsKyc && !kycBannerDismissed ? (
             <OverviewNoticeBanner
-              text="Update your KYC level."
-              onDismiss={() => setShowKycBanner(false)}
+              text={
+                nextTierLabel
+                  ? `Update your KYC level — ${nextTierLabel} is still outstanding.`
+                  : "Update your KYC level."
+              }
+              onDismiss={() => setKycBannerDismissed(true)}
               className="rounded-2xl border-[#F59E0B]/20 bg-[#FFF7ED] text-[#9A3412]"
             />
           ) : null}
@@ -295,7 +317,9 @@ const BuyerDashboard: React.FC = () => {
           <section className="grid gap-3 xl:grid-cols-4">
             <BalanceMetricCard
               title="Balance"
-              value={formatCurrency(dashboardModel.balance)}
+              value={
+                showMoney(dashboardModel.balance)
+              }
               tone={{
                 cardClassName: "bg-[#F0F8F1]",
                 iconClassName: "bg-[#65C466] text-white",
@@ -303,7 +327,7 @@ const BuyerDashboard: React.FC = () => {
               icon={<Banknote className="size-4" strokeWidth={1.8} />}
             />
             <InlineMetricCard
-              count={dashboardModel.ordersNeedConfirmation.toLocaleString("en-NG")}
+              count={showCount(dashboardModel.ordersNeedConfirmation)}
               title="Orders Need Your Confirmation"
               actionLabel="View all order"
               actionHref="/dashboard/buyer/orders"
@@ -314,7 +338,7 @@ const BuyerDashboard: React.FC = () => {
               icon={<CheckCheck className="size-4" strokeWidth={1.8} />}
             />
             <InlineMetricCard
-              count={dashboardModel.activeOrdersCard.toLocaleString("en-NG")}
+              count={showCount(dashboardModel.activeOrdersCard)}
               title="active orders (Active)"
               actionLabel="View all order"
               actionHref="/dashboard/buyer/orders"
@@ -325,7 +349,7 @@ const BuyerDashboard: React.FC = () => {
               icon={<BriefcaseBusiness className="size-4" strokeWidth={1.8} />}
             />
             <InlineMetricCard
-              count={dashboardModel.engineerRequests.toLocaleString("en-NG")}
+              count={showCount(dashboardModel.engineerRequests)}
               title="Engineer Requests"
               actionLabel="View all Request"
               actionHref="/dashboard/buyer/service-request"
@@ -341,16 +365,11 @@ const BuyerDashboard: React.FC = () => {
             <div className="mb-4">
               <h2 className="text-xl font-semibold text-[#111827]">Active Orders</h2>
             </div>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid gap-3">
               <SummaryStripItem
                 icon={<ShoppingBag className="size-4" strokeWidth={1.8} />}
                 label="Active Orders"
-                value={dashboardModel.activeOrdersTotal.toLocaleString("en-NG")}
-              />
-              <SummaryStripItem
-                icon={<CircleDollarSign className="size-4" strokeWidth={1.8} />}
-                label="Escrow Balance"
-                value={formatCurrency(dashboardModel.escrowBalance)}
+                value={showCount(dashboardModel.activeOrdersTotal)}
               />
             </div>
           </section>
@@ -363,6 +382,11 @@ const BuyerDashboard: React.FC = () => {
             </div>
 
             <div className="h-[260px] sm:h-[300px]">
+              {dashboardModel.spendSeries.length === 0 ? (
+                <div className="flex h-full items-center justify-center rounded-2xl bg-[#F7F8FA] px-4 text-center text-sm text-[#6B7280]">
+                  No orders yet this month, so there is nothing to chart.
+                </div>
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart
                   data={dashboardModel.spendSeries}
@@ -402,20 +426,21 @@ const BuyerDashboard: React.FC = () => {
                   />
                 </AreaChart>
               </ResponsiveContainer>
+              )}
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3">
               <SpendMetricTile
                 label="Total Spend This Month"
-                value={formatCurrency(dashboardModel.spendThisMonth)}
+                value={showMoney(dashboardModel.spendThisMonth)}
               />
               <SpendMetricTile
                 label="Order This Month"
-                value={dashboardModel.ordersThisMonth.toLocaleString("en-NG")}
+                value={showCount(dashboardModel.ordersThisMonth)}
               />
               <SpendMetricTile
                 label="Avg. Order Value"
-                value={formatCurrency(dashboardModel.averageOrderValue)}
+                value={showMoney(dashboardModel.averageOrderValue)}
               />
             </div>
           </section>
@@ -432,13 +457,20 @@ const BuyerDashboard: React.FC = () => {
             </div>
 
             <div className="space-y-4">
-              {dashboardModel.activities.map((activity, index) => (
-                <RecentActivityItem
-                  key={activity.id}
-                  activity={activity}
-                  isLast={index === dashboardModel.activities.length - 1}
-                />
-              ))}
+              {dashboardModel.activities.length === 0 ? (
+                <p className="rounded-2xl bg-[#F7F8FA] px-4 py-8 text-center text-sm text-[#6B7280]">
+                  Nothing here yet. Quotes, orders, payments and messages will
+                  show up as they happen.
+                </p>
+              ) : (
+                dashboardModel.activities.map((activity, index) => (
+                  <RecentActivityItem
+                    key={activity.id}
+                    activity={activity}
+                    isLast={index === dashboardModel.activities.length - 1}
+                  />
+                ))
+              )}
             </div>
           </section>
         </div>

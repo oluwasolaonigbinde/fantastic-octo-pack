@@ -25,6 +25,7 @@ import {
   writePendingRegistrationContext,
 } from "@/utils/pendingAuth";
 import { buildMessagingComposeHref } from "@/utils/messagingRoutes";
+import { buildTargetedQuoteHref } from "@/utils/rfqRoutes";
 import type { PendingAuthIntent } from "@/types/auth";
 
 function resolvePendingAuthRedirect(
@@ -44,6 +45,13 @@ function resolvePendingAuthRedirect(
   if (role !== "buyer") {
     return {
       nextPath: null,
+      clearIntentBeforeNavigation: true,
+    };
+  }
+
+  if (intent.action === "request_quote") {
+    return {
+      nextPath: buildTargetedQuoteHref(intent),
       clearIntentBeforeNavigation: true,
     };
   }
@@ -168,7 +176,10 @@ export default function LoginPage() {
           }
         }
 
-        router.push("/dashboard");
+        // Full document navigation so middleware re-resolves `/dashboard`
+        // against the role cookie just written for this session, instead of
+        // replaying a previous account's cached resolution (BAI-61).
+        window.location.assign(`/dashboard/${authenticatedUser.role}`);
         return;
       }
 
@@ -228,7 +239,9 @@ export default function LoginPage() {
         }
       }
 
-      router.push("/dashboard");
+      // See the password-login path: hard navigation keeps the previous
+      // account's cached `/dashboard` resolution out of play (BAI-61).
+      window.location.assign(`/dashboard/${authenticatedUser.role}`);
       return;
     }
 

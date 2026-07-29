@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import {
-  CalendarDays,
   ClipboardList,
   Eye,
   Filter,
@@ -13,7 +12,6 @@ import {
 
 import Header from "../../component/header";
 import { Button, Input, RightSlider, SummaryCard } from "@/components/base";
-import { ADMIN_RFQS_ORDERS_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import {
   Table,
   TableBody,
@@ -23,18 +21,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  useAdminOrderSummaryQuery,
   useAdminOrdersQuery,
-  useAdminRfqsOrdersSummaryQuery,
 } from "@/hooks/queries/admin";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import {
   type AdminOrderRow,
   type AdminPagination,
-  type AdminRfqsOrdersSummary,
 } from "@/services/adminService";
 import { fetchOrderDetail } from "@/services/orderService";
-import type { Order } from "@/types/order";
+import type { Order, OrderSummary } from "@/types/order";
 import { ORDER_STATUS_LABELS } from "@/types/order";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 const POLL_INTERVAL_MS = 30_000;
 const PAGE_SIZE = 20;
@@ -51,16 +49,17 @@ const FIGMA_DETAIL_FALLBACK = {
   requestDate: "12/09/2025",
 } as const;
 
-const EMPTY_SUMMARY: AdminRfqsOrdersSummary = {
-  rfqs: { totalRequests: 0, totalQuotesSent: 0 },
-  orders: {
-    total: 0,
-    createdPendingPayment: 0,
-    cancelledPrePayment: 0,
-    processing: 0,
-    shipped: 0,
-    deliveredCompleted: 0,
-  },
+const EMPTY_SUMMARY: OrderSummary = {
+  total: 0,
+  currency: "NGN",
+  totalValue: { allTime: 0, thisMonth: 0 },
+  ordersThisMonth: 0,
+  averageOrderValue: 0,
+  awaitingBuyerConfirmation: 0,
+  activeOrders: 0,
+  inEscrow: 0,
+  disputeActive: 0,
+  byStatus: {},
 };
 
 const emptyPage = <T,>(): AdminPagination<T> => ({
@@ -84,11 +83,6 @@ const moneyFormatter = new Intl.NumberFormat("en-NG", {
 
 const wholeNumberFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
-});
-
-const decimalNumberFormatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
 });
 
 function formatMoney(value?: number | null): string {
@@ -123,10 +117,6 @@ function formatWholeNumber(value?: number | null): string {
   return typeof value === "number" ? wholeNumberFormatter.format(value) : "0";
 }
 
-function formatDecimalNumber(value?: number | null): string {
-  return typeof value === "number" ? decimalNumberFormatter.format(value) : "0.00";
-}
-
 function formatQuantity(value?: number | null): string {
   return typeof value === "number" ? String(value) : "Not available";
 }
@@ -154,8 +144,13 @@ type StatusTone = "warning" | "success" | "danger" | "primary";
 
 function getOrderStatusTone(status: string): StatusTone {
   if (status === "delivered" || status === "completed") return "success";
-  if (status === "shipped") return "primary";
-  if (status === "cancelled_pre_payment") return "danger";
+  // Money is in escrow and the order is moving through fulfillment.
+  if (status === "paid" || status === "received" || status === "installed") {
+    return "primary";
+  }
+  if (status === "cancelled_pre_payment" || status === "payment_failed") {
+    return "danger";
+  }
   return "warning";
 }
 
@@ -163,8 +158,6 @@ function getOrderStatusLabel(status: string): string {
   const labels: Record<string, string> = {
     created_pending_payment: "Pending",
     cancelled_pre_payment: "Cancelled",
-    processing: "Processing",
-    shipped: "Shipped",
     delivered: "Delivered",
     completed: "Delivered",
   };
@@ -203,13 +196,7 @@ function isUserRef(value: unknown): value is UserRef {
 
 function getUserName(value: unknown, fallback = "Not available"): string {
   if (!isUserRef(value)) return fallback;
-  return (
-    value.distributorStoreProfile?.businessName?.trim() ||
-    value.businessName?.trim() ||
-    `${value.firstName ?? ""} ${value.lastName ?? ""}`.trim() ||
-    value.email ||
-    fallback
-  );
+  return getPartyDisplayName(value, value.email || fallback);
 }
 
 function getUserEmail(
@@ -224,15 +211,6 @@ function getUserPhone(
   fallback = FIGMA_DETAIL_FALLBACK.distributorPhone
 ): string {
   return isUserRef(value) && value.phoneNumber ? value.phoneNumber : fallback;
-}
-
-function AdminDateChip({ label }: { label: string }) {
-  return (
-    <div className="inline-flex h-11 sm:h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
-      <span>{label}</span>
-      <CalendarDays size={18} className="text-gray2" />
-    </div>
-  );
 }
 
 type StatusToneProps = { children: ReactNode; tone?: StatusTone };
@@ -330,7 +308,7 @@ export default function AdminOrdersPage() {
     [appliedFilters, page],
   );
 
-  const summaryQuery = useAdminRfqsOrdersSummaryQuery({
+  const summaryQuery = useAdminOrderSummaryQuery({
     refetchInterval: POLL_INTERVAL_MS,
     refetchOnWindowFocus: true,
   });
@@ -392,24 +370,22 @@ export default function AdminOrdersPage() {
           </div>
         ) : null}
 
-        <AdminDateChip label={ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.dateRangeLabel} />
-
         <div className="grid gap-4 sm:grid-cols-3">
           <SummaryCard
             title="Total pending orders"
-            value={formatWholeNumber(summary.orders.createdPendingPayment)}
+            value={formatWholeNumber(summary.byStatus.created_pending_payment)}
             icon={<UsersRound size={18} className="text-primary" />}
             iconBg="bg-[#E7F1FF]"
           />
           <SummaryCard
             title="Total processing orders"
-            value={formatWholeNumber(summary.orders.processing)}
+            value={formatWholeNumber(summary.inEscrow)}
             icon={<ClipboardList size={18} className="text-[#C04FE0]" />}
             iconBg="bg-[#F8E8FF]"
           />
           <SummaryCard
             title="Total delivered/completed"
-            value={formatWholeNumber(summary.orders.deliveredCompleted)}
+            value={formatWholeNumber(summary.byStatus.completed)}
             icon={<ClipboardList size={18} className="text-[#F6B90A]" />}
             iconBg="bg-[#FFF5DB]"
           />

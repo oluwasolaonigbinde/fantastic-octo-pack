@@ -1,5 +1,6 @@
 import type { Product, ProductImage } from "@/types/product";
 import type { UserData } from "@/types/user";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 import { DEFAULT_AVATAR_SRC } from "@/constants/avatar";
 import { formatProductCountriesLabel } from "@/utils/countryDisplay";
 import { getProductCategoryName } from "@/utils/productDisplay";
@@ -164,9 +165,7 @@ export const getDistributorName = (
     return user;
   }
 
-  const name = `${user.firstName || ""} ${user.lastName || ""}`.trim();
-
-  return name || "The name of the distributor";
+  return getPartyDisplayName(user, "The name of the distributor");
 };
 
 export const getDistributorEmail = (user: Product["createdBy"] | UserData | null | undefined) => {

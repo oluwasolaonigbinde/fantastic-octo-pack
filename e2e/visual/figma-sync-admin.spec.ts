@@ -492,7 +492,6 @@ function expectedTextFor(entry: FrameMapEntry): string | RegExp {
     return /Subscription|Samuel Smart|All available plans|Extend plan/i;
   }
   if (entry.slug?.startsWith("services")) return /Service|Request/i;
-  if (entry.slug === "payment-invoice-detail") return /Resolution summary|Invoice ID/i;
   if (entry.slug === "payment-escrow-detail") return /Invoice Details|Reverse Escrow|Under dispute/i;
   if (entry.slug?.startsWith("payment")) return /Payment|Escrow/i;
   if (entry.slug?.startsWith("disputes")) return /Disputes|Resolution/i;

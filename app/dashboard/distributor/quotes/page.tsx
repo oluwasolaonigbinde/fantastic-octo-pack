@@ -123,19 +123,18 @@ function DistributorQuotesPageInner() {
 
   const startQuoteItem = (index: number) => { updateLine(index, { available: true }); setError(null); setEditingItem(index); };
   const markItemUnavailable = (index: number) => { updateLine(index, { available: false }); setItemStatus((current) => ({ ...current, [index]: "unavailable" })); if (editingItem === index) setEditingItem(null); };
-  // Guard a single available line against over-quoting its product's free stock.
-  // Returns an error message, or null when the quantity is fulfillable.
-  const stockError = (line?: OfferLine): string | null => {
-    if (!line?.available || !line.product || !line.stockCount) return null;
+  // The Stock Count field is a coarse band ("1 - 10 units"), not an exact
+  // count, so its value is the band's upper bound. The actual quantity the
+  // distributor can fulfil is capped to their real free stock — never the
+  // band ceiling — otherwise a true stock of 7 fails the "1 - 10" band even
+  // though 7 falls inside it.
+  const offeredQuantity = (line?: OfferLine): number => {
+    if (!line?.product || !line.stockCount) return 0;
     const free = productFreeStock.get(line.product) ?? 0;
-    if (Number(line.stockCount) > free) {
-      const name = productOptions.find((option) => option.value === line.product)?.label ?? "this product";
-      return `Only ${free} in stock for "${name}". Reduce the quantity to ${free} or less.`;
-    }
-    return null;
+    return Math.min(Number(line.stockCount), free);
   };
 
-  const saveQuoteItem = (index: number) => { const line = lines[index]; if (!line?.product || !line.price || !line.stockCount) { setError("Select the product, price, and stock count for this item."); return; } const overStock = stockError(line); if (overStock) { setError(overStock); return; } setItemStatus((current) => ({ ...current, [index]: "quoted" })); setError(null); setEditingItem(null); };
+  const saveQuoteItem = (index: number) => { const line = lines[index]; if (!line?.product || !line.price || !line.stockCount) { setError("Select the product, price, and stock count for this item."); return; } if (offeredQuantity(line) <= 0) { const name = productOptions.find((option) => option.value === line.product)?.label ?? "this product"; setError(`"${name}" has no free stock available to quote.`); return; } setItemStatus((current) => ({ ...current, [index]: "quoted" })); setError(null); setEditingItem(null); };
   const applyFilters = () => { setAppliedFilters({ product: draftProduct, dateRange: draftDateRange }); setPage(1); };
 
   const sendResponse = async (payload: QuoteLineItem[], withFiles: boolean) => {
@@ -156,10 +155,8 @@ function DistributorQuotesPageInner() {
   const submitResponse = async () => {
     const rfq = selected ? asRfq(selected) : null;
     if (!rfq) { setError("This request is missing the RFQ line items required to respond."); return; }
-    const payload: QuoteLineItem[] = rfq.items.map((item, index) => { const line = lines[index]; return { rfqItemIndex: index, available: line.available, product: line.available ? line.product || undefined : undefined, pricePerUnit: line.available ? Number(line.price) : undefined, quantity: line.available ? Number(line.stockCount) : undefined, availableModel: line.available ? line.availableModel || undefined : undefined }; });
+    const payload: QuoteLineItem[] = rfq.items.map((item, index) => { const line = lines[index]; return { rfqItemIndex: index, available: line.available, product: line.available ? line.product || undefined : undefined, pricePerUnit: line.available ? Number(line.price) : undefined, quantity: line.available ? offeredQuantity(line) : undefined, availableModel: line.available ? line.availableModel || undefined : undefined }; });
     if (payload.some((line) => line.available && (!line.product || !line.pricePerUnit || !line.quantity))) { setError("Select the product from your catalogue, a price, and stock count for every available item."); return; }
-    const overStock = rfq.items.map((_, index) => stockError(lines[index])).find(Boolean);
-    if (overStock) { setError(overStock); return; }
     await sendResponse(payload, true);
   };
 

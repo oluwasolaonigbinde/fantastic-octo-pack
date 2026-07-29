@@ -5,6 +5,7 @@ import ProductCard from "./ProductCard";
 import { Button, EmptyState, SingleSelect } from "@/components/base";
 import type { Product } from "@/types/product";
 import {
+  formatProductPrice,
   getProductAvailabilityLabel,
   isProductAvailable,
   getProductListingLocation,
@@ -92,12 +93,7 @@ export default function ProductGrid({
               key={product._id}
               id={product._id}
               title={product.name}
-              price={new Intl.NumberFormat("en-NG", {
-                style: "currency",
-                currency: "NGN",
-                minimumFractionDigits: 0,
-                maximumFractionDigits: 0,
-              }).format(product.pricePerUnit)}
+              price={formatProductPrice(product.pricePerUnit)}
               imageSrc={product.images.find((img) => img.isDefault === true)}
               stockLabel={getProductAvailabilityLabel(product)}
               isAvailable={isProductAvailable(product)}

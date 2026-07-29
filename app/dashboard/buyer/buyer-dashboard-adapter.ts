@@ -1,46 +1,42 @@
 "use client";
 
 import type { Conversation } from "@/types/messaging";
-import type { Order, OrderStatus } from "@/types/order";
+import { getOrderReference } from "@/types/order";
+import type { Order, OrderStatus, OrderSummary } from "@/types/order";
 import type { Quote, Rfq, UserRef } from "@/types/rfq";
 import {
   ServiceRequestStatus,
   type ServiceRequestData,
   type ServiceRequestStatusCounts,
 } from "@/types/service-request";
+import type { Wallet } from "@/types/wallet";
+import { koboToNaira } from "@/lib/wallet-format";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
-const FALLBACK_BALANCE = 12_500_000;
-const FALLBACK_CONFIRMATIONS = 2;
-const FALLBACK_ACTIVE_ORDERS_CARD = 8;
-const FALLBACK_ACTIVE_ORDERS_TOTAL = 14;
-const FALLBACK_ENGINEER_REQUESTS = 2;
-const FALLBACK_SPEND_THIS_MONTH = 7_850_000;
-const FALLBACK_ORDERS_THIS_MONTH = 23;
-const FALLBACK_AVG_ORDER_VALUE = 341_304;
+/** Number of buckets the spend chart plots across the current month. */
+const SPEND_BUCKET_COUNT = 15;
 
-const ACTIVE_ORDER_STATUSES: OrderStatus[] = ["processing", "shipped", "delivered"];
-const CONFIRMATION_ORDER_STATUSES: OrderStatus[] = ["delivered"];
-
-const FALLBACK_SPEND_SERIES = [
-  0.06,
-  0.16,
-  0.22,
-  0.28,
-  0.4,
-  0.48,
-  0.62,
-  0.48,
-  0.4,
-  0.34,
-  0.28,
-  0.22,
-  0.2,
-  0.18,
-  0.06,
-].map((value, index) => ({
-  label: `P${index + 1}`,
-  value,
-}));
+/**
+ * Client-side derivation used only when `GET /orders/summary` is unavailable.
+ * These must stay in step with the backend's own status list — `processing`,
+ * `shipped` and `fulfilled` are legacy values the live API never emits, so
+ * matching on them counted nothing.
+ */
+const ACTIVE_ORDER_STATUSES: OrderStatus[] = [
+  "created_pending_payment",
+  "payment_initiated",
+  "paid",
+  "received",
+  "delivered",
+  "installed",
+];
+/**
+ * Approximates the backend's `awaitingBuyerConfirmation`. The server also knows
+ * whether an order `requiresInstallation` (a delivered order that still needs
+ * installing is NOT awaiting confirmation); the client does not, so prefer the
+ * summary whenever it is present.
+ */
+const CONFIRMATION_ORDER_STATUSES: OrderStatus[] = ["delivered", "installed"];
 
 export type BuyerDashboardActivityKind =
   | "quote"
@@ -58,22 +54,39 @@ export interface BuyerDashboardActivity {
   href: string;
 }
 
+/**
+ * Every figure on this model is either measured from a live API response or
+ * `null`. There are deliberately no placeholder values: a card with nothing
+ * behind it renders a dash, so the buyer can never mistake a stand-in for a
+ * real balance, count, or amount.
+ */
 export interface BuyerDashboardModel {
-  balance: number;
-  ordersNeedConfirmation: number;
-  activeOrdersCard: number;
-  engineerRequests: number;
-  activeOrdersTotal: number;
-  escrowBalance: number;
-  spendThisMonth: number;
-  ordersThisMonth: number;
-  averageOrderValue: number;
+  /** Spendable wallet balance in naira, from `GET /wallets/me`. */
+  balance: number | null;
+  ordersNeedConfirmation: number | null;
+  activeOrdersCard: number | null;
+  engineerRequests: number | null;
+  activeOrdersTotal: number | null;
+  spendThisMonth: number | null;
+  ordersThisMonth: number | null;
+  averageOrderValue: number | null;
+  /** Empty when the buyer has no orders in the current month. */
   spendSeries: Array<{ label: string; value: number }>;
+  /** Empty when nothing has happened yet — never padded. */
   activities: BuyerDashboardActivity[];
 }
 
 interface BuildBuyerDashboardModelInput {
   orders: Order[] | null;
+  /**
+   * `GET /orders/summary`. Authoritative for the order counters and spend
+   * figures — it counts every order the buyer has, not just the page that was
+   * fetched, and applies the backend's own status rules. The client-side
+   * derivation from `orders` remains as the fallback.
+   */
+  orderSummary?: OrderSummary | null;
+  /** `GET /wallets/me`. `null`/absent while loading or on failure. */
+  wallet?: Wallet | null;
   serviceRequests?: ServiceRequestData[];
   serviceRequestStatusCounts?: ServiceRequestStatusCounts | null;
   quotes: Quote[] | null;
@@ -97,19 +110,7 @@ const isSameMonth = (date: Date, now: Date) =>
 
 const getDistributorName = (distributor: string | UserRef): string => {
   if (typeof distributor !== "object" || !distributor) return "Distributor";
-  return (
-    distributor.distributorStoreProfile?.businessName?.trim() ||
-    distributor.businessName?.trim() ||
-    [distributor.firstName, distributor.lastName].filter(Boolean).join(" ").trim() ||
-    distributor.email ||
-    "Distributor"
-  );
-};
-
-const getOrderDisplayId = (orderId: string | undefined) => {
-  if (!orderId) return "Order";
-  if (orderId.startsWith("ORD-")) return orderId;
-  return `ORD-${orderId.slice(-6).toUpperCase()}`;
+  return getPartyDisplayName(distributor, "Distributor");
 };
 
 const getRfqProductName = (rfq: string | Rfq): string => {
@@ -161,68 +162,23 @@ const formatRelativeTime = (value: string, now: Date): string => {
   });
 };
 
-const buildFallbackActivities = (now: Date): BuyerDashboardActivity[] => [
-  {
-    id: "fallback-quote-response",
-    kind: "quote",
-    message: "Distributor MedSupply responded to your RFQ for centrifuge machine",
-    relativeTime: "10min ago",
-    timestamp: new Date(now.getTime() - 10 * 60_000).toISOString(),
-    href: "/dashboard/buyer/rfqs",
-  },
-  {
-    id: "fallback-order-update",
-    kind: "order",
-    message: "Order #ORD-1234 has been shipped",
-    relativeTime: "2 hours ago",
-    timestamp: new Date(now.getTime() - 2 * 60 * 60_000).toISOString(),
-    href: "/dashboard/buyer/orders",
-  },
-  {
-    id: "fallback-payment",
-    kind: "payment",
-    message: "Payment of ₦1,250,000 was confirmed for your order",
-    relativeTime: "Yesterday 4:30 PM",
-    timestamp: new Date(now.getTime() - 19.5 * 60 * 60_000).toISOString(),
-    href: "/dashboard/buyer/payments",
-  },
-  {
-    id: "fallback-new-quote",
-    kind: "quote",
-    message: "New quote received for RFQ #RFQ-5678",
-    relativeTime: "Yesterday 11:20 AM",
-    timestamp: new Date(now.getTime() - 26.5 * 60 * 60_000).toISOString(),
-    href: "/dashboard/buyer/rfqs",
-  },
-];
-
-const buildScaledFallbackSpendSeries = (total: number) => {
-  const safeTotal = total > 0 ? total : FALLBACK_SPEND_THIS_MONTH;
-
-  return FALLBACK_SPEND_SERIES.map((point) => ({
-    label: point.label,
-    value: Math.round(point.value * safeTotal),
-  }));
-};
-
+/**
+ * Buckets this month's real orders across the month by creation date. Returns
+ * an empty series when the buyer has no orders this month — the chart renders
+ * an empty state instead of an invented trend line.
+ */
 const buildSpendSeriesFromOrders = (orders: Order[], now: Date) => {
   const monthOrders = orders.filter((order) => {
     const createdAt = parseDate(order.createdAt);
     return createdAt ? isSameMonth(createdAt, now) : false;
   });
 
-  const monthlyTotal = monthOrders.reduce(
-    (sum, order) => sum + (order.totalPrice || 0),
-    0,
-  );
-
-  if (monthOrders.length < 4) {
-    return buildScaledFallbackSpendSeries(monthlyTotal);
+  if (monthOrders.length === 0) {
+    return [];
   }
 
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const bucketCount = FALLBACK_SPEND_SERIES.length;
-  const buckets = Array.from({ length: bucketCount }, (_, index) => ({
+  const buckets = Array.from({ length: SPEND_BUCKET_COUNT }, (_, index) => ({
     label: `P${index + 1}`,
     value: 0,
   }));
@@ -232,14 +188,14 @@ const buildSpendSeriesFromOrders = (orders: Order[], now: Date) => {
     if (!createdAt) return;
     const progress = (createdAt.getDate() - 1) / Math.max(daysInMonth - 1, 1);
     const bucketIndex = Math.min(
-      bucketCount - 1,
-      Math.max(0, Math.floor(progress * bucketCount)),
+      SPEND_BUCKET_COUNT - 1,
+      Math.max(0, Math.floor(progress * SPEND_BUCKET_COUNT)),
     );
     buckets[bucketIndex].value += order.totalPrice || 0;
   });
 
-    return buckets;
-  };
+  return buckets;
+};
 
 const buildActivities = (
   orders: Order[] | null,
@@ -293,23 +249,27 @@ const buildActivities = (
       return right - left;
     });
 
+    // Ordered by how newsworthy the state is to the buyer, using the statuses
+    // the live API actually emits (received → delivered → installed).
     const recentOrder =
-      sortedOrders.find((order) => order.status === "shipped") ||
+      sortedOrders.find((order) => order.status === "installed") ||
       sortedOrders.find((order) => order.status === "delivered") ||
-      sortedOrders.find((order) => order.status === "processing");
+      sortedOrders.find((order) => order.status === "received") ||
+      sortedOrders.find((order) => order.status === "paid");
 
     if (recentOrder) {
       const action =
-        recentOrder.status === "shipped"
-          ? "has been shipped"
-          : recentOrder.status === "delivered"
+        recentOrder.status === "received"
+          ? "has been dispatched"
+          : recentOrder.status === "delivered" ||
+              recentOrder.status === "installed"
             ? "is awaiting your confirmation"
             : "is being processed";
 
       priorityItems.push({
         id: `order-${recentOrder._id}`,
         kind: "order",
-        message: `Order #${getOrderDisplayId(recentOrder._id)} ${action}`,
+        message: `Order #${getOrderReference(recentOrder)} ${action}`,
         relativeTime: formatRelativeTime(recentOrder.updatedAt, now),
         timestamp: recentOrder.updatedAt,
         href: "/dashboard/buyer/orders",
@@ -389,18 +349,7 @@ const buildActivities = (
     [],
   );
 
-  const fallbackItems = buildFallbackActivities(now);
-  const merged = [...deduped];
-
-  fallbackItems.forEach((item) => {
-    if (merged.length >= 4) return;
-    if (merged.some((existing) => existing.kind === item.kind && existing.message === item.message)) {
-      return;
-    }
-    merged.push(item);
-  });
-
-  return merged
+  return deduped
     .sort((a, b) => {
       const left = parseDate(a.timestamp)?.getTime() ?? 0;
       const right = parseDate(b.timestamp)?.getTime() ?? 0;
@@ -411,6 +360,8 @@ const buildActivities = (
 
 export function buildBuyerDashboardModel({
   orders,
+  orderSummary = null,
+  wallet = null,
   serviceRequests,
   serviceRequestStatusCounts,
   quotes,
@@ -433,16 +384,20 @@ export function buildBuyerDashboardModel({
   });
 
   const spendThisMonth =
+    orderSummary?.totalValue.thisMonth ??
     monthOrders?.reduce((sum, order) => sum + (order.totalPrice || 0), 0) ??
-    FALLBACK_SPEND_THIS_MONTH;
-  const ordersThisMonth = monthOrders?.length ?? FALLBACK_ORDERS_THIS_MONTH;
+    null;
+  const ordersThisMonth =
+    orderSummary?.ordersThisMonth ?? monthOrders?.length ?? null;
   const averageOrderValue =
-    monthOrders == null
-      ? FALLBACK_AVG_ORDER_VALUE
+    orderSummary?.averageOrderValue ??
+    (spendThisMonth == null || ordersThisMonth == null
+      ? null
       : ordersThisMonth > 0
         ? Math.round(spendThisMonth / ordersThisMonth)
-        : 0;
-  const activeOrdersTotal = activeOrders?.length ?? FALLBACK_ACTIVE_ORDERS_TOTAL;
+        : 0);
+  const activeOrdersTotal =
+    orderSummary?.activeOrders ?? activeOrders?.length ?? null;
 
   const openServiceRequests = serviceRequests?.filter(
     (request) =>
@@ -452,31 +407,27 @@ export function buildBuyerDashboardModel({
   );
 
   const engineerRequests =
-    openServiceRequests != null
-      ? openServiceRequests.length
-      : serviceRequestStatusCounts?.total ??
-        (serviceRequests ? serviceRequests.length : FALLBACK_ENGINEER_REQUESTS);
+    openServiceRequests?.length ?? serviceRequestStatusCounts?.total ?? null;
 
   return {
-    balance: FALLBACK_BALANCE,
+    balance: wallet ? koboToNaira(wallet.availableBalance) : null,
     ordersNeedConfirmation:
-      confirmationOrders?.length ?? FALLBACK_CONFIRMATIONS,
+      orderSummary?.awaitingBuyerConfirmation ??
+      confirmationOrders?.length ??
+      null,
     activeOrdersCard:
-      orders == null
-        ? FALLBACK_ACTIVE_ORDERS_CARD
+      orderSummary?.activeOrders ??
+      (orders == null
+        ? null
         : (activeOrdersThisMonth?.length ?? 0) > 0
           ? activeOrdersThisMonth?.length ?? 0
-          : activeOrders?.length ?? 0,
+          : activeOrders?.length ?? 0),
     engineerRequests,
     activeOrdersTotal,
-    escrowBalance: FALLBACK_BALANCE,
     spendThisMonth,
     ordersThisMonth,
     averageOrderValue,
-    spendSeries:
-      orders == null
-        ? buildScaledFallbackSpendSeries(FALLBACK_SPEND_THIS_MONTH)
-        : buildSpendSeriesFromOrders(orders, now),
+    spendSeries: orders == null ? [] : buildSpendSeriesFromOrders(orders, now),
     activities: buildActivities(
       orders,
       quotes,

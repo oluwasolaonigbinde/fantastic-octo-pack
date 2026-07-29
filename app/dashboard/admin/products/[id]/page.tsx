@@ -24,6 +24,7 @@ import {
 } from "@/hooks/queries/products";
 import { useCategoriesQuery } from "@/hooks/queries/categories";
 import type { UserData } from "@/types/user";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 import { getListingStatusMeta } from "@/utils/productStatus";
 import {
   getProductAvailabilityLabel,
@@ -67,7 +68,7 @@ const sentenceCase = (value?: string | null): string => {
 const getUserName = (value?: string | UserData): string => {
   if (!value) return "-";
   if (typeof value === "string") return value;
-  return `${value.firstName ?? ""} ${value.lastName ?? ""}`.trim() || value.email;
+  return getPartyDisplayName(value, value.email);
 };
 
 type DetailItem = { label: string; value: string };

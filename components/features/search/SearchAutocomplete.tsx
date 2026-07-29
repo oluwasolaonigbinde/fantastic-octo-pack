@@ -11,6 +11,7 @@ import type { Product, ProductImage } from "@/types/product";
 import { getProductCategoryName } from "@/utils/productDisplay";
 import type { PublicProfileData } from "@/types/user";
 import { UserRole } from "@/types/user";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 const MIN_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS = 300;
@@ -73,7 +74,7 @@ function buildProductResult(product: Product): SearchResultItem {
 }
 
 function buildProfileResult(profile: PublicProfileData): SearchResultItem {
-  const fullName = `${profile.firstName} ${profile.lastName}`.trim();
+  const fullName = getPartyDisplayName(profile, "");
   const subtitleByRole: Record<SearchResultKind, string> = {
     distributor: profile.address?.trim() || "Distributor",
     oem: profile.address?.trim() || "OEM",

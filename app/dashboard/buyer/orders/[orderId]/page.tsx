@@ -21,13 +21,13 @@ import { Skeleton } from "@/components/base";
 import DeliveryStepper from "@/components/orders/DeliveryStepper";
 import {
   getBuyerOrderStatusTone,
-  getOrderDisplayId,
   getOrderProductImage,
   getPersonName,
   toBuyerOrderRow,
   type BuyerOrderRow,
   type BuyerOrderStage,
 } from "@/constants/demoBuyerOrders";
+import { getBusinessName, getPersonalName } from "@/utils/partyDisplayName";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import {
   useConfirmOrderReceiptMutation,
@@ -40,15 +40,25 @@ import { useOrderPayment } from "@/hooks/useOrderPayment";
 import { koboToNaira } from "@/lib/wallet-format";
 import addressService from "@/services/addressService";
 import type { UserAddress } from "@/types/address";
-import type { Order, OrderPaymentMethod } from "@/types/order";
+import type { Order } from "@/types/order";
+import { PaymentMethodPanel } from "@/components/payments/PaymentMethodPanel";
+import { PaymentOrderSummary } from "@/components/payments/PaymentOrderSummary";
+import {
+  ORDER_PAYMENT_METHODS,
+  getPaymentMethodOption,
+  type PaymentMethodId,
+} from "@/components/payments/paymentMethods";
 import {
   formatDeliveryAddress,
   getActiveMilestoneCount,
+  getAutoReceiveDeadline,
   getOrderMilestones,
+  getOrderReference,
   getPaymentStatusDisplay,
   isAwaitingBuyerConfirmation,
   isPaidOrderStatus,
 } from "@/types/order";
+import { useAdminPlatformSettingsQuery } from "@/hooks/queries/admin";
 
 type ModalKind =
   | "payment"
@@ -59,27 +69,20 @@ type ModalKind =
   | "editDraft"
   | null;
 
-type PaymentOption = {
-  label: string;
-  /** Functional rails carry a method; disabled rails are "coming soon". */
-  method: OrderPaymentMethod | null;
-};
-
-const paymentMethods: PaymentOption[] = [
-  { label: "BAIY trade assurance", method: "wallet" },
-  { label: "Paystack", method: "paystack" },
-  { label: "Flutterwave", method: null },
-  { label: "Google Pay", method: null },
-  { label: "Apple Pay", method: null },
-  { label: "Bank wallet", method: null },
-];
-
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-NG", {
     style: "currency",
     currency: "NGN",
     minimumFractionDigits: 2,
   }).format(value);
+
+/** Whole-naira form used on the payment screen, matching the design. */
+const formatAmount = (value: number) =>
+  new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0,
+  }).format(value || 0);
 
 const formatDate = (value: string) => {
   const parsed = new Date(value);
@@ -248,22 +251,38 @@ function ActionNotice({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Live escrow countdown shown on the tracking card (HOUR : MINUTES : SECONDS). */
-function CountdownTimer({ target }: { target?: Date }) {
+/**
+ * Live escrow countdown shown on the tracking card (DAYS : HOURS : MINUTES :
+ * SECONDS). `target` is the backend-derived auto-receive deadline; when there
+ * isn't one there is nothing to count down to, so we render an idle state rather
+ * than invent a window.
+ */
+function CountdownTimer({
+  target,
+  emptyLabel = "Not started",
+}: {
+  target?: Date | null;
+  emptyLabel?: string;
+}) {
   const [now, setNow] = useState(() => Date.now());
-  // When the order carries no real deadline, anchor a 24h window at mount time.
-  const [fallbackDeadline] = useState(() => Date.now() + 24 * 60 * 60 * 1000);
 
   useEffect(() => {
+    if (!target) return;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [target]);
 
-  const deadline = target ? target.getTime() : fallbackDeadline;
-  const remaining = Math.max(0, deadline - now);
+  if (!target) {
+    return (
+      <p className="mt-2 text-sm text-[#6B7280]">{emptyLabel}</p>
+    );
+  }
+
+  const remaining = Math.max(0, target.getTime() - now);
   const totalSeconds = Math.floor(remaining / 1000);
   const segments: { value: number; label: string }[] = [
-    { value: Math.floor(totalSeconds / 3600), label: "HOUR" },
+    { value: Math.floor(totalSeconds / 86400), label: "DAYS" },
+    { value: Math.floor((totalSeconds % 86400) / 3600), label: "HOURS" },
     { value: Math.floor((totalSeconds % 3600) / 60), label: "MINUTES" },
     { value: totalSeconds % 60, label: "SECONDS" },
   ];
@@ -295,7 +314,9 @@ export default function BuyerOrderDetailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: authData } = useAppSelector((state) => state.auth);
-  const [selectedPayment, setSelectedPayment] = useState(paymentMethods[0].label);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethodId>(
+    ORDER_PAYMENT_METHODS[0].id,
+  );
   const [modal, setModal] = useState<ModalKind>(null);
   const [notice, setNotice] = useState("");
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
@@ -311,6 +332,10 @@ export default function BuyerOrderDetailPage() {
     error,
   } = useOrderQuery(orderId);
   const message = error instanceof Error ? error.message : "";
+
+  // Drives the escrow countdown. If the endpoint rejects this role the query
+  // just stays empty and the timer renders its idle state.
+  const { data: platformSettings } = useAdminPlatformSettingsQuery();
 
   const confirmMutation = useConfirmOrderReceiptMutation();
   const isConfirming = confirmMutation.isPending;
@@ -413,18 +438,12 @@ export default function BuyerOrderDetailPage() {
   // once the distributor has finished delivering.
   const deliveryUnderway = awaitingBuyerConfirmation;
   const hasActiveDispute = Boolean(liveOrder?.activeDisputeId);
-  // Only the live order can carry a real deadline; the API doesn't return one
-  // today, so this is usually undefined and CountdownTimer falls back to a
-  // mount-anchored 24h window.
-  const proposedDate = liveOrder?.proposedDeliveryDate
-    ? new Date(liveOrder.proposedDeliveryDate)
-    : null;
-  const escrowDeadline =
-    proposedDate && !Number.isNaN(proposedDate.getTime())
-      ? proposedDate
-      : undefined;
-  const expectedByText = liveOrder?.proposedDeliveryDate
-    ? formatDate(liveOrder.proposedDeliveryDate)
+  // Escrow auto-release deadline: the platform's auto-receive window counted
+  // from the backend timestamp for the final logistics stage (installed when
+  // installation is required, delivered otherwise). Null until that stage lands.
+  const escrowDeadline = getAutoReceiveDeadline(liveOrder, platformSettings);
+  const expectedByText = escrowDeadline
+    ? formatDate(escrowDeadline.toISOString())
     : "—";
   const statusTone = getBuyerOrderStatusTone(stage === "completed" ? "completed" : liveStatus);
   const productImage = order?.productImage || getOrderProductImage(liveOrder);
@@ -438,10 +457,15 @@ export default function BuyerOrderDetailPage() {
     (typeof liveOrder?.seller === "string" ? liveOrder.seller : "");
   const supplierEmail = sellerRef?.email || "—";
   const supplierPhone = sellerRef?.phoneNumber || "—";
-  const supplierRole =
-    sellerRef?.businessName ||
-    sellerRef?.distributorStoreProfile?.businessName ||
-    "Supplier";
+  // `supplierName` already shows the business name once the distributor has
+  // one (KYC tier 2), so the secondary line carries the person behind it —
+  // otherwise there is nothing to add beyond the role.
+  const supplierBusinessName = getBusinessName(sellerRef);
+  const supplierContactName = getPersonalName(sellerRef);
+  const supplierSecondaryLabel = supplierBusinessName ? "Contact person" : "Role";
+  const supplierSecondaryValue = supplierBusinessName
+    ? supplierContactName || "—"
+    : "Supplier";
   const buyerName = getPersonName(liveOrder?.buyer, "You");
   const buyerEmail =
     liveOrder?.buyer && typeof liveOrder.buyer === "object"
@@ -457,7 +481,7 @@ export default function BuyerOrderDetailPage() {
   // wallet balances are in kobo.
   const orderTotal = order?.totalPrice ?? 0;
   const walletNaira = wallet ? koboToNaira(wallet.availableBalance) : 0;
-  const selectedOption = paymentMethods.find((m) => m.label === selectedPayment);
+  const selectedOption = getPaymentMethodOption(selectedPayment);
   const insufficientWallet =
     selectedOption?.method === "wallet" && walletNaira < orderTotal;
 
@@ -650,91 +674,44 @@ export default function BuyerOrderDetailPage() {
         </button>
 
         {stage === "payment" ? (
-          <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-            <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
-              <h1 className="text-lg font-medium text-[#111827]">Payment</h1>
-              <p className="mt-1 text-sm font-medium text-[#111827]">Payment options</p>
-              <p className="mt-0.5 text-sm text-[#6B7280]">
-                Select preferred payment method to proceed
-              </p>
-
-              <div className="mt-6 rounded-2xl border border-[#DDE0E5]">
-                {paymentMethods.map((option) => {
-                  const disabled = option.method === null;
-                  const isWallet = option.method === "wallet";
-                  return (
-                    <button
-                      key={option.label}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => setSelectedPayment(option.label)}
-                      className={`flex w-full items-center justify-between border-b border-[#EEF2F7] px-5 py-4 text-left last:border-b-0 ${
-                        disabled ? "cursor-not-allowed opacity-50" : ""
-                      }`}
-                    >
-                      <span className="flex items-start gap-3 text-sm text-[#111827]">
-                        <span
-                          className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${
-                            selectedPayment === option.label
-                              ? "border-primary"
-                              : "border-[#DDE0E5]"
-                          }`}
-                        >
-                          {selectedPayment === option.label ? (
-                            <span className="size-2 rounded-full bg-primary" />
-                          ) : null}
-                        </span>
-                        <span className="flex flex-col">
-                          {option.label}
-                          {isWallet ? (
-                            <span className="text-xs text-[#6B7280]">
-                              Balance: {formatCurrency(walletNaira)}
-                            </span>
-                          ) : null}
-                          {disabled ? (
-                            <span className="text-xs text-[#9CA3AF]">Coming soon</span>
-                          ) : null}
-                        </span>
-                      </span>
-                      <CreditCard size={18} className="text-[#6B7280]" />
-                    </button>
-                  );
-                })}
-              </div>
-
+          <div className="grid items-start gap-6 lg:grid-cols-[1fr_400px]">
+            <PaymentMethodPanel
+              selected={selectedPayment}
+              onSelect={setSelectedPayment}
+              walletBalanceLabel={`Balance: ${formatCurrency(walletNaira)}`}
+            >
               {insufficientWallet ? (
-                <p className="mt-4 rounded-lg border border-[#F5A400] bg-[#FFFBEB] px-4 py-3 text-sm text-[#B45309]">
+                <p className="rounded-lg border border-[#F5A400] bg-[#FFFBEB] px-4 py-3 text-sm text-[#B45309]">
                   Your wallet balance is too low for this order. Top up your wallet
                   or pay with Paystack.
                 </p>
               ) : null}
 
               {payError ? (
-                <p className="mt-4 rounded-lg border border-[#E33C13] bg-[#FFF5F3] px-4 py-3 text-sm text-[#E33C13]">
+                <p className="rounded-lg border border-[#E33C13] bg-[#FFF5F3] px-4 py-3 text-sm text-[#E33C13]">
                   {payError}
                 </p>
               ) : null}
+            </PaymentMethodPanel>
 
-              <p className="mt-5 text-xs leading-5 text-[#6B7280]">
-                Paystack payments redirect you to a secure checkout for{" "}
-                {formatCurrency(orderTotal)} and return here once complete.
-              </p>
-
-              <button
-                type="button"
-                onClick={handleSubmitPayment}
-                disabled={isPaying || insufficientWallet || !selectedOption?.method}
-                className="mt-6 h-12 w-full rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60 md:max-w-[260px]"
-              >
-                {isPaying
-                  ? selectedOption?.method === "paystack"
-                    ? "Redirecting to Paystack…"
-                    : "Processing payment…"
-                  : `Pay ${formatCurrency(orderTotal)}`}
-              </button>
-            </section>
-
-            <OrderSummaryCard order={order} />
+            <PaymentOrderSummary
+              productName={order.productSummary}
+              productImage={order.productImage}
+              quantity={order.totalQuantity}
+              orderId={order.id}
+              invoiceId={liveOrder?.paymentReference}
+              itemsTotal={orderTotal}
+              total={orderTotal}
+              formatAmount={formatAmount}
+              onPay={handleSubmitPayment}
+              isPaying={isPaying}
+              disabled={insufficientWallet || !selectedOption?.method}
+              payLabel={
+                isPaying && selectedOption?.method === "paystack"
+                  ? "Redirecting to Paystack…"
+                  : undefined
+              }
+            />
           </div>
         ) : (
           <>
@@ -744,7 +721,10 @@ export default function BuyerOrderDetailPage() {
 
                 <div className="grid content-start gap-5 xl:grid-cols-[1fr_auto]">
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-                    <DetailStat label="Order ID" value={order.id || getOrderDisplayId(orderId)} />
+                    <DetailStat
+                      label="Order ID"
+                      value={order.id || getOrderReference(liveOrder ?? { _id: orderId })}
+                    />
                     <DetailStat
                       label={order.itemCount > 1 ? "Products" : "Name of product"}
                       value={order.productSummary}
@@ -878,8 +858,14 @@ export default function BuyerOrderDetailPage() {
                 </InfoCard>
                 <InfoCard title="Supplier Information">
                   <div className="grid gap-5 sm:grid-cols-2">
-                    <DetailStat label="Full name" value={supplierName} />
-                    <DetailStat label="Role" value={supplierRole} />
+                    <DetailStat
+                      label={supplierBusinessName ? "Business name" : "Full name"}
+                      value={supplierName}
+                    />
+                    <DetailStat
+                      label={supplierSecondaryLabel}
+                      value={supplierSecondaryValue}
+                    />
                     <DetailStat label="Phone number" value={supplierPhone} />
                     <DetailStat label="Email address" value={supplierEmail} />
                   </div>
@@ -966,7 +952,10 @@ export default function BuyerOrderDetailPage() {
                           <p className="text-base font-medium text-[#111827]">
                             Time Remaining
                           </p>
-                          <CountdownTimer target={escrowDeadline} />
+                          <CountdownTimer
+                            target={escrowDeadline}
+                            emptyLabel="Starts once the supplier marks this order delivered"
+                          />
                         </div>
                       </div>
 
@@ -983,8 +972,8 @@ export default function BuyerOrderDetailPage() {
                     <p className="flex items-start gap-2 text-sm leading-5 text-[#0669D9]">
                       <Info size={18} className="mt-0.5 shrink-0" />
                       {deliveryUnderway
-                        ? "Confirm you've received this order to release escrow to the supplier."
-                        : "Order auto cancels if supplier doesn't confirm before timer ends"}
+                        ? "Confirm you've received this order to release escrow to the supplier. Escrow releases automatically when the timer ends."
+                        : "The escrow timer starts once the supplier marks this order delivered."}
                     </p>
                   </div>
                 </div>
@@ -1064,7 +1053,7 @@ export default function BuyerOrderDetailPage() {
                 recipientName={supplierName}
                 senderName={buyerName}
                 reference={payReference}
-                methodLabel={selectedOption?.label ?? "BAIY trade assurance"}
+                methodLabel={selectedOption?.title ?? "BAIY Trade Assurance"}
                 onTrack={() => {
                   resetPayment();
                   setModal(null);

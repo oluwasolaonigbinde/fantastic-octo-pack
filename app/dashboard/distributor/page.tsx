@@ -5,7 +5,10 @@ import { useAppDispatch, useAppSelector } from "@/hooks/useAppSelector";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMyProductsQuery } from "@/hooks/queries/products";
-import { useDistributorInboxQuery } from "@/hooks/queries/rfqs";
+import { useDistributorQuoteSummaryQuery } from "@/hooks/queries/rfqs";
+import { useOrderSummaryQuery } from "@/hooks/queries/orders";
+import { useKycUpgradePrompt } from "@/hooks/useKycUpgradePrompt";
+import { useSubscriptionQuery } from "@/hooks/queries/subscription";
 import { reset } from "@/store/slices/auth-slice";
 import { Button } from "@/components/base";
 import { ClipboardList, Mail, Plus, ShoppingBag, Wallet } from "lucide-react";
@@ -26,7 +29,11 @@ export default function DistributorDashboard() {
   const { data } = useAppSelector((state) => state.auth);
   const { data: myProductsData, isLoading } = useMyProductsQuery(data?._id);
   const myProducts = myProductsData?.products ?? null;
-  const { data: distributorQuotes } = useDistributorInboxQuery();
+  // `GET /orders/summary` is role-scoped — a distributor gets their sales.
+  const { data: orderSummary } = useOrderSummaryQuery();
+  const { data: quoteSummary } = useDistributorQuoteSummaryQuery();
+  const { shouldPrompt: needsKyc } = useKycUpgradePrompt();
+  const { data: mySubscription } = useSubscriptionQuery();
 
   const [alertDismissed, setAlertDismissed] = useState(readAlertDismissals);
 
@@ -34,17 +41,53 @@ export default function DistributorDashboard() {
     dispatch(reset());
   }, [dispatch]);
 
-  const totalQuoteRequests = distributorQuotes?.length ?? 0;
-  const unrespondedQuotes =
-    distributorQuotes?.filter((q) => q.status === "pending_response")
-      .length ?? 0;
-  const pendingQuotesMetric = totalQuoteRequests || 14;
-  const salesThisMonth = "N665,000";
+  /**
+   * Every counter below is either measured from a live response or `null`.
+   * Nothing is defaulted to a stand-in figure: a KPI with no data behind it
+   * renders a dash, and an action card with no data behind it is not shown.
+   */
+  const salesThisMonth = orderSummary?.totalValue.thisMonth ?? null;
+  const activeOrders = orderSummary?.activeOrders ?? null;
+  const ordersAwaitingConfirmation =
+    orderSummary?.awaitingBuyerConfirmation ?? null;
+  const pendingPayments = orderSummary
+    ? (orderSummary.byStatus.created_pending_payment ?? 0) +
+      (orderSummary.byStatus.payment_initiated ?? 0)
+    : null;
+  const pendingQuotes = quoteSummary?.pendingResponse ?? null;
+  /**
+   * Prefer the server's own counts; fall back to the fetched page only when the
+   * list endpoint omits its summary block.
+   */
+  const productsPendingApproval =
+    myProductsData?.meta.summary?.statusCounts.pending ??
+    myProducts?.filter((product) => product.status === "pending").length ??
+    null;
 
-  const actionCenterItems: DistributorActionItem[] = useMemo(
-    () => [
+  /** An active paid plan is what the "update your badge" notice is asking for. */
+  const needsSubscription =
+    mySubscription !== undefined &&
+    mySubscription.subscription?.status !== "active";
+
+  const today = useMemo(
+    () =>
+      new Date().toLocaleDateString("en-NG", {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      }),
+    [],
+  );
+
+  const actionCenterItems: DistributorActionItem[] = useMemo(() => {
+    const plural = (count: number, noun: string) =>
+      `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+    const candidates: Array<DistributorActionItem & { count: number | null }> = [
       {
-        title: `${unrespondedQuotes || 5} quote awaiting your response`,
+        count: pendingQuotes,
+        title: `${plural(pendingQuotes ?? 0, "quote")} awaiting your response`,
         subtitle: "View all quotes",
         cta: "View Quotes",
         href: "/dashboard/distributor/quotes",
@@ -52,15 +95,17 @@ export default function DistributorDashboard() {
         tone: "blue",
       },
       {
-        title: "2 order pending payment",
+        count: pendingPayments,
+        title: `${plural(pendingPayments ?? 0, "order")} pending payment`,
         subtitle: "Review Orders",
-        cta: "View Quotes",
+        cta: "View Orders",
         href: "/dashboard/distributor/orders",
         icon: Wallet,
         tone: "amber",
       },
       {
-        title: "3 order awaiting confirmation",
+        count: ordersAwaitingConfirmation,
+        title: `${plural(ordersAwaitingConfirmation ?? 0, "order")} awaiting confirmation`,
         subtitle: "Review Orders",
         cta: "Review Order",
         href: "/dashboard/distributor/orders",
@@ -68,28 +113,42 @@ export default function DistributorDashboard() {
         tone: "blue",
       },
       {
-        title: "6 product pending approval",
-        subtitle: "Review Orders",
+        count: productsPendingApproval,
+        title: `${plural(productsPendingApproval ?? 0, "product")} pending approval`,
+        subtitle: "Review your catalogue",
         cta: "Preview Product",
         href: "/dashboard/distributor/catalogue",
         icon: ClipboardList,
         tone: "orange",
       },
-    ],
-    [unrespondedQuotes],
-  );
+    ];
+
+    // Only surface an action the distributor can actually take right now.
+    return candidates
+      .filter((candidate) => (candidate.count ?? 0) > 0)
+      .map((candidate) => {
+        const { count, ...item } = candidate;
+        void count;
+        return item;
+      });
+  }, [
+    ordersAwaitingConfirmation,
+    pendingPayments,
+    pendingQuotes,
+    productsPendingApproval,
+  ]);
 
   return (
     <>
       <Header
         title="Dashboard Overview"
-        description="Wednesday 10th September, 2025"
+        description={today}
         mobileChrome="dashboard"
       />
       <div className="space-y-5 bg-[#F9FAFB] p-3 md:p-6">
         <DistributorOverviewAlerts
-          kycVisible={!alertDismissed.kyc}
-          subscriptionVisible={!alertDismissed.subscription}
+          kycVisible={needsKyc && !alertDismissed.kyc}
+          subscriptionVisible={needsSubscription && !alertDismissed.subscription}
           onDismissKyc={() =>
             setAlertDismissed((s) => ({ ...s, kyc: true }))
           }
@@ -100,9 +159,9 @@ export default function DistributorDashboard() {
 
         <DistributorKpiGrid
           salesThisMonth={salesThisMonth}
-          pendingQuotes={pendingQuotesMetric}
-          activeOrders={22}
-          pendingPayments={7}
+          pendingQuotes={pendingQuotes}
+          activeOrders={activeOrders}
+          pendingPayments={pendingPayments}
         />
 
         <section className="rounded-2xl border border-[#DDE0E5] bg-white px-5 py-6">

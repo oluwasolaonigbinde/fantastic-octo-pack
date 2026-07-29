@@ -2,11 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, CheckCircle2, CreditCard, ShieldCheck } from "lucide-react";
+import { ArrowLeft, CheckCircle2 } from "lucide-react";
 
 import { PublicLayout } from "@/components/layout";
 import Banner from "@/components/features/public/Banner";
 import { BigLoader } from "@/components/base";
+import { PaymentMethodPanel } from "@/components/payments/PaymentMethodPanel";
+import { PaymentOrderSummary } from "@/components/payments/PaymentOrderSummary";
+import {
+  ORDER_PAYMENT_METHODS,
+  getPaymentMethodOption,
+  type PaymentMethodId,
+} from "@/components/payments/paymentMethods";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { useOrderQuery } from "@/hooks/queries/orders";
 import { useWallet } from "@/hooks/useWallet";
@@ -16,23 +23,8 @@ import { useOrderPayment } from "@/hooks/useOrderPayment";
 import { koboToNaira } from "@/lib/wallet-format";
 import { getOrderProductImage, getPersonName } from "@/constants/demoBuyerOrders";
 import { buildMessagingComposeHref } from "@/utils/messagingRoutes";
-import type { Order, OrderPaymentMethod } from "@/types/order";
+import type { Order } from "@/types/order";
 import { isPaidOrderStatus } from "@/types/order";
-
-type PaymentOption = {
-  label: string;
-  /** Functional rails carry a method; disabled rails are "coming soon". */
-  method: OrderPaymentMethod | null;
-};
-
-const paymentMethods: PaymentOption[] = [
-  { label: "BAIY trade assurance", method: "wallet" },
-  { label: "Paystack", method: "paystack" },
-  { label: "Flutterwave", method: null },
-  { label: "Google Pay", method: null },
-  { label: "Apple Pay", method: null },
-  { label: "Bank wallet", method: null },
-];
 
 // Escrow-funded states. The live API has no `paymentStatus` field — payment is
 // encoded in `status` (see `isPaidOrderStatus`, which also treats the
@@ -44,6 +36,14 @@ const formatCurrency = (value: number) =>
     style: "currency",
     currency: "NGN",
     minimumFractionDigits: 2,
+  }).format(value || 0);
+
+/** Whole-naira form used on the payment screen, matching the design. */
+const formatAmount = (value: number) =>
+  new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0,
   }).format(value || 0);
 
 const getSellerId = (order: Order | null): string => {
@@ -83,7 +83,9 @@ export default function CheckoutPage() {
     callbackPath: `/checkout/${orderId}`,
   });
 
-  const [selectedPayment, setSelectedPayment] = useState(paymentMethods[0].label);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentMethodId>(
+    ORDER_PAYMENT_METHODS[0].id,
+  );
   const [showReceipt, setShowReceipt] = useState(false);
 
   const order = currentOrder ?? null;
@@ -99,7 +101,6 @@ export default function CheckoutPage() {
 
   const orderTotal = order?.totalPrice ?? 0;
   const quantity = order?.quantity ?? 1;
-  const unitPrice = quantity > 0 ? orderTotal / quantity : orderTotal;
   const productName = order?.productName ?? "Product";
   const productImage = getOrderProductImage(order);
   const supplierName = getPersonName(order?.seller, "Supplier");
@@ -107,7 +108,7 @@ export default function CheckoutPage() {
   const buyerName = getPersonName(order?.buyer, "You");
 
   const walletNaira = wallet ? koboToNaira(wallet.availableBalance) : 0;
-  const selectedOption = paymentMethods.find((m) => m.label === selectedPayment);
+  const selectedOption = getPaymentMethodOption(selectedPayment);
   const insufficientWallet =
     selectedOption?.method === "wallet" && walletNaira < orderTotal;
 
@@ -192,67 +193,17 @@ export default function CheckoutPage() {
               </button>
             </section>
           ) : (
-            <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-              <section className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
-                <h1 className="text-lg font-medium text-[#111827]">Payment</h1>
-                <p className="mt-1 text-sm font-medium text-[#111827]">
-                  Payment options
-                </p>
-                <p className="mt-0.5 text-sm text-[#6B7280]">
-                  Select preferred payment method to proceed
-                </p>
-
-                <div className="mt-6 rounded-2xl border border-[#DDE0E5]">
-                  {paymentMethods.map((option) => {
-                    const disabled = option.method === null;
-                    const isWallet = option.method === "wallet";
-                    return (
-                      <button
-                        key={option.label}
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => setSelectedPayment(option.label)}
-                        className={`flex w-full items-center justify-between border-b border-[#EEF2F7] px-5 py-4 text-left last:border-b-0 ${
-                          disabled ? "cursor-not-allowed opacity-50" : ""
-                        }`}
-                      >
-                        <span className="flex items-start gap-3 text-sm text-[#111827]">
-                          <span
-                            className={`mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full border ${
-                              selectedPayment === option.label
-                                ? "border-primary"
-                                : "border-[#DDE0E5]"
-                            }`}
-                          >
-                            {selectedPayment === option.label ? (
-                              <span className="size-2 rounded-full bg-primary" />
-                            ) : null}
-                          </span>
-                          <span className="flex flex-col">
-                            {option.label}
-                            {isWallet ? (
-                              <span className="text-xs text-[#6B7280]">
-                                Balance: {formatCurrency(walletNaira)}
-                              </span>
-                            ) : null}
-                            {disabled ? (
-                              <span className="text-xs text-[#9CA3AF]">
-                                Coming soon
-                              </span>
-                            ) : null}
-                          </span>
-                        </span>
-                        <CreditCard size={18} className="text-[#6B7280]" />
-                      </button>
-                    );
-                  })}
-                </div>
-
+            <div className="grid items-start gap-6 lg:grid-cols-[1fr_400px]">
+              <PaymentMethodPanel
+                selected={selectedPayment}
+                onSelect={setSelectedPayment}
+                walletBalanceLabel={`Balance: ${formatCurrency(walletNaira)}`}
+              >
                 {insufficientWallet ? (
-                  <div className="mt-4 flex flex-col gap-3 rounded-lg border border-[#F5A400] bg-[#FFFBEB] px-4 py-3 text-sm text-[#B45309] sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-3 rounded-lg border border-[#F5A400] bg-[#FFFBEB] px-4 py-3 text-sm text-[#B45309] sm:flex-row sm:items-center sm:justify-between">
                     <p>
-                      Your wallet balance is too low for this order. Top up
-                      your wallet or pay with Paystack.
+                      Your wallet balance is too low for this order. Top up your
+                      wallet or pay with Paystack.
                     </p>
                     <button
                       type="button"
@@ -265,77 +216,30 @@ export default function CheckoutPage() {
                 ) : null}
 
                 {payError ? (
-                  <p className="mt-4 rounded-lg border border-[#E33C13] bg-[#FFF5F3] px-4 py-3 text-sm text-[#E33C13]">
+                  <p className="rounded-lg border border-[#E33C13] bg-[#FFF5F3] px-4 py-3 text-sm text-[#E33C13]">
                     {payError}
                   </p>
                 ) : null}
+              </PaymentMethodPanel>
 
-                <p className="mt-5 text-xs leading-5 text-[#6B7280]">
-                  Paystack payments redirect you to a secure checkout for{" "}
-                  {formatCurrency(orderTotal)} and return here once complete.
-                </p>
-
-                <button
-                  type="button"
-                  onClick={handleSubmitPayment}
-                  disabled={isPaying || insufficientWallet || !selectedOption?.method}
-                  className="mt-6 h-12 w-full rounded-xl bg-primary text-sm font-medium text-white disabled:opacity-60 md:max-w-[260px]"
-                >
-                  {isPaying
-                    ? selectedOption?.method === "paystack"
-                      ? "Redirecting to Paystack…"
-                      : "Processing payment…"
-                    : `Pay ${formatCurrency(orderTotal)}`}
-                </button>
-              </section>
-
-              <aside className="rounded-2xl border border-[#DDE0E5] bg-white p-5">
-                <h2 className="text-base font-medium text-[#111827]">
-                  Order summary
-                </h2>
-                <div className="mt-5 flex h-[145px] items-center justify-center overflow-hidden rounded-xl border border-[#E9EEF5] bg-[#F8FAFC]">
-                  {productImage ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={productImage}
-                      alt={productName}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <ShieldCheck size={36} className="text-[#B8C8D6]" />
-                  )}
-                </div>
-                <div className="mt-5 space-y-3 text-sm">
-                  <div className="flex justify-between gap-4">
-                    <span className="text-[#6B7280]">Product</span>
-                    <span className="text-right font-medium text-[#111827]">
-                      {productName}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-[#6B7280]">Supplier</span>
-                    <span className="font-medium text-[#111827]">
-                      {supplierName}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-[#6B7280]">Quantity</span>
-                    <span className="font-medium text-[#111827]">{quantity}</span>
-                  </div>
-                  <div className="flex justify-between gap-4">
-                    <span className="text-[#6B7280]">Unit price</span>
-                    <span className="font-medium text-[#111827]">
-                      {formatCurrency(unitPrice)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-4 border-t border-[#EEF2F7] pt-3">
-                    <span className="font-medium text-[#111827]">Total</span>
-                    <span className="font-semibold text-primary">
-                      {formatCurrency(orderTotal)}
-                    </span>
-                  </div>
-                </div>
-              </aside>
+              <PaymentOrderSummary
+                productName={productName}
+                productImage={productImage}
+                quantity={quantity}
+                orderId={order.publicId || order._id}
+                invoiceId={order.paymentReference}
+                itemsTotal={orderTotal}
+                total={orderTotal}
+                formatAmount={formatAmount}
+                onPay={handleSubmitPayment}
+                isPaying={isPaying}
+                disabled={insufficientWallet || !selectedOption?.method}
+                payLabel={
+                  isPaying && selectedOption?.method === "paystack"
+                    ? "Redirecting to Paystack…"
+                    : undefined
+                }
+              />
             </div>
           )}
         </div>
@@ -364,7 +268,7 @@ export default function CheckoutPage() {
               <div className="flex items-start justify-between gap-3">
                 <span className="text-[#4B5563]">Payment method</span>
                 <span className="text-right text-[#111827]">
-                  {selectedOption?.label}
+                  {selectedOption?.title}
                 </span>
               </div>
               <div className="flex items-start justify-between gap-3">

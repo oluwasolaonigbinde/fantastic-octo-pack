@@ -1,12 +1,14 @@
 import Link from "next/link";
 
+import { GoToDashboardButton } from "./GoToDashboardButton";
+
 /**
- * Static CTAs only — no client auth reads.
+ * Static markup only — no client auth reads during render.
  * Auth is hydrated from storage after paint; branching on it here caused
  * server/client HTML mismatch ("Go to homepage" vs "Go to my dashboard").
  *
- * `/dashboard` is role-resolved by middleware when signed in, and sends
- * unauthenticated visitors to `/login`.
+ * The primary CTA resolves the active role inside its click handler instead,
+ * so the rendered HTML stays identical on both sides.
  */
 export default function UnauthorizedPage() {
   return (
@@ -22,12 +24,7 @@ export default function UnauthorizedPage() {
         </p>
 
         <div className="mt-6 flex flex-col items-center gap-3">
-          <Link
-            href="/dashboard"
-            className="inline-flex rounded-full bg-primary px-5 py-3 text-sm font-medium text-white transition hover:bg-primary-dark"
-          >
-            Go to my dashboard
-          </Link>
+          <GoToDashboardButton />
 
           <Link
             href="/"

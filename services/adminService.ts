@@ -1,7 +1,14 @@
 import { apiUrl } from "@/utils/api-base-url";
 import type { UserRole } from "@/types/user";
-import type { OrderStatus } from "@/types/order";
-import type { QuoteStatus, RfqStatus } from "@/types/rfq";
+import type { OrderStatus, OrderSummary } from "@/types/order";
+import type {
+  Quote,
+  QuoteStatus,
+  QuoteSummary,
+  Rfq,
+  RfqStatus,
+} from "@/types/rfq";
+import type { ServiceRequestSummary } from "@/types/service-request";
 
 interface ApiEnvelope<T> {
   success: boolean;
@@ -135,6 +142,15 @@ export interface AdminRfqRow {
   createdAt: string | null;
 }
 
+/**
+ * `GET /admin/rfqs/:id` — the admin-wide RFQ detail. Mirrors the buyer-owned
+ * `GET /rfqs/:id` shape but is not scoped to the caller.
+ */
+export interface AdminRfqDetail {
+  rfq: Rfq;
+  quotes: Quote[];
+}
+
 export interface AdminQuoteRow {
   id: string;
   distributorName: string;
@@ -228,6 +244,17 @@ interface AdminTableParams {
   status?: OrderStatus | QuoteStatus | RfqStatus;
   page?: number;
   limit?: number;
+}
+
+/** `GET /admin/rfqs` also accepts date-range and party filters. */
+interface AdminRfqParams extends AdminTableParams {
+  status?: RfqStatus;
+  buyerId?: string;
+  distributorId?: string;
+  /** Inclusive ISO date (or `YYYY-MM-DD`) lower bound on `createdAt`. */
+  minDate?: string;
+  /** Inclusive upper bound; a bare `YYYY-MM-DD` is widened to end of day. */
+  maxDate?: string;
 }
 
 const authHeaders = (token: string) => ({
@@ -351,13 +378,32 @@ const adminService = {
     );
   },
 
-  getRfqs(token: string, params: AdminTableParams = {}) {
+  getRfqs(token: string, params: AdminRfqParams = {}) {
     const url = new URL(apiUrl("/admin/rfqs"));
     appendParams(url, params);
     return requestJson<AdminPagination<AdminRfqRow>>(
       token,
       url.toString()
     );
+  },
+
+  getRfqDetail(token: string, rfqId: string) {
+    return requestJson<AdminRfqDetail>(token, `/admin/rfqs/${rfqId}`);
+  },
+
+  getQuoteSummary(token: string) {
+    return requestJson<QuoteSummary>(token, "/admin/quotes/summary");
+  },
+
+  getServiceRequestSummary(token: string) {
+    return requestJson<ServiceRequestSummary>(
+      token,
+      "/admin/service-requests/summary"
+    );
+  },
+
+  getOrderSummary(token: string) {
+    return requestJson<OrderSummary>(token, "/admin/orders/summary");
   },
 
   getQuotes(token: string, params: AdminTableParams = {}) {

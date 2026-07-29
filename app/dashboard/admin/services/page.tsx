@@ -13,7 +13,6 @@ import Header from "../../component/header";
 import { Button, Dialog, DialogContent, DialogHeader, DialogTitle, SummaryCard } from "@/components/base";
 import { ProtectedRoute } from "@/components/dashboard/protected-routes";
 import { useAppSelector } from "@/hooks/useAppSelector";
-import { ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import serviceRequestService from "@/services/serviceRequestService";
 import {
   ServiceRequestData,
@@ -50,10 +49,10 @@ function getRequesterPhone(request: ServiceRequestData): string {
     typeof request.requester === "object" &&
     "phoneNumber" in request.requester
   ) {
-    return request.requester.phoneNumber || ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.requesterPhone;
+    return request.requester.phoneNumber || NOT_AVAILABLE;
   }
 
-  return ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.requesterPhone;
+  return NOT_AVAILABLE;
 }
 
 function getRequesterEmail(request: ServiceRequestData): string {
@@ -62,10 +61,10 @@ function getRequesterEmail(request: ServiceRequestData): string {
     typeof request.requester === "object" &&
     "email" in request.requester
   ) {
-    return request.requester.email || ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.requesterEmail;
+    return request.requester.email || NOT_AVAILABLE;
   }
 
-  return ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.requesterEmail;
+  return NOT_AVAILABLE;
 }
 
 function formatDate(value?: string): string {
@@ -560,13 +559,13 @@ export default function AdminServicesPage() {
                   <div>
                     <p className="text-xs text-[#6B7280]">Product name</p>
                     <p className="mt-1 text-sm font-medium text-[#111827]">
-                      {activeRequest.equipmentName || ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.productName}
+                      {activeRequest.equipmentName || NOT_AVAILABLE}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-[#6B7280]">Request type</p>
                     <p className="mt-1 text-sm font-medium text-[#111827]">
-                      {activeRequest.jobType || ADMIN_SERVICE_DETAIL_FIGMA_FALLBACK.requestType}
+                      {activeRequest.jobType || NOT_AVAILABLE}
                     </p>
                   </div>
                   <div>

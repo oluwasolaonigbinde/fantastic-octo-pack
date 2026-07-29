@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
 import {
-  CalendarDays,
   CircleDollarSign,
   ClipboardList,
   Download,
@@ -15,7 +14,6 @@ import {
 
 import Header from "../../component/header";
 import { Button, Input, RightSlider, SummaryCard } from "@/components/base";
-import { ADMIN_RFQS_ORDERS_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
 import {
   Table,
   TableBody,
@@ -25,7 +23,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  useAdminOrderSummaryQuery,
   useAdminOrdersQuery,
+  useAdminQuoteSummaryQuery,
   useAdminQuotesQuery,
   useAdminRfqsOrdersSummaryQuery,
   useAdminRfqsQuery,
@@ -40,24 +40,21 @@ import {
 } from "@/services/adminService";
 import { fetchOrderDetail } from "@/services/orderService";
 import { fetchQuoteDetail, fetchRfqDetail } from "@/services/rfqService";
-import type { Order } from "@/types/order";
+import type { Order, OrderSummary } from "@/types/order";
 import { ORDER_STATUS_LABELS } from "@/types/order";
-import type { Quote, QuoteStatus, Rfq, RfqDetailResponse, UserRef } from "@/types/rfq";
+import type {
+  Quote,
+  QuoteStatus,
+  QuoteSummary,
+  Rfq,
+  RfqDetailResponse,
+  UserRef,
+} from "@/types/rfq";
 import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS } from "@/types/rfq";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 
 const POLL_INTERVAL_MS = 30_000;
 const PAGE_SIZE = 20;
-const FIGMA_DETAIL_FALLBACK = {
-  distributorName: "Oluwatobiloba Babatunde",
-  distributorPhone: "08130000000",
-  distributorEmail: "oluwatunde@gmail.com",
-  productName: "The name of the product",
-  quantity: "12",
-  unitPrice: 60028,
-  totalPrice: 780070,
-  requestDate: "12/09/2025",
-  orderDateTime: "12/09/2025 - 12:20am",
-} as const;
 
 type TopTab = "rfqs" | "orders";
 type RfqSubTab =
@@ -90,6 +87,28 @@ const EMPTY_SUMMARY: AdminRfqsOrdersSummary = {
   },
 };
 
+const EMPTY_QUOTE_SUMMARY: QuoteSummary = {
+  total: 0,
+  received: 0,
+  pendingResponse: 0,
+  approved: 0,
+  declined: 0,
+  byStatus: {} as QuoteSummary["byStatus"],
+};
+
+const EMPTY_ORDER_SUMMARY: OrderSummary = {
+  total: 0,
+  currency: "NGN",
+  totalValue: { allTime: 0, thisMonth: 0 },
+  ordersThisMonth: 0,
+  averageOrderValue: 0,
+  awaitingBuyerConfirmation: 0,
+  activeOrders: 0,
+  inEscrow: 0,
+  disputeActive: 0,
+  byStatus: {},
+};
+
 const emptyPage = <T,>(): AdminPagination<T> => ({
   docs: [],
   totalDocs: 0,
@@ -111,11 +130,6 @@ const moneyFormatter = new Intl.NumberFormat("en-NG", {
 
 const wholeNumberFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
-});
-
-const decimalNumberFormatter = new Intl.NumberFormat("en-US", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
 });
 
 const RFQ_VIEW_TABS: Array<{ key: RfqSubTab; label: string }> = [
@@ -170,10 +184,6 @@ function formatWholeNumber(value?: number | null): string {
   return typeof value === "number" ? wholeNumberFormatter.format(value) : "0";
 }
 
-function formatDecimalNumber(value?: number | null): string {
-  return typeof value === "number" ? decimalNumberFormatter.format(value) : "0.00";
-}
-
 function formatQuantity(value?: number | null): string {
   return typeof value === "number" ? String(value) : "Not available";
 }
@@ -187,16 +197,12 @@ function pickFirstText(...values: Array<string | null | undefined>): string | un
   return undefined;
 }
 
-function presentText(value: string | undefined, fallback: string): string {
-  return value && value !== "Not available" ? value : fallback;
+function presentDate(value?: string | null): string {
+  return formatDate(value);
 }
 
-function presentDate(value?: string | null, fallback = FIGMA_DETAIL_FALLBACK.requestDate): string {
-  return presentText(formatDate(value), fallback);
-}
-
-function presentDateTime(value?: string | null, fallback = FIGMA_DETAIL_FALLBACK.orderDateTime): string {
-  return presentText(formatDateTimeUtc(value), fallback);
+function presentDateTime(value?: string | null): string {
+  return formatDateTimeUtc(value);
 }
 
 function isUserRef(value: unknown): value is UserRef {
@@ -205,25 +211,14 @@ function isUserRef(value: unknown): value is UserRef {
 
 function getUserName(value: unknown, fallback = "Not available"): string {
   if (!isUserRef(value)) return fallback;
-  return (
-    value.distributorStoreProfile?.businessName?.trim() ||
-    value.businessName?.trim() ||
-    `${value.firstName ?? ""} ${value.lastName ?? ""}`.trim() ||
-    value.email
-  );
+  return getPartyDisplayName(value, value.email);
 }
 
-function getUserEmail(
-  value: unknown,
-  fallback = FIGMA_DETAIL_FALLBACK.distributorEmail
-): string {
+function getUserEmail(value: unknown, fallback = "Not available"): string {
   return isUserRef(value) && value.email ? value.email : fallback;
 }
 
-function getUserPhone(
-  value: unknown,
-  fallback = FIGMA_DETAIL_FALLBACK.distributorPhone
-): string {
+function getUserPhone(value: unknown, fallback = "Not available"): string {
   return isUserRef(value) && value.phoneNumber ? value.phoneNumber : fallback;
 }
 
@@ -288,15 +283,6 @@ function PlainAction({
       {icon}
       {children}
     </button>
-  );
-}
-
-function AdminDateChip({ label }: { label: string }) {
-  return (
-    <div className="inline-flex h-11 sm:h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
-      <span>{label}</span>
-      <CalendarDays size={18} className="text-gray2" />
-    </div>
   );
 }
 
@@ -372,8 +358,13 @@ function DetailStatusBanner({ label, value }: { label: string; value: string }) 
 
 function getOrderStatusTone(status: string): StatusTone {
   if (status === "delivered" || status === "completed") return "success";
-  if (status === "shipped") return "primary";
-  if (status === "cancelled_pre_payment") return "danger";
+  // Money is in escrow and the order is moving through fulfillment.
+  if (status === "paid" || status === "received" || status === "installed") {
+    return "primary";
+  }
+  if (status === "cancelled_pre_payment" || status === "payment_failed") {
+    return "danger";
+  }
   return "warning";
 }
 
@@ -381,8 +372,6 @@ function getOrderStatusLabel(status: string): string {
   const adminLabels: Record<string, string> = {
     created_pending_payment: "Pending",
     cancelled_pre_payment: "Cancelled",
-    processing: "Processing",
-    shipped: "Shipped",
     delivered: "Delivered",
     completed: "Delivered",
   };
@@ -440,6 +429,20 @@ export default function AdminRfqsOrdersPage() {
   };
 
   const summaryQuery = useAdminRfqsOrdersSummaryQuery(pollOptions);
+  // The order half of /admin/rfqs-orders-summary is not implemented server-side
+  // (processing/shipped/deliveredCompleted are hardcoded to 0), so the order
+  // tiles read from the dedicated /admin/orders/summary endpoint instead.
+  const orderSummaryQuery = useAdminOrderSummaryQuery({
+    ...pollOptions,
+    enabled: isOrders,
+  });
+  // Quote Received/Approved/Declined tiles on the "All" RFQ tab read from the
+  // dedicated /admin/quotes/summary endpoint instead of the RFQ summary above,
+  // which only tracks requests and quotes sent.
+  const quoteSummaryQuery = useAdminQuoteSummaryQuery({
+    ...pollOptions,
+    enabled: isRfqs,
+  });
   const rfqsQuery = useAdminRfqsQuery(baseParams, {
     ...pollOptions,
     enabled: isRfqs,
@@ -454,6 +457,8 @@ export default function AdminRfqsOrdersPage() {
   });
 
   const summary = summaryQuery.data ?? EMPTY_SUMMARY;
+  const orderSummary = orderSummaryQuery.data ?? EMPTY_ORDER_SUMMARY;
+  const quoteSummary = quoteSummaryQuery.data ?? EMPTY_QUOTE_SUMMARY;
   const ordersPage =
     (ordersQuery.data as AdminPagination<AdminOrderRow> | undefined) ??
     emptyPage<AdminOrderRow>();
@@ -591,10 +596,6 @@ export default function AdminRfqsOrdersPage() {
 
         {topTab === "rfqs" && (
           <>
-            <AdminDateChip
-              label={ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.dateRangeLabel}
-            />
-
             {rfqSub === "all" ? (
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <MetricCard
@@ -609,21 +610,15 @@ export default function AdminRfqsOrdersPage() {
                 />
                 <MetricCard
                   title="Total Quotes Received"
-                  value={String(
-                    ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteReceived
-                  )}
+                  value={formatWholeNumber(quoteSummary.received)}
                 />
                 <MetricCard
                   title="Total Quotes Approved"
-                  value={String(
-                    ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteApproved
-                  )}
+                  value={formatWholeNumber(quoteSummary.approved)}
                 />
                 <MetricCard
                   title="Total quote Declined"
-                  value={String(
-                    ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.rfqTotals.quoteDeclined
-                  )}
+                  value={formatWholeNumber(quoteSummary.declined)}
                 />
               </div>
             ) : (
@@ -819,31 +814,30 @@ export default function AdminRfqsOrdersPage() {
 
         {topTab === "orders" && (
           <>
-            <AdminDateChip
-              label={ADMIN_RFQS_ORDERS_FIGMA_FALLBACK.dateRangeLabel}
-            />
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <SummaryCard
                 title="Total pending orders"
-                value={formatWholeNumber(summary.orders.createdPendingPayment)}
+                value={formatWholeNumber(
+                  orderSummary.byStatus.created_pending_payment,
+                )}
                 icon={<UsersRound size={18} className="text-primary" />}
                 iconBg="bg-[#E7F1FF]"
               />
               <SummaryCard
                 title="Total processing orders"
-                value={formatWholeNumber(summary.orders.processing)}
+                value={formatWholeNumber(orderSummary.inEscrow)}
                 icon={<ClipboardList size={18} className="text-[#C04FE0]" />}
                 iconBg="bg-[#F8E8FF]"
               />
               <SummaryCard
-                title="Total shipped orders"
-                value={formatDecimalNumber(summary.orders.shipped)}
+                title="Total delivered orders"
+                value={formatWholeNumber(orderSummary.byStatus.delivered)}
                 icon={<CircleDollarSign size={18} className="text-[#13A83B]" />}
                 iconBg="bg-[#E8FAEE]"
               />
               <SummaryCard
-                title="Total delivered/completed"
-                value={formatWholeNumber(summary.orders.deliveredCompleted)}
+                title="Total completed orders"
+                value={formatWholeNumber(orderSummary.byStatus.completed)}
                 icon={<ClipboardList size={18} className="text-[#F6B90A]" />}
                 iconBg="bg-[#FFF5DB]"
               />
@@ -1028,34 +1022,25 @@ function DetailPanel({
         />
         <DetailField
           label="Distributor's name"
-          value={getUserName(
-            distributor,
-            target.row.distributorName || FIGMA_DETAIL_FALLBACK.distributorName
-          )}
+          value={getUserName(distributor, target.row.distributorName || "Not available")}
         />
         <DetailField label="Distributor's phone number" value={getUserPhone(distributor)} />
         <DetailField label="Distributor's email" value={getUserEmail(distributor)} />
         <DetailField
           label="Product name"
-          value={getItemProductName(
-            rfq,
-            target.row.productName || FIGMA_DETAIL_FALLBACK.productName
-          )}
+          value={getItemProductName(rfq, target.row.productName || "Not available")}
         />
         <DetailField
           label="Quantity"
-          value={presentText(
-            formatQuantity(getFirstRfqItem(rfq)?.quantity ?? target.row.quantity),
-            FIGMA_DETAIL_FALLBACK.quantity
-          )}
+          value={formatQuantity(getFirstRfqItem(rfq)?.quantity ?? target.row.quantity)}
         />
         <DetailField
           label="Unit price"
-          value={getItemUnitPrice(rfq, target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice)}
+          value={getItemUnitPrice(rfq, target.row.unitPrice)}
         />
         <DetailField
           label="Total price"
-          value={formatMoney(target.row.totalPrice ?? FIGMA_DETAIL_FALLBACK.totalPrice)}
+          value={formatMoney(target.row.totalPrice)}
         />
         <DetailField
           label="Date of request"
@@ -1102,36 +1087,28 @@ function DetailPanel({
           label="Distributor's name"
           value={getUserName(
             quote?.distributor,
-            target.row.distributorName || FIGMA_DETAIL_FALLBACK.distributorName
+            target.row.distributorName || "Not available"
           )}
         />
         <DetailField label="Distributor's phone number" value={getUserPhone(quote?.distributor)} />
         <DetailField label="Distributor's email" value={getUserEmail(quote?.distributor)} />
         <DetailField
           label="Product name"
-          value={getItemProductName(
-            rfq,
-            target.row.productName || FIGMA_DETAIL_FALLBACK.productName
-          )}
+          value={getItemProductName(rfq, target.row.productName || "Not available")}
         />
         <DetailField
           label="Quantity"
-          value={presentText(
-            formatQuantity(getFirstQuoteItem(quote)?.quantity ?? target.row.quantity),
-            FIGMA_DETAIL_FALLBACK.quantity
-          )}
+          value={formatQuantity(getFirstQuoteItem(quote)?.quantity ?? target.row.quantity)}
         />
         <DetailField
           label="Unit price"
           value={formatMoney(
-            getFirstQuoteItem(quote)?.pricePerUnit ?? target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice
+            getFirstQuoteItem(quote)?.pricePerUnit ?? target.row.unitPrice
           )}
         />
         <DetailField
           label="Total price"
-          value={formatMoney(
-            quote?.totalPrice ?? target.row.totalPrice ?? FIGMA_DETAIL_FALLBACK.totalPrice
-          )}
+          value={formatMoney(quote?.totalPrice ?? target.row.totalPrice)}
         />
         <DetailField
           label="Date received"
@@ -1171,36 +1148,25 @@ function DetailPanel({
       />
       <DetailField
         label="Distributor's name"
-        value={getUserName(
-          order?.seller,
-          target.row.distributorName || FIGMA_DETAIL_FALLBACK.distributorName
-        )}
+        value={getUserName(order?.seller, target.row.distributorName || "Not available")}
       />
       <DetailField label="Distributor's phone number" value={getUserPhone(order?.seller)} />
       <DetailField label="Distributor's email" value={getUserEmail(order?.seller)} />
       <DetailField
         label="Product name"
-        value={getOrderProductName(
-          order,
-          target.row.productName || FIGMA_DETAIL_FALLBACK.productName
-        )}
+        value={getOrderProductName(order, target.row.productName || "Not available")}
       />
       <DetailField
         label="Quantity"
-        value={presentText(
-          formatQuantity(order?.items?.[0]?.quantity ?? target.row.quantity),
-          FIGMA_DETAIL_FALLBACK.quantity
-        )}
+        value={formatQuantity(order?.items?.[0]?.quantity ?? target.row.quantity)}
       />
       <DetailField
         label="Unit price"
-        value={formatMoney(target.row.unitPrice ?? FIGMA_DETAIL_FALLBACK.unitPrice)}
+        value={formatMoney(target.row.unitPrice)}
       />
       <DetailField
         label="Total price"
-        value={formatMoney(
-          order?.totalPrice ?? target.row.totalPrice ?? FIGMA_DETAIL_FALLBACK.totalPrice
-        )}
+        value={formatMoney(order?.totalPrice ?? target.row.totalPrice)}
       />
       <DetailField
         label="Date of order placed"

@@ -18,9 +18,11 @@ import {
   useQueries,
 } from "@tanstack/react-query";
 
+import { useCurrentUserId } from "@/hooks/queries/products";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import { queryKeys } from "@/lib/query-keys";
 import rfqService from "@/services/rfqService";
+import type { RfqListFilters } from "@/types/rfq";
 
 const useAuthToken = () =>
   useAppSelector((s) => s.auth.data?.tokens?.accessToken);
@@ -41,15 +43,54 @@ const newestFirst = <T>(items: T[] | undefined, at: (item: T) => string | undefi
 /* Reads                                                              */
 /* ------------------------------------------------------------------ */
 
-/** RFQs raised by the signed-in buyer. Returns `Rfq[]` via `select`. */
-export const useBuyerRfqsQuery = (options?: { enabled?: boolean }) => {
+/**
+ * RFQs raised by the signed-in buyer. Returns `Rfq[]` via `select`. `filters`
+ * is forwarded to `GET /rfqs` (status + `createdAt` range) and is part of the
+ * key, so each filter combination caches separately.
+ */
+export const useBuyerRfqsQuery = (
+  filters: RfqListFilters = {},
+  options?: { enabled?: boolean },
+) => {
   const token = useAuthToken();
 
   return useQuery({
-    queryKey: queryKeys.rfqs.list({ scope: "buyer" }),
-    queryFn: () => rfqService.fetchBuyerRfqs(token as string),
+    queryKey: queryKeys.rfqs.list({ scope: "buyer", ...filters }),
+    queryFn: () => rfqService.fetchBuyerRfqs(token as string, filters),
     enabled: Boolean(token) && (options?.enabled ?? true),
     select: (res) => newestFirst(res.data, (rfq) => rfq.createdAt),
+  });
+};
+
+/**
+ * `GET /rfqs/quotes/summary` — counters across every quote on the buyer's RFQs.
+ * Cheaper and more accurate than counting a fetched quote list client-side,
+ * which only ever sees the page the buyer has loaded.
+ */
+export const useBuyerQuoteSummaryQuery = (options?: { enabled?: boolean }) => {
+  const token = useAuthToken();
+  const userId = useCurrentUserId();
+
+  return useQuery({
+    queryKey: queryKeys.rfqs.buyerQuoteSummary(userId ?? ""),
+    queryFn: () => rfqService.fetchBuyerQuoteSummary(token as string),
+    enabled: Boolean(token) && (options?.enabled ?? true),
+    select: (res) => res.data,
+  });
+};
+
+/** `GET /rfqs/inbox/quotes/summary` — counters for the distributor's inbox. */
+export const useDistributorQuoteSummaryQuery = (options?: {
+  enabled?: boolean;
+}) => {
+  const token = useAuthToken();
+  const userId = useCurrentUserId();
+
+  return useQuery({
+    queryKey: queryKeys.rfqs.distributorQuoteSummary(userId ?? ""),
+    queryFn: () => rfqService.fetchDistributorQuoteSummary(token as string),
+    enabled: Boolean(token) && (options?.enabled ?? true),
+    select: (res) => res.data,
   });
 };
 
@@ -109,6 +150,18 @@ export const useBuyerRfqDetails = (rfqIds: string[]) => {
   });
 };
 
+/** Answered quotes across every RFQ the buyer raised (`/rfqs/quotes/received`). */
+export const useBuyerReceivedQuotesQuery = (options?: { enabled?: boolean }) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: queryKeys.rfqs.list({ scope: "buyer-received-quotes" }),
+    queryFn: () => rfqService.fetchBuyerReceivedQuotes(token as string),
+    enabled: Boolean(token) && (options?.enabled ?? true),
+    select: (res) => newestFirst(res.data, (quote) => quote.createdAt),
+  });
+};
+
 /* ------------------------------------------------------------------ */
 /* Mutations                                                          */
 /* ------------------------------------------------------------------ */
@@ -129,6 +182,22 @@ export const useCreateRfqMutation = () => {
       data: Parameters<typeof rfqService.createRfq>[1];
       attachments?: File[];
     }) => rfqService.createRfq(token as string, data, attachments),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rfqs.all }),
+  });
+};
+
+/**
+ * Email-targeted bulk submit. Unlike the single flow there is no separate
+ * submit call — the backend routes each row to the named distributor straight
+ * away — so the caller only has to surface `data.errors` for skipped rows.
+ */
+export const useCreateBulkRfqMutation = () => {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: Parameters<typeof rfqService.createBulkRfq>[1]) =>
+      rfqService.createBulkRfq(token as string, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rfqs.all }),
   });
 };
@@ -159,5 +228,27 @@ export const useApproveQuoteMutation = () => {
     mutationFn: (quoteId: string) =>
       rfqService.approveQuote(token as string, quoteId),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rfqs.all }),
+  });
+};
+
+/** Declines a quoted offer; the RFQ stays open for the other distributors. */
+export const useRejectQuoteMutation = () => {
+  const token = useAuthToken();
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ quoteId, reason }: { quoteId: string; reason?: string }) =>
+      rfqService.rejectQuote(token as string, quoteId, reason ? { reason } : {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rfqs.all }),
+  });
+};
+
+/** Nudges distributors who have not answered yet. Reads stay valid, so no invalidate. */
+export const useSendRfqReminderMutation = () => {
+  const token = useAuthToken();
+
+  return useMutation({
+    mutationFn: ({ rfqId, distributorId }: { rfqId: string; distributorId?: string }) =>
+      rfqService.sendRfqReminder(token as string, rfqId, distributorId),
   });
 };

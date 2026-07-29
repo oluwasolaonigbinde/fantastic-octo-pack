@@ -40,6 +40,11 @@ type AdminTableParams = {
   status?: string;
   page?: number;
   limit?: number;
+  /** `GET /admin/rfqs` only: narrow by party and `createdAt` range. */
+  buyerId?: string;
+  distributorId?: string;
+  minDate?: string;
+  maxDate?: string;
 };
 
 type PlatformUserParams = {
@@ -125,6 +130,63 @@ export const useAdminRfqsQuery = (
   });
 };
 
+/**
+ * `GET /admin/rfqs/:id` — the admin-wide RFQ detail with every quote on it.
+ * Unlike `GET /rfqs/:id` this is not scoped to the calling buyer.
+ */
+export const useAdminRfqDetailQuery = (
+  rfqId: string | undefined,
+  options?: AdminQueryOptions,
+) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: queryKeys.admin.rfqDetail(rfqId ?? ""),
+    queryFn: () => adminService.getRfqDetail(token as string, rfqId as string),
+    ...sharedOptions(token, options),
+    enabled: Boolean(token) && Boolean(rfqId) && (options?.enabled ?? true),
+  });
+};
+
+/** `GET /admin/quotes/summary` — platform-wide quote counters. */
+export const useAdminQuoteSummaryQuery = (options?: AdminQueryOptions) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: queryKeys.admin.quoteSummary(),
+    queryFn: () => adminService.getQuoteSummary(token as string),
+    ...sharedOptions(token, options),
+  });
+};
+
+/** `GET /admin/service-requests/summary` — platform-wide request counters. */
+export const useAdminServiceRequestSummaryQuery = (
+  options?: AdminQueryOptions,
+) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: queryKeys.admin.serviceRequestSummary(),
+    queryFn: () => adminService.getServiceRequestSummary(token as string),
+    ...sharedOptions(token, options),
+  });
+};
+
+/**
+ * `GET /admin/orders/summary` — platform-wide order counters and value. This is
+ * the live replacement for the order half of `/admin/rfqs-orders-summary`,
+ * which still hardcodes `processing`, `shipped` and `deliveredCompleted` to 0.
+ */
+export const useAdminOrderSummaryQuery = (options?: AdminQueryOptions) => {
+  const token = useAuthToken();
+
+  return useQuery({
+    queryKey: queryKeys.admin.orderSummary(),
+    queryFn: () => adminService.getOrderSummary(token as string),
+    ...sharedOptions(token, options),
+  });
+};
+
 export const useAdminQuotesQuery = (
   params: AdminTableParams = {},
   options?: AdminQueryOptions,
@@ -159,12 +221,20 @@ export const useAdminOrdersQuery = (
   });
 };
 
+/**
+ * Platform settings (fees, auto-receive window, subscription billing). Buyer and
+ * distributor order screens read the auto-receive window from here to drive the
+ * escrow countdown, so this is not admin-only in practice — but the endpoint may
+ * still reject non-admin callers, hence `retry: false` and no throwing consumer.
+ */
 export const useAdminPlatformSettingsQuery = (options?: AdminQueryOptions) => {
   const token = useAuthToken();
 
   return useQuery({
     queryKey: queryKeys.admin.settings(),
     queryFn: () => adminService.getPlatformSettings(token as string),
+    retry: false,
+    staleTime: 5 * 60_000,
     ...sharedOptions(token, options),
   });
 };

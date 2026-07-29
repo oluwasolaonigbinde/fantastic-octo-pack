@@ -18,8 +18,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { CalendarDays, Download, Eye, Filter } from "lucide-react";
-import { ADMIN_PRODUCTS_FIGMA_FALLBACK } from "@/constants/adminFigmaFallbacks";
+import { Download, Eye, Filter } from "lucide-react";
 import { useAppSelector } from "@/hooks/useAppSelector";
 import productService from "@/services/productService";
 import { useProductsQuery } from "@/hooks/queries/products";
@@ -31,6 +30,7 @@ import {
 } from "@/utils/productDisplay";
 import type { Product, ProductStatus, ProductStatusCounts } from "@/types/product";
 import type { UserData } from "@/types/user";
+import { getPartyDisplayName } from "@/utils/partyDisplayName";
 import CategoriesManagement from "./categories-management";
 import OemsManagement from "./oems-management";
 
@@ -86,7 +86,7 @@ const formatDate = (iso?: string | null): string => {
 
 const getDistributorName = (createdBy: string | UserData): string => {
   if (typeof createdBy === "string") return createdBy;
-  return `${createdBy.firstName ?? ""} ${createdBy.lastName ?? ""}`.trim() || "Distributor";
+  return getPartyDisplayName(createdBy, "Distributor");
 };
 
 const getAdminTableStatusTextClass = (status: ProductStatus): string => {
@@ -101,15 +101,6 @@ const getAdminTableStatusTextClass = (status: ProductStatus): string => {
       return "text-gray3";
   }
 };
-
-function AdminDateChip({ label }: { label: string }) {
-  return (
-    <div className="inline-flex h-11 sm:h-[60px] items-center gap-4 rounded-[18px] border border-gray5 bg-white px-5 text-[15px] font-medium text-gray1">
-      <span>{label}</span>
-      <CalendarDays size={18} className="text-gray2" />
-    </div>
-  );
-}
 
 function MetricCard({
   title,
@@ -244,36 +235,20 @@ export default function AdminProductsPage() {
       return [
         {
           title: "Total product listed",
-          value: String(
-            hasLoadedProducts
-              ? totalProducts
-              : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.totalListed
-          ),
+          value: String(hasLoadedProducts ? totalProducts : 0),
           subtitle: `Equipment: ${equipmentCount} | Consumables: ${consumablesCount}`,
         },
         {
           title: "Approved Product",
-          value: String(
-            liveListingSummary
-              ? liveListingSummary.approved
-              : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.approved
-          ),
+          value: String(liveListingSummary ? liveListingSummary.approved : 0),
         },
         {
           title: "Pending Product",
-          value: String(
-            liveListingSummary
-              ? liveListingSummary.pending
-              : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.pending
-          ),
+          value: String(liveListingSummary ? liveListingSummary.pending : 0),
         },
         {
           title: "Declined Product",
-          value: String(
-            liveListingSummary
-              ? liveListingSummary.rejected
-              : ADMIN_PRODUCTS_FIGMA_FALLBACK.totals.declined
-          ),
+          value: String(liveListingSummary ? liveListingSummary.rejected : 0),
         },
       ];
     },
@@ -313,11 +288,7 @@ export default function AdminProductsPage() {
       ) : (
       <div className="space-y-6 p-5 lg:p-6">
         <section className="space-y-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <AdminDateChip
-              label={ADMIN_PRODUCTS_FIGMA_FALLBACK.dateRangeLabel}
-            />
-
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-end">
             <Button
               title="Export Record"
               iconLeft={<Download size={16} />}

@@ -53,7 +53,7 @@ export function DistributorActionCenter({
             Action Center
           </h2>
           <p className="text-sm leading-5 text-[#4B5563]">
-            Top 10 recently listed equipment and consumables
+            Everything waiting on you right now
           </p>
         </div>
         <Link
@@ -66,6 +66,11 @@ export function DistributorActionCenter({
       </div>
 
       <div className="mt-6 flex flex-col gap-4">
+        {items.length === 0 ? (
+          <p className="rounded-xl bg-[#F7F8FA] px-4 py-8 text-center text-sm text-[#4B5563]">
+            Nothing needs your attention right now.
+          </p>
+        ) : null}
         {items.map((item) => {
           const Icon = item.icon;
           const styles = toneStyles[item.tone];

@@ -19,6 +19,7 @@ import { useAppSelector, useAppDispatch } from "@/hooks/useAppSelector";
 import { logout } from "@/store/slices/auth-slice";
 import { UserRole } from "@/types/user";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/base";
+import { getBusinessName, getPersonalName } from "@/utils/partyDisplayName";
 import { MoreHorizontal, UserPlus, FilePlus } from "lucide-react";
 import { useRef } from "react";
 import {
@@ -131,13 +132,9 @@ export default function PublicNavBar() {
         dashboard: `/dashboard/${authRole}`,
       })
     : { dashboard: "/dashboard" };
+  // Email is already rendered on the line below, so it is skipped as a fallback here.
   const accountDisplayName =
-    authUser?.distributorStoreProfile?.businessName ||
-    [authUser?.firstName, authUser?.lastName]
-      .filter(Boolean)
-      .join(" ")
-      .trim() ||
-    "MedProcure";
+    getBusinessName(authUser) ?? getPersonalName(authUser) ?? "MedProcure";
   const accountDisplayLine = authUser?.email || "Join to access account tools";
   const authedMenuItems = [
     {
@@ -344,7 +341,10 @@ export default function PublicNavBar() {
                         onClick={async () => {
                           setAccountMenuOpen(false);
                           await dispatch(logout());
-                          router.push("/");
+                          // Full document navigation: drops Next's client router
+                          // cache so the next account cannot replay this
+                          // role's cached dashboard routes (BAI-61).
+                          window.location.assign("/");
                         }}
                         className="flex w-full items-center gap-3 rounded-[8px] px-2 py-2 text-[15px] font-normal text-[#EF4444] transition hover:bg-[#FEF2F2]"
                       >
@@ -527,7 +527,10 @@ export default function PublicNavBar() {
                         onClick={async () => {
                           setMobilePanelOpen(false);
                           await dispatch(logout());
-                          router.push("/");
+                          // Full document navigation: drops Next's client router
+                          // cache so the next account cannot replay this
+                          // role's cached dashboard routes (BAI-61).
+                          window.location.assign("/");
                         }}
                         className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-[#EF4444] transition hover:bg-[#FEF2F2]"
                       >
