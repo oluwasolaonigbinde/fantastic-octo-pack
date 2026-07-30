@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   ArrowRight,
-  Award,
   CircleDollarSign,
   Eye,
   Filter,
@@ -13,7 +12,10 @@ import {
 } from "lucide-react";
 
 import { Spinner } from "@/components/base";
-import { useBuyerServiceRequestsQuery } from "@/hooks/queries/service-requests";
+import {
+  useBuyerServiceRequestsQuery,
+  useServiceRequestSummaryQuery,
+} from "@/hooks/queries/service-requests";
 import {
   ServiceRequestData,
   ServiceRequestStatus,
@@ -91,6 +93,8 @@ function tableStatusDisplay(status: ServiceRequestStatus): {
       return { label: "Accepted", className: "text-[#34A853]" };
     case ServiceRequestStatus.IN_PROGRESS:
       return { label: "In progress", className: "text-[#D97627]" };
+    case ServiceRequestStatus.WORK_COMPLETED:
+      return { label: "Awaiting your confirmation", className: "text-[#017BED]" };
     case ServiceRequestStatus.COMPLETED:
       return { label: "Completed", className: "text-[#34A853]" };
     case ServiceRequestStatus.REJECTED:
@@ -130,7 +134,8 @@ function applyTableFilters(
     filteredRequests = filteredRequests.filter(
       (request) =>
         request.status === ServiceRequestStatus.ACCEPTED ||
-        request.status === ServiceRequestStatus.IN_PROGRESS,
+        request.status === ServiceRequestStatus.IN_PROGRESS ||
+        request.status === ServiceRequestStatus.WORK_COMPLETED,
     );
   } else if (statusFilter) {
     filteredRequests = filteredRequests.filter(
@@ -152,51 +157,44 @@ function applyTableFilters(
   return filteredRequests;
 }
 
+/**
+ * Counters come from `GET /service-requests/summary`, which the backend scopes
+ * to the signed-in buyer. The local list is only a fallback for the first paint
+ * (or if the summary call fails).
+ */
 export function BuyerServiceRequestKpiStrip() {
+  const { data: summary } = useServiceRequestSummaryQuery();
   const { data } = useBuyerServiceRequestsQuery();
-  const serviceRequests = data?.requests ?? [];
+  const serviceRequests = useMemo(() => data?.requests ?? [], [data]);
 
-  const thisMonthRequests = useMemo(() => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonth = now.getMonth();
+  const localCounts = useMemo(() => {
+    const countOf = (...statuses: ServiceRequestStatus[]) =>
+      serviceRequests.filter((request) => statuses.includes(request.status))
+        .length;
 
-    return serviceRequests.filter((request) => {
-      const createdAt = new Date(request.createdAt);
-      return (
-        createdAt.getFullYear() === currentYear &&
-        createdAt.getMonth() === currentMonth
-      );
-    });
+    return {
+      total: serviceRequests.length,
+      active: countOf(
+        ServiceRequestStatus.PENDING,
+        ServiceRequestStatus.ACCEPTED,
+        ServiceRequestStatus.IN_PROGRESS,
+        ServiceRequestStatus.WORK_COMPLETED,
+      ),
+      completed: countOf(ServiceRequestStatus.COMPLETED),
+    };
   }, [serviceRequests]);
 
-  const completedThisMonth = useMemo(
-    () =>
-      thisMonthRequests.filter(
-        (request) => request.status === ServiceRequestStatus.COMPLETED,
-      ).length,
-    [thisMonthRequests],
-  );
+  const total = summary?.total ?? localCounts.total;
+  const active = summary?.active ?? localCounts.active;
+  const completed =
+    summary?.byStatus?.[ServiceRequestStatus.COMPLETED] ??
+    localCounts.completed;
 
   const cards = [
     {
-      title: "Total engineers available",
-      value: "--",
-      meta: "This month",
-      accent: "#E5F1FF",
-      icon: <Users className="size-5 text-[#2F80ED]" strokeWidth={1.75} />,
-    },
-    {
-      title: "Engineers with OEM certified",
-      value: "--",
-      meta: "This month",
-      accent: "#FCE7F3",
-      icon: <Award className="size-5 text-[#DB2777]" strokeWidth={1.75} />,
-    },
-    {
       title: "Total engineers requested",
-      value: padCount(thisMonthRequests.length),
-      meta: "This month",
+      value: padCount(total),
+      meta: "All time",
       accent: "#E7F9EC",
       icon: (
         <CircleDollarSign
@@ -206,16 +204,23 @@ export function BuyerServiceRequestKpiStrip() {
       ),
     },
     {
+      title: "Ongoing services",
+      value: padCount(active),
+      meta: "Awaiting engineer or in progress",
+      accent: "#E5F1FF",
+      icon: <Users className="size-5 text-[#2F80ED]" strokeWidth={1.75} />,
+    },
+    {
       title: "Completed services",
-      value: padCount(completedThisMonth),
-      meta: "This month",
+      value: padCount(completed),
+      meta: "All time",
       accent: "#FFF4D8",
       icon: <RotateCcw className="size-5 text-[#D89A2D]" strokeWidth={1.75} />,
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {cards.map((card) => (
         <article
           key={card.title}
@@ -314,6 +319,9 @@ export function BuyerServiceRequestsFilterPanel({
             <option value="">Select status</option>
             <option value={ServiceRequestStatus.PENDING}>Pending</option>
             <option value="ongoing">Ongoing</option>
+            <option value={ServiceRequestStatus.WORK_COMPLETED}>
+              Awaiting your confirmation
+            </option>
             <option value={ServiceRequestStatus.REJECTED}>Rejected</option>
             <option value={ServiceRequestStatus.COMPLETED}>Completed</option>
             <option value={ServiceRequestStatus.CLOSED_AFTER_DISPUTE}>
@@ -365,7 +373,7 @@ export function BuyerServiceRequestCards({
   dateFilter = "",
 }: BuyerServiceRequestCardsProps) {
   const { data, isPending: isLoading, isError } = useBuyerServiceRequestsQuery();
-  const serviceRequests = data?.requests ?? [];
+  const serviceRequests = useMemo(() => data?.requests ?? [], [data]);
   const [detailTargetId, setDetailTargetId] = useState<string | null>(null);
 
   const detailTarget = useMemo(

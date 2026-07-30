@@ -19,7 +19,10 @@ import type { Product, ProductImage } from "@/types/product";
 import { PublicLayout } from "@/components/layout";
 import ConditionBadge from "@/components/product/ConditionBadge";
 import SafeProductImage from "@/components/product/SafeProductImage";
-import { getProductAvailabilityLabel } from "@/utils/productDisplay";
+import {
+  formatProductPrice as formatPrice,
+  getProductAvailabilityLabel,
+} from "@/utils/productDisplay";
 import { useRecommendedProductsQuery } from "@/hooks/queries/products";
 import type { UserData } from "@/types/user";
 import { getPartyDisplayName } from "@/utils/partyDisplayName";
@@ -168,7 +171,7 @@ function formatProductPrice(product: ProductWithDistributor) {
     typeof product.pricePerUnit === "number" &&
     Number.isFinite(product.pricePerUnit)
   ) {
-    return `N${product.pricePerUnit.toLocaleString()}`;
+    return formatPrice(product.pricePerUnit);
   }
 
   return "RFQ";

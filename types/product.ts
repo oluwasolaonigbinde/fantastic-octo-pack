@@ -285,6 +285,14 @@ export interface StockAdjustDto {
   reason?: string;
 }
 
+/** Body for POST /products/{id}/inquiries. */
+export interface ProductInquiryDto {
+  firstName: string;
+  lastName: string;
+  email: string;
+  description: string;
+}
+
 export interface StockMovementResponse {
   success: boolean;
   message: string;

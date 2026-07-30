@@ -3,6 +3,8 @@ export enum ServiceRequestStatus {
   ACCEPTED = "accepted",
   REJECTED = "rejected",
   IN_PROGRESS = "in_progress",
+  /** Engineer finished the work; awaiting buyer confirmation. */
+  WORK_COMPLETED = "work_completed",
   COMPLETED = "completed",
   CLOSED_AFTER_DISPUTE = "closed_after_dispute",
 }
@@ -80,7 +82,7 @@ export interface UpdateServiceRequestStatusPayload {
  */
 export interface ServiceRequestSummary {
   total: number;
-  /** Accepted or in progress. */
+  /** Pending, accepted, in progress or work-completed — anything still in flight. */
   active: number;
   disputeActive: number;
   byStatus: Record<ServiceRequestStatus, number>;

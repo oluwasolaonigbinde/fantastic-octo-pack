@@ -154,8 +154,8 @@ const FIELD_COPY: Record<
 
 const DOCUMENT_COPY: Record<string, string> = {
   identity_document: "ID card upload",
-  cac_certificate: "CAC Certificate",
-  cac_status_report: "CAC Status Report",
+  business_registration_certificate: "Business Registration Certificate",
+  business_registration_report: "Business Registration Report",
 };
 
 const tierLabelOf = (tier: KycTierDefinition) =>

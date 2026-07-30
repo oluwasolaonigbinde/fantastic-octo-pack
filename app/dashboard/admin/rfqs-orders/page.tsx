@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { MouseEvent, ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import {
   CircleDollarSign,
   ClipboardList,
@@ -39,19 +40,24 @@ import {
   type AdminRfqsOrdersSummary,
 } from "@/services/adminService";
 import { fetchOrderDetail } from "@/services/orderService";
-import { fetchQuoteDetail, fetchRfqDetail } from "@/services/rfqService";
+import { fetchQuoteDetail } from "@/services/rfqService";
 import type { Order, OrderSummary } from "@/types/order";
 import { ORDER_STATUS_LABELS } from "@/types/order";
-import type {
-  Quote,
-  QuoteStatus,
-  QuoteSummary,
-  Rfq,
-  RfqDetailResponse,
-  UserRef,
-} from "@/types/rfq";
+import type { Quote, QuoteStatus, QuoteSummary } from "@/types/rfq";
 import { QUOTE_STATUS_LABELS, RFQ_STATUS_LABELS } from "@/types/rfq";
-import { getPartyDisplayName } from "@/utils/partyDisplayName";
+import {
+  DetailField,
+  DetailStatusBanner,
+  formatMoney,
+  formatQuantity,
+  getFirstQuoteItem,
+  getItemProductName,
+  getUserEmail,
+  getUserName,
+  getUserPhone,
+  pickFirstText,
+  presentDate,
+} from "./adminRfqShared";
 
 const POLL_INTERVAL_MS = 30_000;
 const PAGE_SIZE = 20;
@@ -64,11 +70,9 @@ type RfqSubTab =
   | "quoteApproved"
   | "quoteDeclined";
 type DetailTarget =
-  | { kind: "rfq"; row: AdminRfqRow }
   | { kind: "quote"; row: AdminQuoteRow }
   | { kind: "order"; row: AdminOrderRow };
 type DetailData =
-  | { kind: "rfq"; data: RfqDetailResponse }
   | { kind: "quote"; data: Quote }
   | { kind: "order"; data: Order };
 
@@ -121,13 +125,6 @@ const emptyPage = <T,>(): AdminPagination<T> => ({
   previousPage: null,
 });
 
-const moneyFormatter = new Intl.NumberFormat("en-NG", {
-  style: "currency",
-  currency: "NGN",
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
 const wholeNumberFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
@@ -145,11 +142,6 @@ const RFQ_QUOTE_STATUS_FILTERS: Partial<Record<RfqSubTab, QuoteStatus>> = {
   quoteApproved: "selected_for_order",
   quoteDeclined: "rejected_by_buyer",
 };
-
-function formatMoney(value?: number | null): string {
-  if (typeof value !== "number") return "Not available";
-  return moneyFormatter.format(value);
-}
 
 function formatDate(value?: string | null): string {
   if (!value) return "Not available";
@@ -184,62 +176,8 @@ function formatWholeNumber(value?: number | null): string {
   return typeof value === "number" ? wholeNumberFormatter.format(value) : "0";
 }
 
-function formatQuantity(value?: number | null): string {
-  return typeof value === "number" ? String(value) : "Not available";
-}
-
-function pickFirstText(...values: Array<string | null | undefined>): string | undefined {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
-  }
-  return undefined;
-}
-
-function presentDate(value?: string | null): string {
-  return formatDate(value);
-}
-
 function presentDateTime(value?: string | null): string {
   return formatDateTimeUtc(value);
-}
-
-function isUserRef(value: unknown): value is UserRef {
-  return Boolean(value && typeof value === "object" && "email" in value);
-}
-
-function getUserName(value: unknown, fallback = "Not available"): string {
-  if (!isUserRef(value)) return fallback;
-  return getPartyDisplayName(value, value.email);
-}
-
-function getUserEmail(value: unknown, fallback = "Not available"): string {
-  return isUserRef(value) && value.email ? value.email : fallback;
-}
-
-function getUserPhone(value: unknown, fallback = "Not available"): string {
-  return isUserRef(value) && value.phoneNumber ? value.phoneNumber : fallback;
-}
-
-function getFirstRfqItem(rfq?: Rfq) {
-  return rfq?.items?.[0];
-}
-
-function getItemProductName(rfq?: Rfq, fallback = "Not available"): string {
-  const item = getFirstRfqItem(rfq);
-  if (!item) return fallback;
-  return item.productName || fallback;
-}
-
-function getItemUnitPrice(rfq?: Rfq, fallback?: number | null): string {
-  // RFQ request lines do not carry a seller price. Pricing belongs to the
-  // distributor quote response, so only show the table fallback here.
-  return formatMoney(fallback);
-}
-
-function getFirstQuoteItem(quote?: Quote) {
-  return quote?.items?.[0];
 }
 
 function getOrderProductName(order?: Order, fallback = "Not available"): string {
@@ -334,28 +272,6 @@ function StatusText({ children, tone = "warning" }: { children: ReactNode; tone?
   return <span className={`text-base font-normal ${className}`}>{children}</span>;
 }
 
-function DetailField({ label, value }: { label: string; value?: ReactNode }) {
-  return (
-    <div className="space-y-2">
-      <p className="text-sm font-normal leading-5 text-gray3">{label}</p>
-      <p className="break-words text-base font-normal leading-6 text-gray1">
-        {value || "Not available"}
-      </p>
-    </div>
-  );
-}
-
-function DetailStatusBanner({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between rounded-2xl border border-[#FFE079] bg-[#FFF6D9] px-6 py-4 sm:px-8 sm:py-5">
-      <p className="text-sm font-medium text-[#272B36] sm:text-lg">{label}</p>
-      <span className="inline-flex rounded-lg bg-[#FFC000] px-4 py-2 text-sm font-normal text-white sm:px-[18px] sm:py-[11px] sm:text-lg">
-        {value}
-      </span>
-    </div>
-  );
-}
-
 function getOrderStatusTone(status: string): StatusTone {
   if (status === "delivered" || status === "completed") return "success";
   // Money is in escrow and the order is moving through fulfillment.
@@ -390,6 +306,7 @@ function getOrderProposedDeliveryDate(order?: Order): string {
 }
 
 export default function AdminRfqsOrdersPage() {
+  const router = useRouter();
   const token = useAppSelector((state) => state.auth.data?.tokens?.accessToken);
   const [topTab, setTopTab] = useState<TopTab>("rfqs");
   const [rfqSub, setRfqSub] = useState<RfqSubTab>("all");
@@ -482,7 +399,6 @@ export default function AdminRfqsOrdersPage() {
 
   const detailTitle = useMemo(() => {
     if (!detailTarget) return "Details";
-    if (detailTarget.kind === "rfq") return "RFQ Details";
     if (detailTarget.kind === "quote") return "Quote Details";
     return "Order Details";
   }, [detailTarget]);
@@ -530,10 +446,7 @@ export default function AdminRfqsOrdersPage() {
 
     setDetailLoading(true);
     try {
-      if (target.kind === "rfq") {
-        const response = await fetchRfqDetail(token, target.row.id);
-        setDetailData({ kind: "rfq", data: response.data });
-      } else if (target.kind === "quote") {
+      if (target.kind === "quote") {
         const response = await fetchQuoteDetail(token, target.row.id);
         setDetailData({ kind: "quote", data: response.data });
       } else {
@@ -713,7 +626,7 @@ export default function AdminRfqsOrdersPage() {
                         rfqsPage.docs.map((row) => (
                           <TableRow
                             key={row.id}
-                            onClick={() => void openDetail({ kind: "rfq", row })}
+                            onClick={() => router.push(`/dashboard/admin/rfqs/${row.id}`)}
                             className="cursor-pointer"
                           >
                             <TableCell className="min-w-[180px]">
@@ -739,7 +652,7 @@ export default function AdminRfqsOrdersPage() {
                                 icon={<Eye size={16} />}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  void openDetail({ kind: "rfq", row });
+                                  router.push(`/dashboard/admin/rfqs/${row.id}`);
                                 }}
                                 tone="success"
                               >
@@ -1004,69 +917,6 @@ function DetailPanel({
   error: string;
 }) {
   if (!target) return null;
-
-  if (target.kind === "rfq") {
-    const rfq = data?.kind === "rfq" ? data.data.rfq : undefined;
-    const distributor = rfq?.targetDistributors?.[0];
-
-    return (
-      <div className="space-y-6">
-        {error ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </p>
-        ) : null}
-        <DetailStatusBanner
-          label="Request Status"
-          value={rfq ? RFQ_STATUS_LABELS[rfq.status] ?? rfq.status : RFQ_STATUS_LABELS[target.row.status] ?? target.row.status}
-        />
-        <DetailField
-          label="Distributor's name"
-          value={getUserName(distributor, target.row.distributorName || "Not available")}
-        />
-        <DetailField label="Distributor's phone number" value={getUserPhone(distributor)} />
-        <DetailField label="Distributor's email" value={getUserEmail(distributor)} />
-        <DetailField
-          label="Product name"
-          value={getItemProductName(rfq, target.row.productName || "Not available")}
-        />
-        <DetailField
-          label="Quantity"
-          value={formatQuantity(getFirstRfqItem(rfq)?.quantity ?? target.row.quantity)}
-        />
-        <DetailField
-          label="Unit price"
-          value={getItemUnitPrice(rfq, target.row.unitPrice)}
-        />
-        <DetailField
-          label="Total price"
-          value={formatMoney(target.row.totalPrice)}
-        />
-        <DetailField
-          label="Date of request"
-          value={presentDate(rfq?.createdAt ?? target.row.createdAt)}
-        />
-        <DetailField
-          label="Proposed delivery date"
-          value={
-            pickFirstText(
-              rfq?.deliveryTimeline,
-              target.row.deliveryTime
-            ) ?? "Not available"
-          }
-        />
-        <DetailField
-          label="Additional note"
-          value={
-            pickFirstText(
-              rfq?.additionalNotes,
-              getFirstRfqItem(rfq)?.notes
-            ) ?? "Not available"
-          }
-        />
-      </div>
-    );
-  }
 
   if (target.kind === "quote") {
     const quote = data?.kind === "quote" ? data.data : undefined;

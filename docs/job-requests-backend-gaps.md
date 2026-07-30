@@ -2,28 +2,34 @@
 
 Screen: `/dashboard/engineer/job-requests`
 Component: `app/dashboard/engineer/_components/engineer-job-requests-content.tsx`
-Date: 2026-07-20
+Date: 2026-07-20 (revised 2026-07-30)
 
 The UI has been rebuilt to the Figma design and is mobile responsive. The items
 below are blocked on backend work — the frontend cannot resolve them alone.
 
 ---
 
-## 1. Engineer cannot mark a job "Completed"
+## 1. Engineer cannot mark a job "Completed" — RESOLVED
 
-**Design says:** the Update Job Status modal has a **"Mark as Completed"** button.
+Backend added a `work_completed` status (server commit `bab3c46`). The
+transition chain is now:
 
-**Backend supports:** engineer moves the job to `in_progress` via
-`PATCH /service-requests/:id/status`. Only the buyer can complete it, via a
-separate `PATCH /service-requests/:id/buyer-complete`.
+```
+pending → accepted → in_progress → work_completed → completed
+          (engineer, PATCH /:id/status)              (buyer, PATCH /:id/buyer-complete)
+```
 
-**Current state:** button is labelled **"Mark as In Progress"** so it matches
-what the API actually does.
-
-**Decision needed:** either
-- (a) backend allows the engineer to set `status: "completed"` on
-  `PATCH /:id/status`, and we relabel the button; or
-- (b) the design is wrong and the buyer keeps sole completion rights.
+**Frontend now does:**
+- Engineer's Update Job Status modal offers **"Mark as In Progress"** from
+  `accepted` and **"Mark as Completed"** from `in_progress`. Both go through
+  `PATCH /:id/status`; the target is derived by `getNextEngineerStatus`.
+- Buyer's **"Confirm completion"** button is gated on `work_completed`, not
+  `in_progress`. This was a live bug: the button rendered on `in_progress`,
+  where `PATCH /:id/buyer-complete` rejects with
+  *"Only work-completed service requests can be confirmed by the buyer"*.
+- `work_completed` renders as "Awaiting your confirmation" (buyer) /
+  "Awaiting buyer confirmation" (engineer), and counts as ongoing everywhere
+  an accepted/in-progress request did.
 
 ---
 
@@ -44,8 +50,9 @@ belong — on Accept, or on the status-update modal?
 
 ## 3. Filtering and counts are client-side only
 
-`fetchServiceRequests` supports `page`, `limit`, and `status`, but every call
-site passes `{}`. Consequences:
+Still open. `fetchServiceRequests` supports `page`, `limit`, and `status`, but
+`ServiceRequestService.fetch` on the server takes only `(userId, role)` and
+ignores every query param, and every call site passes `{}`. Consequences:
 
 - the entire request list downloads on every page load (no pagination);
 - the **Job type** and **Date** filters only match records that happened to
@@ -58,20 +65,27 @@ plus confirmation that `page`/`limit` are honoured.
 
 ---
 
-## 4. `statusCounts` is incomplete
+## 4. `statusCounts` is incomplete — RESOLVED via a separate endpoint
 
-Two separate issues with the metric cards / tabs:
+`GET /service-requests` still returns a plain array with no `statusCounts`, so
+the metric cards were counting only the locally loaded page.
 
-- `ServiceRequestStatusCounts` only has `total`, `pending`, `completed`,
-  `rejected`. There is no `accepted` or `in_progress`, so those tabs cannot
-  show counts.
-- When the API returns `data` as a plain array (not the paginated shape), the
-  fallback in `services/serviceRequestService.ts:76` synthesizes pagination but
-  **omits `statusCounts` entirely** — so the metric cards silently fall back to
-  counting only the local page.
+Backend shipped `GET /service-requests/summary` instead (server commit
+`aedd6b0`), role-scoped from the JWT and returning:
 
-**Ask backend for:** `accepted` and `in_progress` added to `statusCounts`, and
-`statusCounts` present on every list response shape.
+```jsonc
+{ "total": 12, "active": 4, "disputeActive": 1,
+  "byStatus": { "pending": 2, "accepted": 1, "in_progress": 1,
+                "work_completed": 0, "completed": 7, "rejected": 1,
+                "closed_after_dispute": 0 } }
+```
+
+`active` = pending + accepted + in_progress + work_completed.
+
+**Frontend now does:** buyer and engineer metric cards read
+`useServiceRequestSummaryQuery()` and fall back to counting the loaded page only
+while the summary is in flight or errored. `ServiceRequestStatusCounts` on the
+list response is now unused by the metric cards.
 
 ---
 
@@ -79,24 +93,28 @@ Two separate issues with the metric cards / tabs:
 
 Plain-language version of the above:
 
-1. **The "Mark as Completed" button in the design doesn't match how the system
-   works.** Right now only the buyer can mark a job complete — the engineer
-   moves it to "In Progress" and the buyer confirms. We've labelled the button
-   accordingly. If engineers should be able to close jobs themselves, that's a
-   backend change and we need a decision.
+1. **Done.** The engineer can now mark a job as completed. The buyer then gets
+   an "Awaiting your confirmation" request and confirms it (or raises a
+   dispute) to close it out.
 
 2. **There's no way for an engineer to enter a price.** The system has a place
    to store one, but no screen asks for it. Confirm whether pricing belongs in
    this flow.
 
-3. **Filters and counts are approximate on large volumes.** The Job type and
-   Date filters currently search only the requests already loaded on screen.
-   Needs server-side filtering before request volume grows.
+3. **The metric cards are now exact.** They read the new summary endpoint
+   rather than counting what happens to be on screen.
+
+4. **Filters are still approximate on large volumes.** The Job type and Date
+   filters search only the requests already loaded on screen. Needs
+   server-side filtering before request volume grows.
 
 ---
 
 ## Verification status
 
-Types (`tsc --noEmit`) and lint pass. The rebuilt screen has **not** been
-rendered in a browser — responsive breakpoints are reasoned, not observed.
-Check at 375px before merging.
+Types (`tsc --noEmit`) and lint pass. The screens have **not** been rendered in
+a browser and the completion handshake has **not** been exercised against a
+running server — the transitions were read off
+`src/features/service-request/status-transitions.ts`. Check at 375px and walk
+one job through accept → in progress → completed → buyer confirm before
+merging.

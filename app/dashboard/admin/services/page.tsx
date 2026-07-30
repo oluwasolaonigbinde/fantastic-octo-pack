@@ -113,7 +113,8 @@ function formatDateTime(value?: string): string {
 function isOngoingStatus(status: ServiceRequestStatus): boolean {
   return (
     status === ServiceRequestStatus.ACCEPTED ||
-    status === ServiceRequestStatus.IN_PROGRESS
+    status === ServiceRequestStatus.IN_PROGRESS ||
+    status === ServiceRequestStatus.WORK_COMPLETED
   );
 }
 
@@ -159,6 +160,7 @@ function serviceStatusLabel(status: ServiceRequestStatus): string {
       return "Pending";
     case ServiceRequestStatus.ACCEPTED:
     case ServiceRequestStatus.IN_PROGRESS:
+    case ServiceRequestStatus.WORK_COMPLETED:
       return "Ongoing";
     case ServiceRequestStatus.COMPLETED:
       return "Completed";
@@ -177,6 +179,7 @@ function statusClassName(status: ServiceRequestStatus): string {
       return "text-warning";
     case ServiceRequestStatus.ACCEPTED:
     case ServiceRequestStatus.IN_PROGRESS:
+    case ServiceRequestStatus.WORK_COMPLETED:
       return "text-primary";
     case ServiceRequestStatus.COMPLETED:
       return "text-success";

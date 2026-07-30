@@ -1,5 +1,6 @@
 import {
   CreateProductDto,
+  ProductInquiryDto,
   ProductResponse,
   ProductListResponse,
   ProductStatus,
@@ -458,6 +459,27 @@ const fetchMovements = async (
   return await response.json();
 };
 
+// Send a buyer inquiry on a product — public, no auth required.
+const sendInquiry = async (
+  productId: string,
+  dto: ProductInquiryDto
+): Promise<{ success: boolean; message: string; data: null }> => {
+  const response = await fetch(apiUrl(`/products/${productId}/inquiries`), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(dto),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || "Sending inquiry failed");
+  }
+
+  return await response.json();
+};
+
 // Delete a product
 const deleteProduct = async (productId: string, token: string) => {
   const response = await fetch(apiUrl(`/products/${productId}`), {
@@ -507,6 +529,7 @@ const productService = {
   adjustStock,
   fetchMovements,
   deleteProduct,
+  sendInquiry,
 };
 
 export default productService;

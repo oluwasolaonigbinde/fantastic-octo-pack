@@ -24,7 +24,6 @@ const EMPTY_FILTERS: EngineerFilters = {
   specialization: "",
   equipmentType: "",
   minimumRating: "",
-  availability: "",
 };
 
 type EngineerSortBy = "" | "name-asc" | "name-desc";
@@ -38,9 +37,6 @@ const toApiFilters = (
   if (filters.specialization) query.specialization = filters.specialization;
   if (filters.equipmentType) query.equipmentType = filters.equipmentType;
   if (filters.location) query.location = filters.location;
-  if (filters.availability === "available" || filters.availability === "busy") {
-    query.availability = filters.availability;
-  }
   if (sortBy) query.sortBy = sortBy;
   return query;
 };

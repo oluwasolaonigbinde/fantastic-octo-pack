@@ -19,10 +19,11 @@ import MarkdownContent from "@/components/product/MarkdownContent";
 import RelatedProducts from "./RelatedProducts";
 import ConfirmOrderModal from "./ConfirmOrderModal";
 import EditDeliveryAddressModal from "./EditDeliveryAddressModal";
-import BuyerOnlyModal from "./BuyerOnlyModal";
+import BuyerOnlyModal, { type BuyerOnlyIntent } from "./BuyerOnlyModal";
+import SendInquiryModal from "./SendInquiryModal";
 import { useProductQuery } from "@/hooks/queries/products";
 import { useAppSelector } from "@/hooks/useAppSelector";
-import type { Product } from "@/types/product";
+import type { Product, ProductInquiryDto } from "@/types/product";
 import { UserRole, type UserData } from "@/types/user";
 import { BigLoader } from "@/components/base";
 import {
@@ -34,7 +35,6 @@ import {
   getPrimaryProductLocation,
   getProductCategoryId,
   getProductCategoryName,
-  getProductSubcategoryId,
 } from "@/utils/productDisplay";
 import {
   clearPendingAuthIntent,
@@ -173,6 +173,8 @@ export default function ProductDetailsPage() {
   const [isConfirmOrderOpen, setIsConfirmOrderOpen] = useState(false);
   const [isAddressEditorOpen, setIsAddressEditorOpen] = useState(false);
   const [isBuyerOnlyOpen, setIsBuyerOnlyOpen] = useState(false);
+  const [buyerOnlyIntent, setBuyerOnlyIntent] = useState<BuyerOnlyIntent>("order");
+  const [isSendInquiryOpen, setIsSendInquiryOpen] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [orderQuantity, setOrderQuantity] = useState(1);
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -427,40 +429,29 @@ export default function ProductDetailsPage() {
   );
 
   const handleSendInquiry = useCallback(() => {
-    if (!authData) {
-      persistPendingAuthIntent("send_inquiry");
-      router.push("/register");
-      return;
-    }
-
-    if (authData.role !== UserRole.BUYER) {
-      setIsBuyerOnlyOpen(true);
-      return;
-    }
-
     if (!product) return;
+    setIsSendInquiryOpen(true);
+  }, [product]);
 
-    const params = new URLSearchParams({
-      action: "create",
-      productName: product.name,
-    });
-    const category = getProductCategoryId(product);
-    const subCategory = getProductSubcategoryId(product);
-    if (category) params.set("category", category);
-    if (subCategory) params.set("subCategory", subCategory);
-    router.push(`/dashboard/buyer/rfqs?${params.toString()}`);
-  }, [authData, persistPendingAuthIntent, product, router]);
+  const handleSubmitInquiry = useCallback(
+    async (dto: ProductInquiryDto) => {
+      if (!id) return;
+      await productService.sendInquiry(id, dto);
+    },
+    [id],
+  );
 
   const handleOrderNow = useCallback(async () => {
     if (!authData) {
-      persistPendingAuthIntent("order_now");
-      router.push("/register");
+      setBuyerOnlyIntent("order");
+      setIsBuyerOnlyOpen(true);
       return;
     }
 
     // Only buyer accounts can place a direct order — block everyone else here
     // rather than letting the backend reject the request after the fact.
     if (authData.role !== UserRole.BUYER) {
+      setBuyerOnlyIntent("order");
       setIsBuyerOnlyOpen(true);
       return;
     }
@@ -474,15 +465,7 @@ export default function ProductDetailsPage() {
     setDeliveryAddress((currentAddress) => currentAddress || defaultDeliveryAddress);
     setIsConfirmOrderOpen(true);
     void loadAddresses();
-  }, [
-    authData,
-    defaultDeliveryAddress,
-    loadAddresses,
-    persistPendingAuthIntent,
-    product,
-    router,
-    sellerId,
-  ]);
+  }, [authData, defaultDeliveryAddress, loadAddresses, product, sellerId]);
 
   const handleMakePayment = useCallback(async () => {
     if (!authData || !product || !sellerId || !authData.tokens?.accessToken) {
@@ -493,6 +476,7 @@ export default function ProductDetailsPage() {
     // a non-buyer fire the buy-now request (the backend would reject it anyway).
     if (authData.role !== UserRole.BUYER) {
       setIsConfirmOrderOpen(false);
+      setBuyerOnlyIntent("order");
       setIsBuyerOnlyOpen(true);
       return;
     }
@@ -556,12 +540,8 @@ export default function ProductDetailsPage() {
     }
 
     if (!authAccessToken) {
-      writePendingAuthIntent({
-        action: "send_message",
-        sourcePath: `/products/${id}`,
-        receiverId: sellerId,
-      });
-      router.push("/login");
+      setBuyerOnlyIntent("chat");
+      setIsBuyerOnlyOpen(true);
       return;
     }
 
@@ -574,7 +554,35 @@ export default function ProductDetailsPage() {
     }
 
     router.push(composeHref);
-  }, [authAccessToken, authRole, id, router, sellerId]);
+  }, [authAccessToken, authRole, router, sellerId]);
+
+  const handleBuyerOnlySignIn = useCallback(() => {
+    if (buyerOnlyIntent === "chat" && sellerId) {
+      writePendingAuthIntent({
+        action: "send_message",
+        sourcePath: `/products/${id}`,
+        receiverId: sellerId,
+      });
+    } else {
+      persistPendingAuthIntent("order_now");
+    }
+    setIsBuyerOnlyOpen(false);
+    router.push("/login");
+  }, [buyerOnlyIntent, id, persistPendingAuthIntent, router, sellerId]);
+
+  const handleBuyerOnlyRegister = useCallback(() => {
+    if (buyerOnlyIntent === "chat" && sellerId) {
+      writePendingAuthIntent({
+        action: "send_message",
+        sourcePath: `/products/${id}`,
+        receiverId: sellerId,
+      });
+    } else {
+      persistPendingAuthIntent("order_now");
+    }
+    setIsBuyerOnlyOpen(false);
+    router.push("/register");
+  }, [buyerOnlyIntent, id, persistPendingAuthIntent, router, sellerId]);
 
   useEffect(() => {
     const resumeAction = searchParams.get("resumeAction");
@@ -932,7 +940,16 @@ export default function ProductDetailsPage() {
       <BuyerOnlyModal
         isOpen={isBuyerOnlyOpen}
         role={authRole}
+        intent={buyerOnlyIntent}
         onClose={() => setIsBuyerOnlyOpen(false)}
+        onSignIn={handleBuyerOnlySignIn}
+        onRegister={handleBuyerOnlyRegister}
+      />
+
+      <SendInquiryModal
+        isOpen={isSendInquiryOpen}
+        onClose={() => setIsSendInquiryOpen(false)}
+        onSubmit={handleSubmitInquiry}
       />
 
       <ConfirmOrderModal

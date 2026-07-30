@@ -10,7 +10,6 @@ export interface EngineerFilters {
   specialization: string;
   equipmentType: string;
   minimumRating: string;
-  availability: string;
 }
 
 const EMPTY_FILTERS: EngineerFilters = {
@@ -18,7 +17,6 @@ const EMPTY_FILTERS: EngineerFilters = {
   specialization: "",
   equipmentType: "",
   minimumRating: "",
-  availability: "",
 };
 
 type RadioOption = {
@@ -180,19 +178,6 @@ export default function EngineerFilterSidebar({
                 value: equipmentType.value,
                 filteredCount: equipmentType.filteredCount,
               }))}
-            />
-          </FilterSection>
-
-          <FilterSection title="Availability">
-            <RadioGroup
-              name="availability"
-              allLabel="All availability"
-              value={draft.availability}
-              onChange={(value) => set("availability", value)}
-              options={[
-                { label: "Available", value: "available" },
-                { label: "Busy", value: "busy" },
-              ]}
             />
           </FilterSection>
 
