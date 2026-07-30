@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { isValidE164Phone } from "@/utils/phone";
+
 // Custom file validation
 const allowedFileTypes = [
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
@@ -35,7 +37,9 @@ export const OnboardingSchema = z.object({
     .string()
     .trim()
     .min(1, "Phone number is required")
-    .min(8, "Phone number must be at least 8 characters"),
+    .refine(isValidE164Phone, {
+      message: "Phone number must include a country code, for example +2348012345678",
+    }),
   contactAddress: z.string().trim().min(5, "Enter a valid address"),
   // countriesServed: z.array(z.string()).min(1, "Select at least one country"),
   countriesServed: z.string().min(1, "Select at least one country"),

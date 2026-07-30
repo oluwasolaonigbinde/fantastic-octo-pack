@@ -1,15 +1,22 @@
 "use client";
 
-import Link from "next/link";
 import { ShieldAlert, X } from "lucide-react";
 
 import { UserRole } from "@/types/user";
 
+export type BuyerOnlyIntent = "order" | "chat";
+
 interface BuyerOnlyModalProps {
   isOpen: boolean;
-  /** The signed-in user's role, used to tailor the explanation. */
+  /** The signed-in user's role, or undefined for a guest (not signed in). */
   role?: UserRole | string;
+  /** Which action the visitor was attempting, so the copy can be specific. */
+  intent: BuyerOnlyIntent;
   onClose: () => void;
+  /** Navigate to sign in, preserving the action so it can resume after auth. */
+  onSignIn: () => void;
+  /** Navigate to buyer registration, preserving the action so it can resume after auth. */
+  onRegister: () => void;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -21,16 +28,26 @@ const ROLE_LABELS: Record<string, string> = {
   [UserRole.SUPER_ADMIN]: "admin",
 };
 
+const INTENT_COPY: Record<BuyerOnlyIntent, { verb: string; noun: string }> = {
+  order: { verb: "place an order and make payment", noun: "purchase equipment" },
+  chat: { verb: "chat with a seller", noun: "message sellers" },
+};
+
 export default function BuyerOnlyModal({
   isOpen,
   role,
+  intent,
   onClose,
+  onSignIn,
+  onRegister,
 }: BuyerOnlyModalProps) {
   if (!isOpen) {
     return null;
   }
 
+  const isGuest = !role;
   const roleLabel = role ? ROLE_LABELS[role] ?? "non-buyer" : undefined;
+  const { verb, noun } = INTENT_COPY[intent];
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4">
@@ -62,21 +79,43 @@ export default function BuyerOnlyModal({
           </h2>
 
           <p className="mt-2 text-sm leading-6 text-[#4B5563]">
-            Placing an order and making payment is available to buyer accounts
-            only.
-            {roleLabel
-              ? ` Your account is registered as a ${roleLabel}, so you can browse products and message sellers, but you can't check out.`
-              : " Sign in with a buyer account to purchase equipment."}
+            {isGuest
+              ? `You need to sign in or create a buyer account to ${verb}.`
+              : `${
+                  verb.charAt(0).toUpperCase() + verb.slice(1)
+                } is available to buyer accounts only. Your account is registered as a ${roleLabel}, so you can browse products and ${noun}, but you can't do that here.`}
           </p>
 
           <div className="mt-6 flex w-full flex-col gap-3">
-            <Link
-              href="/register"
-              onClick={onClose}
-              className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#0669D9] text-sm font-medium text-white transition hover:bg-[#0553AE]"
-            >
-              Register a buyer account
-            </Link>
+            {isGuest && (
+              <button
+                type="button"
+                onClick={onSignIn}
+                className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#0669D9] text-sm font-medium text-white transition hover:bg-[#0553AE]"
+              >
+                Sign in
+              </button>
+            )}
+
+            {isGuest && (
+              <button
+                type="button"
+                onClick={onRegister}
+                className="inline-flex h-12 w-full items-center justify-center rounded-xl border border-[#DDE0E5] text-sm font-medium text-[#4B5563] transition hover:bg-[#F9FAFB]"
+              >
+                Create a buyer account
+              </button>
+            )}
+
+            {!isGuest && (
+              <button
+                type="button"
+                onClick={onRegister}
+                className="inline-flex h-12 w-full items-center justify-center rounded-xl bg-[#0669D9] text-sm font-medium text-white transition hover:bg-[#0553AE]"
+              >
+                Register a buyer account
+              </button>
+            )}
 
             <button
               type="button"

@@ -28,6 +28,7 @@ import {
 } from "@/components/base/Dialog";
 import {
   useEngineerServiceRequestsQuery,
+  useServiceRequestSummaryQuery,
   useUpdateServiceRequestStatusMutation,
 } from "@/hooks/queries/service-requests";
 import {
@@ -114,6 +115,8 @@ function statusLabel(status: ServiceRequestStatus): string {
       return "Rejected";
     case ServiceRequestStatus.IN_PROGRESS:
       return "In progress";
+    case ServiceRequestStatus.WORK_COMPLETED:
+      return "Awaiting buyer confirmation";
     case ServiceRequestStatus.COMPLETED:
       return "Completed";
     case ServiceRequestStatus.CLOSED_AFTER_DISPUTE:
@@ -132,6 +135,8 @@ function StatusBadge({ status }: { status: ServiceRequestStatus }) {
     [ServiceRequestStatus.REJECTED]:
       "rounded-full bg-[#FFE3DD] px-[20px] py-[5px] text-[14px] font-normal leading-[20px] text-[#E33C13]",
     [ServiceRequestStatus.IN_PROGRESS]:
+      "rounded-full bg-[#E2F1FF] px-[20px] py-[5px] text-[14px] font-normal leading-[20px] text-[#017BED]",
+    [ServiceRequestStatus.WORK_COMPLETED]:
       "rounded-full bg-[#E2F1FF] px-[20px] py-[5px] text-[14px] font-normal leading-[20px] text-[#017BED]",
     [ServiceRequestStatus.COMPLETED]:
       "rounded-full bg-[#DEFFE7] px-[20px] py-[5px] text-[14px] font-normal leading-[20px] text-[#13A83B]",
@@ -173,16 +178,27 @@ type EngineerSummaryMetricCardsProps = {
   requests: ServiceRequestData[];
 };
 
+/**
+ * Counters come from `GET /service-requests/summary`, which the backend scopes
+ * to the signed-in engineer. `requests` is only a fallback for the first paint
+ * (or if the summary call fails) and counts the loaded page alone.
+ */
 export function EngineerSummaryMetricCards({
   requests,
 }: EngineerSummaryMetricCardsProps) {
-  const { data } = useEngineerServiceRequestsQuery();
-  const statusCounts = data?.statusCounts ?? null;
+  const { data: summary } = useServiceRequestSummaryQuery();
+  const byStatus = summary?.byStatus;
 
-  const total = statusCounts?.total ?? requests.length;
-  const pending = statusCounts?.pending ?? countByStatus(requests, ServiceRequestStatus.PENDING);
-  const completed = statusCounts?.completed ?? countByStatus(requests, ServiceRequestStatus.COMPLETED);
-  const rejected = statusCounts?.rejected ?? countByStatus(requests, ServiceRequestStatus.REJECTED);
+  const total = summary?.total ?? requests.length;
+  const pending =
+    byStatus?.[ServiceRequestStatus.PENDING] ??
+    countByStatus(requests, ServiceRequestStatus.PENDING);
+  const completed =
+    byStatus?.[ServiceRequestStatus.COMPLETED] ??
+    countByStatus(requests, ServiceRequestStatus.COMPLETED);
+  const rejected =
+    byStatus?.[ServiceRequestStatus.REJECTED] ??
+    countByStatus(requests, ServiceRequestStatus.REJECTED);
 
   const cards = [
     {
@@ -307,6 +323,9 @@ export function EngineerJobRequestsPageFilterPanel({
             <option value={ServiceRequestStatus.ACCEPTED}>Accepted</option>
             <option value={ServiceRequestStatus.REJECTED}>Rejected</option>
             <option value={ServiceRequestStatus.IN_PROGRESS}>In progress</option>
+            <option value={ServiceRequestStatus.WORK_COMPLETED}>
+              Awaiting buyer confirmation
+            </option>
             <option value={ServiceRequestStatus.COMPLETED}>Completed</option>
           </select>
         </label>
@@ -384,8 +403,8 @@ function getStatusNote(
   }
 
   switch (status) {
-    case ServiceRequestStatus.IN_PROGRESS:
-      return "Buyer completion is required from the in-progress state.";
+    case ServiceRequestStatus.WORK_COMPLETED:
+      return "You marked the work as finished. The buyer confirms it from their end.";
     case ServiceRequestStatus.REJECTED:
       return "You rejected this request. No further action is available.";
     case ServiceRequestStatus.CLOSED_AFTER_DISPUTE:
@@ -396,6 +415,45 @@ function getStatusNote(
       return null;
   }
 }
+
+/**
+ * The one status transition the engineer may make from the current state, or
+ * null when the next move belongs to the buyer. Mirrors the backend's
+ * `ALLOWED_TRANSITIONS`: accepted -> in_progress -> work_completed, after which
+ * the buyer confirms via `PATCH /:id/buyer-complete`.
+ */
+function getNextEngineerStatus(
+  request: ServiceRequestData,
+): ServiceRequestStatus | null {
+  if (request.disputeActive) {
+    return null;
+  }
+
+  switch (request.status) {
+    case ServiceRequestStatus.ACCEPTED:
+      return ServiceRequestStatus.IN_PROGRESS;
+    case ServiceRequestStatus.IN_PROGRESS:
+      return ServiceRequestStatus.WORK_COMPLETED;
+    default:
+      return null;
+  }
+}
+
+const STATUS_UPDATE_COPY: Record<
+  string,
+  { cta: string; hint: string; currentHint: string }
+> = {
+  [ServiceRequestStatus.IN_PROGRESS]: {
+    cta: "Mark as In Progress",
+    hint: "Move this request to in-progress once you have started the work.",
+    currentHint: "You accepted this request on",
+  },
+  [ServiceRequestStatus.WORK_COMPLETED]: {
+    cta: "Mark as Completed",
+    hint: "The buyer confirms completion on their end once you mark the work as finished.",
+    currentHint: "You started this job on",
+  },
+};
 
 function requestImageSrc(request: ServiceRequestData): string {
   return request.photos?.[0]?.url?.trim() || FIGMA_EQUIPMENT_IMAGE || PLACEHOLDER_IMAGE;
@@ -496,7 +554,10 @@ function StatusUpdateDialog({
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  if (!request) {
+  const nextStatus = request ? getNextEngineerStatus(request) : null;
+  const copy = nextStatus ? STATUS_UPDATE_COPY[nextStatus] : null;
+
+  if (!request || !copy) {
     return null;
   }
 
@@ -508,7 +569,7 @@ function StatusUpdateDialog({
       >
         <DialogHeader className="hidden">
           <DialogTitle>Update Job Status</DialogTitle>
-          <DialogDescription>Mark this service request as in progress.</DialogDescription>
+          <DialogDescription>{copy.hint}</DialogDescription>
         </DialogHeader>
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between border-b border-[#EEF0F3] px-[20px] py-[18px] md:px-[24px]">
@@ -582,8 +643,7 @@ function StatusUpdateDialog({
                     {statusLabel(request.status)}
                   </p>
                   <p className="mt-[2px] text-[13px] leading-[18px] text-[#6B7280]">
-                    You accepted this request on{" "}
-                    {formatSchedule(request.updatedAt)}
+                    {copy.currentHint} {formatSchedule(request.updatedAt)}
                   </p>
                 </div>
                 <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-[#DEFFE7] text-[#13A83B]">
@@ -599,10 +659,10 @@ function StatusUpdateDialog({
                 iconLeft={<CheckCircle2 className="size-5" aria-hidden />}
                 className="mt-[20px] h-12 w-full rounded-[8px] border-0 px-5 text-[16px] font-normal leading-[24px] md:h-[56px]"
               >
-                Mark as In Progress
+                {copy.cta}
               </Button>
               <p className="mt-[10px] text-center text-[13px] leading-[18px] text-[#6B7280]">
-                Move this request to in-progress once you have started the work.
+                {copy.hint}
               </p>
             </div>
           </div>
@@ -807,14 +867,13 @@ export function EngineerJobCards({
     }
   };
 
-  const confirmInProgress = () => {
-    if (!statusDialogRequest) {
+  const confirmStatusAdvance = (request: ServiceRequestData | null) => {
+    const nextStatus = request ? getNextEngineerStatus(request) : null;
+    if (!request || !nextStatus) {
       return;
     }
 
-    void updateStatus(statusDialogRequest, ServiceRequestStatus.IN_PROGRESS, {
-      showResult: true,
-    });
+    void updateStatus(request, nextStatus, { showResult: true });
   };
 
   if (isLoading && serviceRequests.length === 0) {
@@ -889,11 +948,11 @@ export function EngineerJobCards({
         // so the parties can still resolve it.
         const canAcceptOrReject =
           request.status === ServiceRequestStatus.PENDING && !hasActiveDispute;
-        const canUpdateStatus =
-          request.status === ServiceRequestStatus.ACCEPTED && !hasActiveDispute;
+        const canUpdateStatus = getNextEngineerStatus(request) !== null;
         const showChatCta =
           request.status === ServiceRequestStatus.ACCEPTED ||
           request.status === ServiceRequestStatus.IN_PROGRESS ||
+          request.status === ServiceRequestStatus.WORK_COMPLETED ||
           request.status === ServiceRequestStatus.COMPLETED;
         const statusNote = getStatusNote(request.status, hasActiveDispute);
 
@@ -1012,7 +1071,7 @@ export function EngineerJobCards({
           statusDialogRequest && updatingId === statusDialogRequest._id,
         )}
         onClose={() => setStatusDialogRequest(null)}
-        onConfirm={confirmInProgress}
+        onConfirm={() => confirmStatusAdvance(statusDialogRequest)}
       />
 
       <StatusResultDialog
@@ -1027,15 +1086,7 @@ export function EngineerJobCards({
         onClose={() => setStatusResult(null)}
         onRetry={() => {
           setStatusResult(null);
-          if (failedStatusRequest) {
-            void updateStatus(
-              failedStatusRequest,
-              ServiceRequestStatus.IN_PROGRESS,
-              {
-                showResult: true,
-              },
-            );
-          }
+          confirmStatusAdvance(failedStatusRequest);
         }}
       />
     </div>

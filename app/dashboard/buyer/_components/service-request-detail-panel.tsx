@@ -144,6 +144,15 @@ function statusConfig(status: ServiceRequestStatus): StatusVisual {
         containerBorder: "border-[#F6DEC7]",
         icon: <Clock className="size-[18px] shrink-0" />,
       };
+    case ServiceRequestStatus.WORK_COMPLETED:
+      return {
+        label: "Awaiting your confirmation",
+        badgeText: "text-white",
+        badgePill: "bg-[#017BED]",
+        containerBg: "bg-[#F3F9FF]",
+        containerBorder: "border-[#BFDDFB]",
+        icon: <CheckCircle2 className="size-[18px] shrink-0" />,
+      };
     case ServiceRequestStatus.COMPLETED:
       return {
         label: "Completed",
@@ -368,6 +377,18 @@ export default function ServiceRequestDetailPanel({
   const evidenceBusy = addEvidenceMutation.isPending;
 
   const isInProgress = request.status === ServiceRequestStatus.IN_PROGRESS;
+  // The engineer moves the job to `work_completed`; only from there may the
+  // buyer confirm it. A dispute can be raised from either state.
+  const isWorkCompleted =
+    request.status === ServiceRequestStatus.WORK_COMPLETED;
+  const canConfirmCompletion = isWorkCompleted && !request.disputeActive;
+  const canRaiseDispute =
+    (isInProgress || isWorkCompleted) && !request.disputeActive;
+  /** Engineer is on the job — chat and the acceptance notice stay visible. */
+  const isEngagedWithEngineer =
+    request.status === ServiceRequestStatus.ACCEPTED ||
+    isInProgress ||
+    isWorkCompleted;
   const isCompleted = request.status === ServiceRequestStatus.COMPLETED;
   const isClosedAfterDispute =
     request.status === ServiceRequestStatus.CLOSED_AFTER_DISPUTE;
@@ -623,13 +644,12 @@ export default function ServiceRequestDetailPanel({
             </div>
 
             {/* Status-based action panel */}
-            <div className={request.status === ServiceRequestStatus.ACCEPTED || request.status === ServiceRequestStatus.IN_PROGRESS ? "border-b border-[#E5EAF0] pb-6" : ""}>
-              {request.status === ServiceRequestStatus.ACCEPTED || request.status === ServiceRequestStatus.IN_PROGRESS ? (
+            <div className={isEngagedWithEngineer ? "border-b border-[#E5EAF0] pb-6" : ""}>
+              {isEngagedWithEngineer ? (
                 <h3 className="text-base font-semibold text-[#111827]">Action</h3>
               ) : null}
               <div className="mt-3">
-                {request.status === ServiceRequestStatus.ACCEPTED ||
-                request.status === ServiceRequestStatus.IN_PROGRESS ? (
+                {isEngagedWithEngineer ? (
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Link
                       href="/dashboard/buyer/messages"
@@ -690,7 +710,7 @@ export default function ServiceRequestDetailPanel({
 
             <RequestHistory entries={timelineEntries} />
 
-            {(isCompleted || isClosedAfterDispute) && (
+            {(isWorkCompleted || isCompleted || isClosedAfterDispute) && (
               <AttachmentList
                 title="Proof of completion"
                 items={
@@ -865,30 +885,46 @@ export default function ServiceRequestDetailPanel({
               </div>
             ) : null}
 
-            {isInProgress && !request.disputeActive ? (
+            {canConfirmCompletion || canRaiseDispute ? (
               <div className="flex flex-col gap-3 pt-2">
-                <Button
-                  type="button"
-                  variant="primary"
-                  isBusy={markingCompleted}
-                  disabled={markingCompleted}
-                  onClick={() => void handleMarkCompleted()}
-                  iconLeft={<CheckCircle2 className="size-4" />}
-                  className="w-full bg-[#FF7A2E]! text-white! hover:bg-[#F06E25]!"
-                >
-                  Mark as completed
-                </Button>
+                {canConfirmCompletion ? (
+                  <>
+                    <p className="text-sm text-[#6B7280]">
+                      {engineerName} marked this job as finished. Confirm it to
+                      close the request, or raise a dispute if something is
+                      wrong.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="primary"
+                      isBusy={markingCompleted}
+                      disabled={markingCompleted}
+                      onClick={() => void handleMarkCompleted()}
+                      iconLeft={<CheckCircle2 className="size-4" />}
+                      className="w-full bg-[#FF7A2E]! text-white! hover:bg-[#F06E25]!"
+                    >
+                      Confirm completion
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-sm text-[#6B7280]">
+                    {engineerName} is working on this job. You can confirm
+                    completion once they mark the work as finished.
+                  </p>
+                )}
 
-                <button
-                  type="button"
-                  onClick={() => setIsRaiseDisputeOpen(true)}
-                  className="w-full rounded-xl border border-[#F4B183] py-3 text-sm font-semibold text-[#F08A32] transition-colors hover:bg-orange-50"
-                >
-                  <span className="inline-flex items-center gap-1.5">
-                    <AlertTriangle className="size-4" />
-                    Raise dispute
-                  </span>
-                </button>
+                {canRaiseDispute ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsRaiseDisputeOpen(true)}
+                    className="w-full rounded-xl border border-[#F4B183] py-3 text-sm font-semibold text-[#F08A32] transition-colors hover:bg-orange-50"
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <AlertTriangle className="size-4" />
+                      Raise dispute
+                    </span>
+                  </button>
+                ) : null}
               </div>
             ) : null}
           </div>

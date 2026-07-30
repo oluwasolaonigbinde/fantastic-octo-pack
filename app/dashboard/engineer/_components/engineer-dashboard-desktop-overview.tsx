@@ -52,6 +52,7 @@ function formatRecentRequestStatus(status: ServiceRequestStatus): string {
       return "new";
     case ServiceRequestStatus.ACCEPTED:
     case ServiceRequestStatus.IN_PROGRESS:
+    case ServiceRequestStatus.WORK_COMPLETED:
       return "In progress";
     case ServiceRequestStatus.COMPLETED:
       return "Completed";
@@ -69,6 +70,7 @@ function recentRequestStatusClassName(status: ServiceRequestStatus): string {
       return "bg-[#EAF4FF] text-[#0669D9]";
     case ServiceRequestStatus.ACCEPTED:
     case ServiceRequestStatus.IN_PROGRESS:
+    case ServiceRequestStatus.WORK_COMPLETED:
       return "bg-[#EAF4FF] text-[#0669D9]";
     case ServiceRequestStatus.COMPLETED:
       return "bg-[#FFF1E8] text-[#FE6E00]";
@@ -227,6 +229,7 @@ export function EngineerDashboardDesktopOverview({
     const inProgress = countByStatus(requests, [
       ServiceRequestStatus.ACCEPTED,
       ServiceRequestStatus.IN_PROGRESS,
+      ServiceRequestStatus.WORK_COMPLETED,
     ]);
     const completed =
       statusCounts?.completed ??

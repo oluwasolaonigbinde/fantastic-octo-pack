@@ -8,7 +8,10 @@ import { Loader2, Search } from "lucide-react";
 import { useRecommendedProductsQuery } from "@/hooks/queries/products";
 import { useUsersQuery } from "@/hooks/queries/users";
 import type { Product, ProductImage } from "@/types/product";
-import { getProductCategoryName } from "@/utils/productDisplay";
+import {
+  formatProductPrice,
+  getProductCategoryName,
+} from "@/utils/productDisplay";
 import type { PublicProfileData } from "@/types/user";
 import { UserRole } from "@/types/user";
 import { getPartyDisplayName } from "@/utils/partyDisplayName";
@@ -54,12 +57,7 @@ function buildProductResult(product: Product): SearchResultItem {
     product.pricing_type === "rfq"
       ? "RFQ"
       : typeof product.pricePerUnit === "number" && Number.isFinite(product.pricePerUnit)
-        ? new Intl.NumberFormat("en-NG", {
-            style: "currency",
-            currency: "NGN",
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-          }).format(product.pricePerUnit)
+        ? formatProductPrice(product.pricePerUnit)
         : undefined;
 
   return {

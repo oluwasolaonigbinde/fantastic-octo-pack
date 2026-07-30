@@ -5,8 +5,9 @@
  *
  * Buyer has two tiers (see `docs/kyc/README.md`):
  *   1. `basic_buyer`              — auto-granted at signup, nothing to submit.
- *   2. `verified_business_buyer`  — review_required, needs CAC certificate
- *                                   + CAC status report. No prerequisite.
+ *   2. `verified_business_buyer`  — review_required, needs a business
+ *                                   registration certificate + report.
+ *                                   No prerequisite.
  *
  * Everything renders off `useMyKycQuery()`; the static catalogue in
  * `constants/kycTiers.ts` is only used for slug resolution.

@@ -63,11 +63,20 @@ export const KYC_TIERS_BY_ROLE: Record<KycSubmitterRole, KycTierDefinition[]> = 
       submissionBehavior: "review_required",
       requiredTextFields: [],
       requiredDocuments: [
-        { fieldName: "cac_certificate", label: "CAC certificate", minimumCount: 1 },
-        { fieldName: "cac_status_report", label: "CAC status report", minimumCount: 1 },
+        {
+          fieldName: "business_registration_certificate",
+          label: "Business registration certificate",
+          minimumCount: 1,
+        },
+        {
+          fieldName: "business_registration_report",
+          label: "Business registration report",
+          minimumCount: 1,
+        },
       ],
       detailTitle: "Business verification",
-      detailSubtitle: "Upload CAC documents for manual business verification.",
+      detailSubtitle:
+        "Upload business registration documents for manual business verification.",
       badgeLabel: "Verified Business Buyer",
       prerequisiteTierKey: null,
     },
@@ -118,8 +127,16 @@ export const KYC_TIERS_BY_ROLE: Record<KycSubmitterRole, KycTierDefinition[]> = 
       ],
       requiredDocuments: [
         { fieldName: "identity_document", label: "Government ID card", minimumCount: 1 },
-        { fieldName: "cac_certificate", label: "CAC certificate", minimumCount: 1 },
-        { fieldName: "cac_status_report", label: "CAC status report", minimumCount: 1 },
+        {
+          fieldName: "business_registration_certificate",
+          label: "Business registration certificate",
+          minimumCount: 1,
+        },
+        {
+          fieldName: "business_registration_report",
+          label: "Business registration report",
+          minimumCount: 1,
+        },
       ],
       detailTitle: "Distributor verification",
       detailSubtitle: "Submit identity and business evidence for manual review.",

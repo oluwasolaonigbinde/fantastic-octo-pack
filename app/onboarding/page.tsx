@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Input } from "@/components/base";
 import { Button } from "@/components/base";
 import { SingleSelect } from "@/components/base";
+import { PhoneInput } from "@/components/features/auth/PhoneInput";
 import { Textarea } from "@/components/ui/textarea";
 import { CheckSquare2, FileText, Pencil } from "lucide-react";
 import { FileUpload } from "@/components/base";
@@ -264,10 +265,17 @@ export default function Onboarding() {
                         : state?.errors?.email?.[0]
                     }
                   />
-                  <Input
-                    {...register("phoneNumber")}
+                  <input type="hidden" {...register("phoneNumber")} />
+                  <PhoneInput
+                    id="phoneNumber"
                     label="Phone number"
-                    placeholder="Enter your phone number"
+                    value={getValues("phoneNumber")}
+                    onChange={(value) =>
+                      setValue("phoneNumber", value, {
+                        shouldValidate: true,
+                        shouldTouch: true,
+                      })
+                    }
                     error={
                       errors.phoneNumber && touchedFields.phoneNumber
                         ? errors.phoneNumber.message

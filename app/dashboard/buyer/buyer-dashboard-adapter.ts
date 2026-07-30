@@ -325,7 +325,10 @@ const buildActivities = (
           ? "was completed"
           : latestServiceRequest.status === ServiceRequestStatus.IN_PROGRESS
             ? "is in progress"
-            : "was updated";
+            : latestServiceRequest.status ===
+                ServiceRequestStatus.WORK_COMPLETED
+              ? "is awaiting your confirmation"
+              : "was updated";
 
       secondaryItems.push({
         id: `service-request-${latestServiceRequest._id}`,

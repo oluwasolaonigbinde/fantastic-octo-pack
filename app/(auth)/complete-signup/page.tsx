@@ -16,18 +16,12 @@ import {
   writePendingRegistrationContext,
 } from "@/utils/pendingAuth";
 import type { PendingRegistrationContext } from "@/types/auth";
+import { isValidE164Phone } from "@/utils/phone";
 
 type CompleteSignupFormData = {
   firstName: string;
   lastName: string;
   phoneNumber: string;
-};
-
-const isInternationalPhoneNumber = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("+")) return false;
-  const digitsOnly = trimmed.replace(/\D/g, "");
-  return /^\+[1-9]\d{7,14}$/.test(`+${digitsOnly}`);
 };
 
 export default function CompleteSignupPage() {
@@ -185,7 +179,7 @@ export default function CompleteSignupPage() {
           {...register("phoneNumber", {
             required: "Phone number is required",
             validate: (v) =>
-              isInternationalPhoneNumber(v) ||
+              isValidE164Phone(v) ||
               "Phone number must include a country code, for example +2348012345678",
           })}
         />
